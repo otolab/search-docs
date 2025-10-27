@@ -97,11 +97,39 @@ packages/server/src/config/
 - storage: documentsPath, indexPath, cachePath
 - worker: enabled, interval, maxConcurrent
 
+### 2.2 ファイル検索 ✅ 完了
+
+- ✅ FileDiscoveryクラス実装
+  - fast-globによるGlobパターンマッチング
+  - .gitignore解析（ignoreパッケージ）
+  - パス正規化
+  - パターンマッチング判定
+- ✅ テスト作成（9テストケース）
+- ✅ ビルド成功
+
+**実装詳細**:
+```
+packages/server/src/discovery/
+├── file-discovery.ts
+└── __tests__/
+    └── file-discovery.test.ts  # 9テストケース
+```
+
+**機能**:
+- findFiles(): Globパターンでファイル検索
+- matchesPattern(): パターンマッチング判定
+- shouldIgnore(): 除外判定（.gitignore対応）
+
+**依存パッケージ**:
+- fast-glob: 高速Glob検索
+- ignore: .gitignore互換パーサー
+- chokidar: ファイル監視（次のステップで使用）
+
 ### 次のステップ
 
-⏳ 2.2 ファイル検索
 ⏳ 2.3 Markdown分割
 ⏳ 2.4 サーバコア
+⏳ 2.5 ファイル監視（Watch機能）
 
 ## 次のアクション
 

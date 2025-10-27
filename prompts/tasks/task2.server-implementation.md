@@ -312,7 +312,8 @@ packages/server/src/
     "ignore": "^6.0.2",
     "marked": "^16.0.0",
     "gpt-tokenizer": "^2.6.1",
-    "nanoid": "^5.0.11"
+    "nanoid": "^5.0.11",
+    "chokidar": "^4.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -334,7 +335,8 @@ packages/server/
 │   │   ├── loader.ts
 │   │   └── validator.ts
 │   ├── discovery/
-│   │   └── file-discovery.ts
+│   │   ├── file-discovery.ts
+│   │   └── file-watcher.ts
 │   ├── splitter/
 │   │   ├── markdown-splitter.ts
 │   │   └── token-counter.ts
