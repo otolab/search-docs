@@ -233,6 +233,46 @@ packages/server/src/config/validator.ts # バリデーション
    - statsパラメータがundefinedの場合にディレクトリ判定が失敗
    - → 拡張子の有無でもディレクトリ判定を追加（`!path.extname(filePath)`）
 
+### 2.6 HTTP JSON-RPCサーバ ✅ 完了
+
+- ✅ JsonRpcServerクラス実装
+  - Express.jsでHTTPサーバ構築
+  - JSON-RPC 2.0プロトコル実装
+  - `/rpc`エンドポイントでメソッド実行
+  - `/health`エンドポイントでヘルスチェック
+  - CORS対応（複数クライアント対応）
+- ✅ エントリポイント実装（bin/server.ts）
+  - 設定ファイル読み込み
+  - SearchDocsServer、JsonRpcServerの初期化
+  - シグナルハンドリング（SIGINT/SIGTERM）
+- ✅ TypeScriptエラー修正（3件）
+  1. ConfigLoader: watcherプロパティのマージ処理追加
+  2. FileWatcher: `Stats`のimport修正（`fs/promises` → `fs`）
+  3. JsonRpcServer: spread operatorエラー修正（条件付きプロパティ追加を明示的に）
+- ✅ ビルド成功
+- ✅ テスト全成功（73/73）
+
+**実装詳細**:
+```
+packages/server/
+├── bin/
+│   └── server.ts               # エントリポイント
+└── src/
+    ├── server/
+    │   └── json-rpc-server.ts  # JsonRpcServerクラス
+    └── index.ts                # エクスポート追加
+```
+
+**API仕様**:
+- プロトコル: JSON-RPC 2.0 over HTTP
+- エンドポイント: `POST http://localhost:24280/rpc`
+- メソッド: search, getDocument, indexDocument, rebuildIndex, getStatus
+- エラーコード: PARSE_ERROR (-32700), INVALID_REQUEST (-32600), METHOD_NOT_FOUND (-32601), INVALID_PARAMS (-32602), INTERNAL_ERROR (-32603)
+
+**依存パッケージ**:
+- express: HTTPサーバフレームワーク
+- cors: CORS対応
+
 ### 次のステップ
 
 ⏳ Phase 3: MCPサーバ統合 or その他機能
@@ -292,6 +332,8 @@ packages/server/src/config/validator.ts # バリデーション
 9. ✅ コミット完了（f04918c）
 10. ✅ Phase 2.5 - ファイル監視完了
 11. ✅ コミット完了（5f2d536, 8c885cb）
+12. ✅ Phase 2.6 - HTTP JSON-RPCサーバ完了
+13. ⏳ コミット予定
 
 ## メモ
 

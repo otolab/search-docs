@@ -87,6 +87,12 @@ export class ConfigLoader {
         interval: config.worker?.interval ?? DEFAULT_CONFIG.worker.interval,
         maxConcurrent: config.worker?.maxConcurrent ?? DEFAULT_CONFIG.worker.maxConcurrent,
       },
+      watcher: {
+        enabled: config.watcher?.enabled ?? DEFAULT_CONFIG.watcher.enabled,
+        debounceMs: config.watcher?.debounceMs ?? DEFAULT_CONFIG.watcher.debounceMs,
+        awaitWriteFinishMs:
+          config.watcher?.awaitWriteFinishMs ?? DEFAULT_CONFIG.watcher.awaitWriteFinishMs,
+      },
     };
   }
 }

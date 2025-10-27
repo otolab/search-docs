@@ -1,6 +1,7 @@
 import chokidar, { type FSWatcher } from 'chokidar';
 import { EventEmitter } from 'events';
-import * as fs from 'fs/promises';
+import { readFile } from 'fs/promises';
+import type { Stats } from 'fs';
 import * as path from 'path';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
 
@@ -61,7 +62,7 @@ export class FileWatcher extends EventEmitter {
     // ファイルイベントが発火しない問題があるため、rootDirを監視して
     // ignored callbackでフィルタリングする方式を採用
     this.watcher = chokidar.watch(this.rootDir, {
-      ignored: (filePath: string, stats?: fs.Stats) => {
+      ignored: (filePath: string, stats?: Stats) => {
         const relativePath = path.relative(this.rootDir, filePath);
 
         // ディレクトリは除外しない（サブディレクトリを監視するため）
