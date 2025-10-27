@@ -31,12 +31,19 @@ search-docsのDBエンジンは、[sebas-chan](../sebas-chan/)プロジェクト
 
 ## セットアップ
 
+### 前提条件
+
+- Node.js (推奨: v18以上)
+- [uv](https://github.com/astral-sh/uv) (Python パッケージマネージャー)
+
+### インストール
+
 ```bash
-# 依存関係のインストール
+# TypeScript依存関係のインストール
 npm install
 
-# Python環境のセットアップ
-pip install -r requirements.txt
+# Python環境のセットアップ (uvを使用)
+uv sync
 ```
 
 ## 使用方法

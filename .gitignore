@@ -16,6 +16,10 @@ build/
 venv/
 ENV/
 
+# UV (Python package manager)
+.python-version
+uv.lock
+
 # IDE
 .vscode/
 .idea/
