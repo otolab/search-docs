@@ -55,11 +55,24 @@ packages/db-engine/src/python/
 - 13テストケース作成
 - ビルド成功
 
+## ドキュメント作成 ✅ 完了
+
+- ✅ implementation-details.md: 実装詳細、型定義、通信プロトコル
+- ✅ type-definitions.md: 全型定義のリファレンス
+- ✅ architecture-decisions.md: ADR（アーキテクチャ決定記録）
+
+**内容**:
+- 設計意図と実装判断の記録
+- 型定義の詳細な説明と使用例
+- 10個の主要なアーキテクチャ決定（ADR-001〜010）
+  - ハイブリッド構成、JSON-RPC、トークン分割、Dirty管理など
+
 ## 次のアクション
 
 1. ✅ db-engineの実装完了
-2. ⏳ 実装をコミット
-3. ⏳ Phase 2 (server実装) に進む
+2. ✅ ドキュメント作成完了
+3. ⏳ 全てをコミット
+4. ⏳ Phase 2 (server実装) に進む
    - 設定管理
    - ファイル検索
    - Markdown分割
