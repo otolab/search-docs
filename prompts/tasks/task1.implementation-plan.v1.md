@@ -65,15 +65,25 @@ search-docsの基本実装を完了させ、動作可能な状態にする
   - エラーハンドリング
 
 #### 1.3 DB Engine (packages/db-engine)
-- [ ] Pythonスキーマ定義 (schemas.py)
-- [ ] 埋め込みモデル統合 (embedding.py)
-- [ ] LanceDBワーカー (worker.py)
-- [ ] TypeScriptラッパー
-- [ ] テスト作成
+- [x] Pythonスキーマ定義 (schemas.py)
+- [x] 埋め込みモデル統合 (embedding.py)
+- [x] LanceDBワーカー (worker.py)
+- [x] TypeScriptラッパー
+- [x] テスト作成
+- [x] Python環境セットアップ (uv sync)
 
-**成果物**: `@search-docs/db-engine`
+**成果物**: `@search-docs/db-engine` ✅ **完了**
 
 **参考**: `../sebas-chan/packages/db/src/python/`
+
+**実装内容**:
+- Python実装:
+  - schemas.py: PyArrowスキーマ定義
+  - embedding.py: Ruri埋め込みモデル (256d/768d)
+  - worker.py: LanceDB JSON-RPCワーカー
+- TypeScript実装:
+  - index.ts: DBEngineクラス (JSON-RPC通信)
+- テスト: db-engine.test.ts (接続、CRUD、検索、Dirty管理)
 
 ### Phase 2: サーバ実装【優先度: 高】
 

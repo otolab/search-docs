@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src/typescript"
+  },
+  "include": ["src/typescript/**/*"],
+  "references": [
+    { "path": "../types" }
+  ]
+}

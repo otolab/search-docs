@@ -1,0 +1,30 @@
+{
+  "name": "@search-docs/db-engine",
+  "version": "0.1.0",
+  "description": "LanceDB Vector検索エンジン",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src/python"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@search-docs/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^2.1.9"
+  },
+  "keywords": [
+    "search-docs",
+    "lancedb",
+    "vector-search"
+  ]
+}
