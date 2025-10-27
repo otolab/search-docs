@@ -1,0 +1,5 @@
+# このディレクトリには作業計画やメモを配置します
+#
+# 命名規約:
+# - Issue関連: <issue-number>.<memotitle>.<memo-version>.md
+# - 一般作業: task<連番>.<memotitle>.<memo-version>.md
