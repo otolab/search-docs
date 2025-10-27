@@ -67,16 +67,49 @@ packages/db-engine/src/python/
 - 10個の主要なアーキテクチャ決定（ADR-001〜010）
   - ハイブリッド構成、JSON-RPC、トークン分割、Dirty管理など
 
+## Phase 2: サーバ実装 🔄 進行中
+
+### 2.1 設定管理 ✅ 完了
+
+- ✅ ConfigLoaderクラス実装
+  - JSONファイル読み込み
+  - バリデーション
+  - デフォルト値マージ
+- ✅ validator実装（全設定項目対応）
+- ✅ テスト作成（17テストケース）
+- ✅ ビルド成功
+
+**実装詳細**:
+```
+packages/server/src/config/
+├── loader.ts           # ConfigLoader
+├── validator.ts        # バリデーション関数
+└── __tests__/
+    └── config.test.ts  # 17テストケース
+```
+
+**対応設定**:
+- project: name, root
+- files: include, exclude, ignoreGitignore
+- indexing: maxTokensPerSection, minTokensForSplit, maxDepth, vectorDimension, embeddingModel
+- search: defaultLimit, maxLimit, includeCleanOnly
+- server: host, port, protocol
+- storage: documentsPath, indexPath, cachePath
+- worker: enabled, interval, maxConcurrent
+
+### 次のステップ
+
+⏳ 2.2 ファイル検索
+⏳ 2.3 Markdown分割
+⏳ 2.4 サーバコア
+
 ## 次のアクション
 
 1. ✅ db-engineの実装完了
 2. ✅ ドキュメント作成完了
-3. ⏳ 全てをコミット
-4. ⏳ Phase 2 (server実装) に進む
-   - 設定管理
-   - ファイル検索
-   - Markdown分割
-   - サーバコア
+3. ✅ Phase 2開始 - 設定管理完了
+4. ⏳ コミット
+5. ⏳ ファイル検索実装に進む
 
 ## メモ
 

@@ -1,0 +1,37 @@
+{
+  "name": "@search-docs/server",
+  "version": "0.1.0",
+  "description": "search-docs サーバ実装",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@search-docs/types": "workspace:*",
+    "@search-docs/storage": "workspace:*",
+    "@search-docs/db-engine": "workspace:*",
+    "fast-glob": "^3.3.2",
+    "ignore": "^6.0.2",
+    "marked": "^16.0.0",
+    "gpt-tokenizer": "^2.6.1",
+    "nanoid": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^2.1.9"
+  },
+  "keywords": [
+    "search-docs",
+    "server",
+    "markdown",
+    "indexing"
+  ]
+}
