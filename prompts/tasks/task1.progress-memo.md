@@ -197,9 +197,45 @@ packages/server/src/
 - ステータスAPI: サーバ・インデックス・ワーカー情報
 - Dirtyワーカー: バックグラウンドで自動再インデックス
 
+### 2.5 ファイル監視（Watch機能）✅ 完了
+
+- ✅ FileWatcherクラス実装
+  - chokidarによるファイルシステム監視
+  - デバウンス機能（連続した変更をまとめる）
+  - .gitignore対応
+  - サブディレクトリの監視対応
+  - 除外パターンのサポート
+- ✅ WatcherConfig型定義追加
+- ✅ SearchDocsServerへの統合
+  - FileWatcherインスタンスの管理
+  - ファイル変更時のDirty管理
+  - ファイル削除時のインデックスクリーンアップ
+- ✅ バリデーションとテスト
+  - WatcherConfig用のバリデーション関数（4テストケース）
+  - FileWatcher用テスト（7テストケース）
+- ✅ ビルド成功
+
+**実装詳細**:
+```
+packages/server/src/discovery/
+├── file-watcher.ts                    # FileWatcherクラス
+└── __tests__/
+    └── file-watcher.test.ts          # 7テストケース
+packages/types/src/config.ts          # WatcherConfig型定義
+packages/server/src/config/validator.ts # バリデーション
+```
+
+**技術的課題と解決**:
+1. **chokidar 4.xでGlobパターン監視が動作しない問題**
+   - Globパターンを直接watchに渡すとファイルイベントが発火しない
+   - → rootDirを監視してignored callbackでフィルタリングする方式に変更
+2. **サブディレクトリ内のファイルが検出されない問題**
+   - statsパラメータがundefinedの場合にディレクトリ判定が失敗
+   - → 拡張子の有無でもディレクトリ判定を追加（`!path.extname(filePath)`）
+
 ### 次のステップ
 
-⏳ 2.5 ファイル監視（Watch機能）
+⏳ Phase 3: MCPサーバ統合 or その他機能
 
 ## 階層的コンテンツ実装（Phase 1）✅ 完了
 
@@ -239,8 +275,9 @@ packages/server/src/
 - MarkdownSplitter: 25/25 成功 ✅
 - FileDiscovery: 10/10 成功 ✅
 - TokenCounter: 9/9 成功 ✅
-- Config: 18/18 成功 ✅
-- **合計: 62/62 全テスト成功** 🎉
+- Config: 22/22 成功 ✅
+- FileWatcher: 7/7 成功 ✅
+- **合計: 73/73 全テスト成功** 🎉
 
 ## 次のアクション
 
@@ -253,7 +290,8 @@ packages/server/src/
 7. ✅ Phase 2.4 - サーバコア完了
 8. ✅ バグ修正完了（H3コンテンツ、Glob変換）
 9. ✅ コミット完了（f04918c）
-10. ⏳ Phase 2.5 - ファイル監視実装に進む
+10. ✅ Phase 2.5 - ファイル監視完了
+11. ✅ コミット完了（5f2d536, 8c885cb）
 
 ## メモ
 
