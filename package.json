@@ -1,0 +1,31 @@
+{
+  "name": "search-docs",
+  "version": "0.1.0",
+  "description": "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供",
+  "private": true,
+  "scripts": {
+    "build": "tsc --build",
+    "build:all": "pnpm run -r build",
+    "clean": "tsc --build --clean",
+    "clean:all": "pnpm run clean && rm -rf node_modules packages/*/node_modules",
+    "test": "pnpm run -r test",
+    "test:unit": "pnpm run -r test:unit",
+    "test:integration": "pnpm run -r test:integration",
+    "lint": "pnpm run -r lint",
+    "lint:fix": "pnpm run -r lint:fix",
+    "typecheck": "pnpm run -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "vitest": "^2.0.0",
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.14.4"
+}
