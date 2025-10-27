@@ -136,6 +136,10 @@ packages/server/src/discovery/
   - H4以降は親セクションに含める
   - token.rawでMarkdown形式保持
   - サマリフィールドをundefinedで確保
+  - **階層的コンテンツ実装（Phase 1完了）**
+    - 親セクションに子のコンテンツをすべて含める
+    - depth=0は常に文書全体を表す
+    - 各depthレベルで完全な意味を持つ
 - ✅ テスト作成
   - TokenCounter: 9テストケース
   - MarkdownSplitter: 25テストケース
@@ -158,6 +162,12 @@ packages/server/src/splitter/
 - depth 0-3の階層構造
 - maxDepth制限対応
 - サマリフィールド確保（将来のLLM生成用）
+- **階層的コンテンツ**: 親セクションは子のコンテンツをすべて含む
+  - depth=0: 文書全体（すべてのH1, H2, H3を含む）
+  - depth=1: H1 + その下のすべてのH2, H3
+  - depth=2: H2 + その下のすべてのH3
+  - depth=3: H3のみ
+- マクロ・ミクロ両面での検索精度向上
 
 ### 2.4 サーバコア ✅ 完了
 
@@ -191,6 +201,26 @@ packages/server/src/
 
 ⏳ 2.5 ファイル監視（Watch機能）
 
+## 階層的コンテンツ実装（Phase 1）✅ 完了
+
+**課題**: `docs/hierarchical-content-issue.md` で定義
+
+**実装内容**:
+1. ✅ `buildContent()` を修正: 子のコンテンツを再帰的に含める
+2. ✅ `extractHeadingStructure()` を修正: depth=0を文書全体に
+3. ✅ トークン数警告機能（既存）
+4. ✅ テスト全面更新（25テストケース）
+
+**効果**:
+- 各depthレベルで完全な意味を持つベクトルインデックス
+- マクロ（文書全体）とミクロ（セクション）の両面で検索可能
+- 例: 「Node.jsのnpmインストール」で文書全体〜小節まで段階的にマッチ
+
+**次のステップ（Phase 2）**:
+- LLMでサマリ生成
+- contentフィールドにサマリを統合
+- 単一ベクトルで完全なコンテキスト保持
+
 ## 次のアクション
 
 1. ✅ db-engineの実装完了
@@ -198,9 +228,10 @@ packages/server/src/
 3. ✅ Phase 2.1 - 設定管理完了
 4. ✅ Phase 2.2 - ファイル検索完了
 5. ✅ Phase 2.3 - Markdown分割完了
-6. ✅ Phase 2.4 - サーバコア完了
-7. ⏳ コミット
-8. ⏳ Phase 2.5 - ファイル監視実装に進む
+6. ✅ 階層的コンテンツ実装（Phase 1）完了
+7. ✅ Phase 2.4 - サーバコア完了
+8. ⏳ コミット
+9. ⏳ Phase 2.5 - ファイル監視実装に進む
 
 ## メモ
 

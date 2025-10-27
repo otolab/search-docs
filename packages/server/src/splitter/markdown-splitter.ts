@@ -111,18 +111,16 @@ export class MarkdownSplitter {
       }
     }
 
-    // 前文がある場合はdepth 0として先頭に追加
-    if (contentBuffer.length > 0) {
-      currentDepth0 = {
-        depth: 0,
-        heading: '',
-        content: contentBuffer,
-        children: [],
-      };
-      nodes.unshift(currentDepth0);
-    }
+    // depth=0は常に文書全体を表す
+    // 前文（contentBuffer）を持ち、すべてのH1セクション（nodes）を子として持つ
+    currentDepth0 = {
+      depth: 0,
+      heading: '', // 文書ルート
+      content: contentBuffer, // 前文（あれば）
+      children: nodes, // すべてのH1セクション
+    };
 
-    return nodes;
+    return [currentDepth0];
   }
 
   /**
@@ -191,6 +189,7 @@ export class MarkdownSplitter {
 
   /**
    * HeadingNodeからコンテンツテキストを構築
+   * 親セクションは子のコンテンツを**すべて含む**（階層的コンテンツ）
    */
   private buildContent(node: HeadingNode): string {
     let text = '';
@@ -201,8 +200,15 @@ export class MarkdownSplitter {
       text += `${prefix} ${node.heading}\n\n`;
     }
 
-    // コンテンツを追加
+    // 自分のコンテンツを追加
     text += node.content.join('\n\n');
+
+    // 子のコンテンツを再帰的に追加（階層的コンテンツ）
+    if (node.children.length > 0) {
+      for (const child of node.children) {
+        text += '\n\n' + this.buildContent(child);
+      }
+    }
 
     return text.trim();
   }
