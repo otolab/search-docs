@@ -128,12 +128,16 @@ export class FileDiscovery {
    * Globパターンを正規表現に変換（簡易版）
    */
   private convertGlobToRegex(pattern: string): RegExp {
-    // **/*.md → .+\.md$
+    // **/*.md → ^(.*/)?[^/]+\.md$
+    // *.md → ^[^/]+\.md$
     let regexPattern = pattern
       .replace(/\./g, '\\.') // . → \.
-      .replace(/\*\*/g, '.+') // ** → .+
-      .replace(/\*/g, '[^/]+') // * → [^/]+
-      .replace(/\?/g, '.'); // ? → .
+      .replace(/\?/g, '___QUESTION___') // ? → プレースホルダー（先に処理）
+      .replace(/\*\*\//g, '___GLOBSTAR___') // **/ → プレースホルダー
+      .replace(/\*\*/g, '.*') // ** → .* (任意の文字列)
+      .replace(/\*/g, '[^/]+') // * → [^/]+ (スラッシュ以外)
+      .replace(/___GLOBSTAR___/g, '(.*/)?' ) // プレースホルダー → (.*/)?
+      .replace(/___QUESTION___/g, '.'); // プレースホルダー → . (任意の1文字)
 
     // パターンの先頭に^、末尾に$を追加
     if (!regexPattern.startsWith('^')) {

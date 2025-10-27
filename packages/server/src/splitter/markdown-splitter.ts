@@ -52,6 +52,7 @@ export class MarkdownSplitter {
     let currentDepth0: HeadingNode | null = null;
     let currentDepth1: HeadingNode | null = null;
     let currentDepth2: HeadingNode | null = null;
+    let currentDepth3: HeadingNode | null = null;
     let contentBuffer: string[] = [];
 
     for (const token of tokens) {
@@ -64,6 +65,7 @@ export class MarkdownSplitter {
           currentDepth1 = { depth: 1, heading, content: [], children: [] };
           nodes.push(currentDepth1);
           currentDepth2 = null;
+          currentDepth3 = null;
         } else if (depth === 2) {
           // H2: depth 1の子、またはdepth 2として扱う
           currentDepth2 = { depth: 2, heading, content: [], children: [] };
@@ -73,16 +75,17 @@ export class MarkdownSplitter {
             // H1がない場合は直接追加
             nodes.push(currentDepth2);
           }
+          currentDepth3 = null;
         } else if (depth === 3) {
           // H3: depth 2の子、またはdepth 3として扱う
-          const node = { depth: 3, heading, content: [], children: [] };
+          currentDepth3 = { depth: 3, heading, content: [], children: [] };
           if (currentDepth2) {
-            currentDepth2.children.push(node);
+            currentDepth2.children.push(currentDepth3);
           } else if (currentDepth1) {
-            currentDepth1.children.push(node);
+            currentDepth1.children.push(currentDepth3);
           } else {
             // 親がない場合は直接追加
-            nodes.push(node);
+            nodes.push(currentDepth3);
           }
         }
         // H4以降は無視（親セクションに含める）
@@ -91,18 +94,11 @@ export class MarkdownSplitter {
         const text = this.tokenToMarkdown(token);
 
         if (text.trim()) {
-          if (currentDepth2 && currentDepth2.children.length === 0) {
-            // H3の直前にいる場合はH2に追加
-            currentDepth2.content.push(text);
-          } else if (currentDepth1 && currentDepth1.children.length === 0) {
-            // H2の直前にいる場合はH1に追加
-            currentDepth1.content.push(text);
-          } else if (currentDepth1 || currentDepth2) {
-            // 見出しの後のコンテンツ
-            const targetNode = currentDepth2 || currentDepth1;
-            if (targetNode) {
-              targetNode.content.push(text);
-            }
+          // 最も深い現在のノードを選択
+          const targetNode = currentDepth3 || currentDepth2 || currentDepth1;
+
+          if (targetNode) {
+            targetNode.content.push(text);
           } else {
             // 見出しのない前文
             contentBuffer.push(text);

@@ -221,6 +221,27 @@ packages/server/src/
 - contentフィールドにサマリを統合
 - 単一ベクトルで完全なコンテキスト保持
 
+## バグ修正（2025-01-27）✅ 完了
+
+**発見した問題**：
+1. MarkdownSplitter: H3セクションのコンテンツが追加されないバグ
+2. FileDiscovery: Glob→Regex変換の不具合（正規表現の`?`が誤変換）
+
+**修正内容**：
+1. ✅ `extractHeadingStructure()` に `currentDepth3` 変数を追加
+   - H3ノードの後のコンテンツを正しく追跡
+   - コンテンツ追加ロジックを `currentDepth3 || currentDepth2 || currentDepth1` に簡素化
+2. ✅ `convertGlobToRegex()` の置換順序を修正
+   - グロブパターンの`?`をプレースホルダーで保護
+   - 正規表現の`?`（0回または1回）が誤って`.`に置換される問題を解決
+
+**テスト結果**：
+- MarkdownSplitter: 25/25 成功 ✅
+- FileDiscovery: 10/10 成功 ✅
+- TokenCounter: 9/9 成功 ✅
+- Config: 18/18 成功 ✅
+- **合計: 62/62 全テスト成功** 🎉
+
 ## 次のアクション
 
 1. ✅ db-engineの実装完了
@@ -230,8 +251,9 @@ packages/server/src/
 5. ✅ Phase 2.3 - Markdown分割完了
 6. ✅ 階層的コンテンツ実装（Phase 1）完了
 7. ✅ Phase 2.4 - サーバコア完了
-8. ⏳ コミット
-9. ⏳ Phase 2.5 - ファイル監視実装に進む
+8. ✅ バグ修正完了（H3コンテンツ、Glob変換）
+9. ⏳ コミット
+10. ⏳ Phase 2.5 - ファイル監視実装に進む
 
 ## メモ
 
