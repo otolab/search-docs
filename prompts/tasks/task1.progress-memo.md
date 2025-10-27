@@ -159,9 +159,36 @@ packages/server/src/splitter/
 - maxDepth制限対応
 - サマリフィールド確保（将来のLLM生成用）
 
+### 2.4 サーバコア ✅ 完了
+
+- ✅ SearchDocsServerクラス実装
+  - search, getDocument, indexDocument, rebuildIndex, getStatus API
+  - インデックス作成パイプライン（ファイル読み込み→分割→保存→DB追加）
+  - FileStorage, DBEngine統合
+- ✅ DirtyWorkerクラス実装
+  - 定期実行でDirtyセクションを再インデックス
+  - 文書ごとにグループ化して効率的に処理
+- ✅ ビルド成功
+
+**実装詳細**:
+```
+packages/server/src/
+├── server/
+│   ├── search-docs-server.ts  # メインサーバクラス
+│   └── dirty-worker.ts         # Dirtyワーカー
+└── index.ts                    # エクスポート
+```
+
+**機能**:
+- 検索API: DBEngineに委譲
+- 文書取得API: FileStorageから取得
+- インデックスAPI: Markdown分割→保存→DB追加
+- 再構築API: 全ファイル or 指定ファイルを再インデックス
+- ステータスAPI: サーバ・インデックス・ワーカー情報
+- Dirtyワーカー: バックグラウンドで自動再インデックス
+
 ### 次のステップ
 
-⏳ 2.4 サーバコア
 ⏳ 2.5 ファイル監視（Watch機能）
 
 ## 次のアクション
@@ -171,8 +198,9 @@ packages/server/src/splitter/
 3. ✅ Phase 2.1 - 設定管理完了
 4. ✅ Phase 2.2 - ファイル検索完了
 5. ✅ Phase 2.3 - Markdown分割完了
-6. ⏳ コミット
-7. ⏳ Phase 2.4 - サーバコア実装に進む
+6. ✅ Phase 2.4 - サーバコア完了
+7. ⏳ コミット
+8. ⏳ Phase 2.5 - ファイル監視実装に進む
 
 ## メモ
 
