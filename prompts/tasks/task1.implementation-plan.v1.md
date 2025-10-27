@@ -43,14 +43,26 @@ search-docsの基本実装を完了させ、動作可能な状態にする
 - index.ts: エクスポート
 
 #### 1.2 DocumentStorage (packages/storage)
-- [ ] DocumentStorageインターフェイス実装
-- [ ] ファイルベースストレージ実装
+- [x] DocumentStorageインターフェイス実装
+- [x] ファイルベースストレージ実装
   - JSON形式で保存
   - パス正規化
   - CRUD操作
-- [ ] テスト作成
+  - ハッシュ計算
+- [x] テスト作成（15テスト、全て通過）
 
-**成果物**: `@search-docs/storage`
+**成果物**: `@search-docs/storage` ✅ **完了**
+
+**実装内容**:
+- FileStorageクラス
+  - save/get/delete/list/exists
+  - パス正規化（Windows/Unix互換）
+  - SHA-256ハッシュ計算
+- テスト: file-storage.test.ts（15テストケース）
+  - CRUD操作
+  - パス正規化
+  - ハッシュ計算
+  - エラーハンドリング
 
 #### 1.3 DB Engine (packages/db-engine)
 - [ ] Pythonスキーマ定義 (schemas.py)

@@ -1,0 +1,27 @@
+{
+  "name": "@search-docs/storage",
+  "version": "0.1.0",
+  "description": "文書ストレージ実装",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@search-docs/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "keywords": [
+    "search-docs",
+    "storage"
+  ]
+}
