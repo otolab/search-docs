@@ -34,4 +34,8 @@ export interface SectionMetadata {
   updatedAt: Date;
   /** 対応する文書のハッシュ */
   documentHash: string;
+  /** セクションの要約（後で生成） */
+  summary?: string;
+  /** 文書全体の要約（コンテキスト保持用） */
+  documentSummary?: string;
 }

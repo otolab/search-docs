@@ -125,9 +125,42 @@ packages/server/src/discovery/
 - ignore: .gitignore互換パーサー
 - chokidar: ファイル監視（次のステップで使用）
 
+### 2.3 Markdown分割 ✅ 完了
+
+- ✅ TokenCounterクラス実装
+  - gpt-tokenizerでトークン数計測
+  - エラー時は文字数÷4でフォールバック
+- ✅ MarkdownSplitterクラス実装
+  - markedでMarkdownパース
+  - H1-H3で階層構造抽出
+  - H4以降は親セクションに含める
+  - token.rawでMarkdown形式保持
+  - サマリフィールドをundefinedで確保
+- ✅ テスト作成
+  - TokenCounter: 9テストケース
+  - MarkdownSplitter: 25テストケース
+  - 全テスト成功
+- ✅ ビルド成功
+
+**実装詳細**:
+```
+packages/server/src/splitter/
+├── token-counter.ts              # TokenCounter
+├── markdown-splitter.ts          # MarkdownSplitter
+└── __tests__/
+    ├── token-counter.test.ts     # 9テストケース
+    └── markdown-splitter.test.ts # 25テストケース
+```
+
+**機能**:
+- 章立てベースの機械的な分割
+- トークン数計測と警告
+- depth 0-3の階層構造
+- maxDepth制限対応
+- サマリフィールド確保（将来のLLM生成用）
+
 ### 次のステップ
 
-⏳ 2.3 Markdown分割
 ⏳ 2.4 サーバコア
 ⏳ 2.5 ファイル監視（Watch機能）
 
@@ -135,9 +168,11 @@ packages/server/src/discovery/
 
 1. ✅ db-engineの実装完了
 2. ✅ ドキュメント作成完了
-3. ✅ Phase 2開始 - 設定管理完了
-4. ⏳ コミット
-5. ⏳ ファイル検索実装に進む
+3. ✅ Phase 2.1 - 設定管理完了
+4. ✅ Phase 2.2 - ファイル検索完了
+5. ✅ Phase 2.3 - Markdown分割完了
+6. ⏳ コミット
+7. ⏳ Phase 2.4 - サーバコア実装に進む
 
 ## メモ
 
