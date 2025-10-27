@@ -257,4 +257,44 @@ describe('validateConfig', () => {
       expect(() => validateConfig(config)).toThrow('config.worker.maxConcurrent must be a number');
     });
   });
+
+  describe('watcher設定のバリデーション', () => {
+    it('正しいwatcher設定', () => {
+      const config = {
+        watcher: {
+          enabled: true,
+          debounceMs: 300,
+          awaitWriteFinishMs: 200,
+        },
+      };
+      expect(() => validateConfig(config)).not.toThrow();
+    });
+
+    it('enabledがboolean型でない場合エラー', () => {
+      const config = {
+        watcher: {
+          enabled: 'yes',
+        },
+      };
+      expect(() => validateConfig(config)).toThrow('config.watcher.enabled must be a boolean');
+    });
+
+    it('debounceMsが数値でない場合エラー', () => {
+      const config = {
+        watcher: {
+          debounceMs: '300',
+        },
+      };
+      expect(() => validateConfig(config)).toThrow('config.watcher.debounceMs must be a number');
+    });
+
+    it('awaitWriteFinishMsが数値でない場合エラー', () => {
+      const config = {
+        watcher: {
+          awaitWriteFinishMs: '200',
+        },
+      };
+      expect(() => validateConfig(config)).toThrow('config.watcher.awaitWriteFinishMs must be a number');
+    });
+  });
 });

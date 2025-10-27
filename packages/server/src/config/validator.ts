@@ -50,6 +50,11 @@ export function validateConfig(config: unknown): Partial<SearchDocsConfig> {
     validateWorkerConfig(cfg.worker);
   }
 
+  // watcher設定のバリデーション
+  if (cfg.watcher !== undefined) {
+    validateWatcherConfig(cfg.watcher);
+  }
+
   return cfg as Partial<SearchDocsConfig>;
 }
 
@@ -246,5 +251,33 @@ function validateWorkerConfig(worker: unknown): void {
 
   if (wrk.maxConcurrent !== undefined && (wrk.maxConcurrent as number) <= 0) {
     throw new Error('config.worker.maxConcurrent must be positive');
+  }
+}
+
+function validateWatcherConfig(watcher: unknown): void {
+  if (typeof watcher !== 'object' || watcher === null) {
+    throw new Error('config.watcher must be an object');
+  }
+
+  const wtc = watcher as Record<string, unknown>;
+
+  if (wtc.enabled !== undefined && typeof wtc.enabled !== 'boolean') {
+    throw new Error('config.watcher.enabled must be a boolean');
+  }
+
+  if (wtc.debounceMs !== undefined && typeof wtc.debounceMs !== 'number') {
+    throw new Error('config.watcher.debounceMs must be a number');
+  }
+
+  if (wtc.debounceMs !== undefined && (wtc.debounceMs as number) < 0) {
+    throw new Error('config.watcher.debounceMs must be non-negative');
+  }
+
+  if (wtc.awaitWriteFinishMs !== undefined && typeof wtc.awaitWriteFinishMs !== 'number') {
+    throw new Error('config.watcher.awaitWriteFinishMs must be a number');
+  }
+
+  if (wtc.awaitWriteFinishMs !== undefined && (wtc.awaitWriteFinishMs as number) < 0) {
+    throw new Error('config.watcher.awaitWriteFinishMs must be non-negative');
   }
 }

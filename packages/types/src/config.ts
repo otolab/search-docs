@@ -11,6 +11,7 @@ export interface SearchDocsConfig {
   server: ServerConfig;
   storage: StorageConfig;
   worker: WorkerConfig;
+  watcher: WatcherConfig;
 }
 
 export interface ProjectConfig {
@@ -78,6 +79,15 @@ export interface WorkerConfig {
   maxConcurrent: number;
 }
 
+export interface WatcherConfig {
+  /** ファイル監視を有効にするか */
+  enabled: boolean;
+  /** デバウンス時間（ミリ秒） */
+  debounceMs: number;
+  /** ファイル書き込み完了の待機時間（ミリ秒） */
+  awaitWriteFinishMs: number;
+}
+
 /** デフォルト設定 */
 export const DEFAULT_CONFIG: SearchDocsConfig = {
   version: '1.0',
@@ -116,5 +126,10 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     enabled: true,
     interval: 5000,
     maxConcurrent: 3,
+  },
+  watcher: {
+    enabled: true,
+    debounceMs: 300,
+    awaitWriteFinishMs: 200,
   },
 };

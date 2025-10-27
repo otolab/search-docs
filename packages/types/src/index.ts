@@ -19,6 +19,7 @@ export type {
   ServerConfig,
   StorageConfig,
   WorkerConfig,
+  WatcherConfig,
 } from './config.js';
 export { DEFAULT_CONFIG } from './config.js';
 

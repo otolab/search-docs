@@ -16,6 +16,7 @@ import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
 import { FileDiscovery } from '../discovery/file-discovery.js';
+import { FileWatcher, type FileChangeEvent } from '../discovery/file-watcher.js';
 
 /**
  * SearchDocsサーバのメインクラス
@@ -23,6 +24,7 @@ import { FileDiscovery } from '../discovery/file-discovery.js';
 export class SearchDocsServer {
   private splitter: MarkdownSplitter;
   private discovery: FileDiscovery;
+  private watcher: FileWatcher | null = null;
   private startTime: number = 0;
 
   constructor(
@@ -35,6 +37,26 @@ export class SearchDocsServer {
       rootDir: config.project.root,
       config: config.files,
     });
+
+    // FileWatcher初期化（enabledがtrueの場合のみ）
+    if (config.watcher.enabled) {
+      this.watcher = new FileWatcher({
+        rootDir: config.project.root,
+        filesConfig: config.files,
+        watcherConfig: config.watcher,
+      });
+
+      // イベントハンドラ登録
+      this.watcher.on('change', (event: FileChangeEvent) => {
+        this.handleFileChange(event).catch((error) => {
+          console.error('File change handling error:', error);
+        });
+      });
+
+      this.watcher.on('error', (error: Error) => {
+        console.error('File watcher error:', error);
+      });
+    }
   }
 
   /**
@@ -43,13 +65,45 @@ export class SearchDocsServer {
   async start(): Promise<void> {
     this.startTime = Date.now();
     await this.dbEngine.connect();
+
+    // FileWatcher開始
+    if (this.watcher) {
+      await this.watcher.start();
+    }
   }
 
   /**
    * サーバ停止
    */
   async stop(): Promise<void> {
+    // FileWatcher停止
+    if (this.watcher) {
+      await this.watcher.stop();
+    }
+
     await this.dbEngine.disconnect();
+  }
+
+  /**
+   * ファイル変更イベント処理
+   */
+  private async handleFileChange(event: FileChangeEvent): Promise<void> {
+    console.log(`File ${event.type}: ${event.path}`);
+
+    switch (event.type) {
+      case 'add':
+      case 'change':
+        // ファイルをDirtyにマーク
+        await this.dbEngine.markDirty(event.path);
+        break;
+
+      case 'unlink':
+        // セクションを削除
+        await this.dbEngine.deleteSectionsByPath(event.path);
+        // ストレージからも削除
+        await this.storage.delete(event.path);
+        break;
+    }
   }
 
   /**
