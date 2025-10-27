@@ -331,13 +331,27 @@ packages/server/
 8. ✅ バグ修正完了（H3コンテンツ、Glob変換）
 9. ✅ コミット完了（f04918c）
 10. ✅ Phase 2.5 - ファイル監視完了
-11. ✅ コミット完了（5f2d536, 8c885cb）
+11. ✅ コミット完了（5f2d536, 8c885cb, 4534ac7）
 12. ✅ Phase 2.6 - HTTP JSON-RPCサーバ完了
-13. ⏳ コミット予定
+13. ✅ コミット完了（f9d9d17）
 
 ## メモ
 
+### アーキテクチャ
 - Pythonワーカーは stdin/stdout で JSON-RPC通信
+- HTTP JSON-RPCサーバは Express.js で実装
 - sebas-chanの実装パターンを踏襲
 - モデル初期化は遅延実行（initialize()メソッド）
 - ベクトル次元は256 (ruri-v3-30m) または 768 (ruri-v3-310m)
+
+### 技術的決定事項
+- **通信プロトコル**: JSON-RPC 2.0 over HTTP
+  - 1 project 1 instance、複数クライアント対応
+  - REST APIではなくJSON-RPCを採用（メソッド名でAPI明確化）
+  - 単一エンドポイント `/rpc` で全メソッド実行
+- **エラーハンドリング**: JSON-RPC 2.0エラーコード準拠
+- **CORS**: 全オリジン許可（開発時）
+- **TypeScript型安全性**:
+  - Stats型は `fs` からimport（`fs/promises`にはない）
+  - spread operatorの条件付きプロパティは明示的に記述
+  - Config型のすべてのプロパティをmergeWithDefaultsでマージ
