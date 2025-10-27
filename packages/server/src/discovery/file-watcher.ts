@@ -57,7 +57,9 @@ export class FileWatcher extends EventEmitter {
     }
 
     // chokidarの設定
-    // rootDirを監視し、ignoreオプションでフィルタリング
+    // 注意: chokidar 4.x では Globパターン（例: '**/*.md'）を直接watchに渡すと
+    // ファイルイベントが発火しない問題があるため、rootDirを監視して
+    // ignored callbackでフィルタリングする方式を採用
     this.watcher = chokidar.watch(this.rootDir, {
       ignored: (filePath: string, stats?: fs.Stats) => {
         const relativePath = path.relative(this.rootDir, filePath);
