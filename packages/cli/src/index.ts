@@ -7,6 +7,18 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { executeSearch, type SearchCommandOptions } from './commands/search.js';
+import {
+  executeServerStart,
+  type ServerStartOptions,
+} from './commands/server/start.js';
+import {
+  executeServerStop,
+  type ServerStopOptions,
+} from './commands/server/stop.js';
+import {
+  executeServerStatus,
+  type ServerStatusOptions,
+} from './commands/server/status.js';
 
 // package.jsonからバージョンを読み込む
 const __filename = fileURLToPath(import.meta.url);
@@ -31,26 +43,28 @@ const serverCmd = program
 serverCmd
   .command('start')
   .description('サーバを起動')
-  .option('--config <path>', '設定ファイルのパス', '.search-docs.json')
-  .option('--port <port>', 'ポート番号', '24280')
+  .option('--config <path>', '設定ファイルのパス')
+  .option('--port <port>', 'ポート番号')
   .option('--daemon, -d', 'バックグラウンドで起動')
   .option('--log <path>', 'ログファイルのパス')
-  .action(() => {
-    console.log('server start: 未実装');
+  .action((options: ServerStartOptions) => {
+    void executeServerStart(options);
   });
 
 serverCmd
   .command('stop')
   .description('サーバを停止')
-  .action(() => {
-    console.log('server stop: 未実装');
+  .option('--config <path>', '設定ファイルのパス')
+  .action((options: ServerStopOptions) => {
+    void executeServerStop(options);
   });
 
 serverCmd
   .command('status')
   .description('サーバのステータスを確認')
-  .action(() => {
-    console.log('server status: 未実装');
+  .option('--config <path>', '設定ファイルのパス')
+  .action((options: ServerStatusOptions) => {
+    void executeServerStatus(options);
   });
 
 serverCmd
