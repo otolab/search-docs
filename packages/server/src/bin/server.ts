@@ -7,7 +7,7 @@
 import * as path from 'path';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
-import { SearchDocsServer, JsonRpcServer, ConfigLoader } from '../src/index.js';
+import { SearchDocsServer, JsonRpcServer, ConfigLoader } from '../index.js';
 
 async function main() {
   try {
@@ -17,16 +17,15 @@ async function main() {
     const config = await ConfigLoader.load(configPath);
 
     // ストレージ初期化
-    const storage = new FileStorage(
-      path.resolve(config.project.root, config.storage.documentsPath)
-    );
+    const storage = new FileStorage({
+      basePath: path.resolve(config.project.root, config.storage.documentsPath),
+    });
 
     // DBエンジン初期化
-    const dbEngine = new DBEngine(
-      path.resolve(config.project.root, config.storage.indexPath),
-      config.indexing.vectorDimension,
-      config.indexing.embeddingModel
-    );
+    const dbEngine = new DBEngine({
+      dbPath: path.resolve(config.project.root, config.storage.indexPath),
+      embeddingModel: config.indexing.embeddingModel,
+    });
 
     // SearchDocsサーバ初期化
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine);
