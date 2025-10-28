@@ -751,19 +751,198 @@ ${section.content}
 
 ---
 
+## ADR-012: Section型のフラット構造採用
+
+**日付**: 2025-01-27
+**状態**: 採用
+**決定者**: 実装チーム
+**関連コミット**: 4dce5a5, 086097c
+
+### コンテキスト
+
+db-engineテストの実装中に、TypeScript型定義とPython実装の間でSection型の構造に不一致が発見された。
+
+**TypeScript型定義（初期）**:
+```typescript
+interface Section {
+  // ...基本フィールド
+  metadata: {
+    documentHash: string;
+    createdAt: Date;
+    updatedAt: Date;
+    summary?: string;
+    documentSummary?: string;
+  };
+}
+```
+
+**Python DBスキーマ（初期）**:
+```python
+# フラット構造
+pa.field("document_hash", pa.string()),
+pa.field("created_at", pa.timestamp('ms')),
+pa.field("updated_at", pa.timestamp('ms'))
+```
+
+**問題**:
+- TypeScript: ネスト構造（`section.metadata.documentHash`）
+- Python: フラット構造（`section.document_hash`）
+- TypeScript→Python変換層が欠落
+- データモデル文書内でも矛盾
+
+### 検討した選択肢
+
+#### 1. TypeScript型定義（ネスト構造）を正とする
+**内容**: Python側をネスト構造に変更、またはTypeScript→Python変換層を実装
+
+**長所**:
+- TypeScript側が「正規仕様」として明確
+- `metadata`という意味的なグループ化がある
+
+**短所**:
+- TypeScript-Python変換層の実装が必要（双方向変換）
+- 変換オーバーヘッド
+- PyArrowでのネスト構造（Struct型）は性能面で不利
+- メンテナンス負担の増加
+
+#### 2. Python DBスキーマ（フラット構造）を正とする（採用）
+**内容**: TypeScript型定義をフラット構造に変更、Python DBスキーマと一致させる
+
+**長所**:
+- TypeScript Section型 ≡ Python DBスキーマ（完全一致）
+- 変換ロジック不要（camelCase↔snake_caseのみ）
+- PyArrowフラット構造の性能的利点
+- コードが理解しやすい
+- バグが入りにくい
+
+**短所**:
+- `metadata`という意味的なグループ化が失われる
+- 既存の実装（markdown-splitter.ts等）の修正が必要
+
+### 決定
+
+**フラット構造を正規仕様として採用**し、TypeScript型定義をPython DBスキーマに合わせる。
+
+**最終的なSection型**:
+```typescript
+interface Section {
+  id: string;
+  documentPath: string;
+  heading: string;
+  depth: number;
+  content: string;
+  tokenCount: number;
+  vector: Float32Array;
+  parentId: string | null;
+  order: number;
+  isDirty: boolean;
+  // メタデータフィールドをフラット化
+  documentHash: string;
+  createdAt: Date;
+  updatedAt: Date;
+  summary?: string;
+  documentSummary?: string;
+}
+```
+
+**理由**:
+
+1. **PyArrow/LanceDBのパフォーマンス最適化**
+   - ネスト構造（Struct型）はPyArrowで非効率（追加のシリアライズが必要）
+   - フラット構造が推奨される設計パターン
+
+2. **sebas-chanプロジェクトの実績**
+   - 参照プロジェクト（sebas-chan）でフラット構造を採用
+   - 明確な2層アーキテクチャ：
+     - アプリケーション層（TypeScript）: camelCase
+     - DB層（LanceDB/PyArrow）: フラット構造、snake_case
+
+3. **シンプルさの価値**
+   - 変換層の実装コストを正当化できない
+   - `documentHash`, `createdAt`, `updatedAt`は実質的に必須フィールド
+   - ネストによる「意味的なグループ化」の実用的メリットが小さい
+
+4. **実用性**
+   - search-docsでは配列やネストしたオブジェクトが存在しない
+   - sebas-chanのように複雑な構造（`updates: IssueUpdate[]`）をJSON文字列化する必要がない
+
+### 影響
+
+**ポジティブ**:
+- TypeScript-Python間のデータ構造が完全一致
+- 変換オーバーヘッドなし
+- パフォーマンス向上（PyArrowフラット構造の利点）
+- メンテナンス負担の軽減
+- バグの可能性が低減
+
+**ネガティブ**:
+- `metadata`という意味的なグループ化の喪失
+- 既存実装の修正が必要
+
+**必要な修正**:
+1. ✅ `packages/types/src/section.ts`: フラット構造に変更
+2. ✅ `packages/server/src/splitter/markdown-splitter.ts`: フラット構造でSection生成
+3. ✅ `packages/db-engine/src/typescript/index.ts`: camelCase↔snake_case変換層
+4. ✅ `packages/db-engine/src/python/schemas.py`: vectorを必須フィールドから削除
+5. ✅ `packages/db-engine/src/python/worker.py`: datetime変換追加
+6. ✅ `packages/server/src/splitter/__tests__/markdown-splitter.test.ts`: フラット構造に対応
+7. ✅ `docs/data-model.md`: Section型のフラット構造を反映
+
+### 変換層の実装
+
+TypeScript側（camelCase）とPython側（snake_case）の命名規則の違いは、db-engineの変換層で吸収：
+
+```typescript
+private convertSectionToPythonFormat(section: Omit<Section, 'vector'>): unknown {
+  return {
+    id: section.id,
+    document_path: section.documentPath,
+    heading: section.heading,
+    depth: section.depth,
+    content: section.content,
+    token_count: section.tokenCount,
+    parent_id: section.parentId,
+    order: section.order,
+    is_dirty: section.isDirty,
+    document_hash: section.documentHash,
+    created_at: section.createdAt,
+    updated_at: section.updatedAt,
+    summary: section.summary,
+    document_summary: section.documentSummary,
+  };
+}
+```
+
+### 関連ドキュメント
+
+- 詳細調査レポート: `prompts/tasks/research-report.section-type-structure.v1.md`
+- データモデル設計: `docs/data-model.md`
+- 実装: `packages/types/src/section.ts`
+- 変換層: `packages/db-engine/src/typescript/index.ts`
+
+### 学んだ教訓
+
+1. **性能面の考慮の重要性**: 型の「意味的な正しさ」だけでなく、性能面も評価すべき
+2. **シンプルさの価値**: YAGNI原則 - 実用的なメリットがない複雑さは避けるべき
+3. **参照実装の重要性**: sebas-chanプロジェクトの調査が決定的だった
+
+---
+
 ## まとめ
 
 これらの決定により、以下の特性を持つシステムが構築された:
 
 1. **ハイブリッド構成**: TypeScriptとPythonの強みを活かす
 2. **型安全性**: TypeScriptの型システム、PyArrowスキーマ
-3. **シンプルさ**: JSON-RPC、JSON Storage
+3. **シンプルさ**: JSON-RPC、JSON Storage、フラット型構造
 4. **日本語最適化**: Ruriモデル
 5. **非同期更新**: Dirtyフラグによる柔軟な更新管理
 6. **クロスプラットフォーム**: Windows/Unix両対応
 7. **階層的検索**: マクロ・ミクロ両面での高精度検索
+8. **パフォーマンス最適化**: PyArrowフラット構造、変換層の最小化
 
 ## 更新履歴
 
 - 2025-01-27: 初版作成（ADR-001〜010）
 - 2025-01-27: ADR-011追加（階層的コンテンツによるベクトル検索精度向上）
+- 2025-01-27: ADR-012追加（Section型のフラット構造採用）
