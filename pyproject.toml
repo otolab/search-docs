@@ -9,6 +9,8 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "sentence-transformers>=2.2.0",
+    "protobuf>=4.0.0",
+    "sentencepiece>=0.1.99",
 ]
 
 [build-system]
