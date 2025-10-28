@@ -50,9 +50,10 @@ def validate_section(section_data: dict) -> None:
         TypeError: フィールドの型が不正な場合
     """
     # 必須フィールドの検証
+    # Note: vectorはPython側で生成されるため、受信時には不要
     required_fields = [
         'id', 'document_path', 'heading', 'depth', 'content',
-        'token_count', 'vector', 'order', 'is_dirty', 'document_hash'
+        'token_count', 'order', 'is_dirty', 'document_hash'
     ]
     missing_fields = [field for field in required_fields if field not in section_data]
 

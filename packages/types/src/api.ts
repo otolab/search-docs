@@ -2,7 +2,6 @@
  * API Request/Response型定義
  */
 
-import type { Section } from './section.js';
 import type { Document } from './document.js';
 
 // ========================================

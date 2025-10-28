@@ -13,6 +13,15 @@ interface PendingRequest {
   reject: (error: unknown) => void;
 }
 
+interface JsonRpcResponse {
+  id: number;
+  result?: unknown;
+  error?: {
+    code: number;
+    message: string;
+  };
+}
+
 export interface DBEngineOptions {
   /**
    * 使用する埋め込みモデル
@@ -145,7 +154,7 @@ export class DBEngine extends EventEmitter {
       },
     });
 
-    this.worker.stdout?.on('data', (data) => {
+    this.worker.stdout?.on('data', (data: Buffer) => {
       // バッファに追加
       this.buffer += data.toString();
 
@@ -160,7 +169,7 @@ export class DBEngine extends EventEmitter {
         if (!line.trim()) continue;
 
         try {
-          const response = JSON.parse(line);
+          const response = JSON.parse(line) as JsonRpcResponse;
           const request = this.pendingRequests.get(response.id);
           if (request) {
             this.pendingRequests.delete(response.id);
@@ -170,8 +179,8 @@ export class DBEngine extends EventEmitter {
               request.resolve(response.result);
             }
           }
-        } catch (e) {
-          console.error('Failed to parse response:', e);
+        } catch (error) {
+          console.error('Failed to parse response:', error);
           console.error('Line was:', line);
         }
       }
@@ -180,7 +189,7 @@ export class DBEngine extends EventEmitter {
     // stderrの内容を蓄積
     let stderrBuffer = '';
 
-    this.worker.stderr?.on('data', (data) => {
+    this.worker.stderr?.on('data', (data: Buffer) => {
       const output = data.toString();
       stderrBuffer += output;
       console.error('Python stderr:', output);
@@ -221,10 +230,14 @@ export class DBEngine extends EventEmitter {
       await this.waitForReady(workerError, () => workerExited);
     } catch (error) {
       // ワーカーが異常終了した場合は、より詳細なエラーを投げる
-      if (workerError) {
+      if (workerError !== null) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw workerError;
       }
-      throw error;
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(String(error));
     }
   }
 
@@ -254,7 +267,7 @@ export class DBEngine extends EventEmitter {
           console.log('DB is ready:', status);
           return;
         }
-      } catch (e) {
+      } catch (_e) {
         // pingが失敗しても続ける（ワーカーが生きている限り）
         if (!isWorkerExited()) {
           console.log(`Waiting for DB to be ready... (${i + 1}/${maxRetries})`);
@@ -302,7 +315,7 @@ export class DBEngine extends EventEmitter {
         clearTimeout(timeout);
         originalResolve(value);
       };
-    }) as Promise<DBEngineStatus>;
+    });
   }
 
   /**
@@ -317,7 +330,7 @@ export class DBEngine extends EventEmitter {
   /**
    * データベースとの接続を切断
    */
-  async disconnect(): Promise<void> {
+  disconnect(): void {
     if (this.worker) {
       this.worker.kill();
       this.worker = null;
@@ -327,10 +340,34 @@ export class DBEngine extends EventEmitter {
   }
 
   /**
+   * TypeScript Section → Python形式に変換
+   */
+  private convertSectionToPythonFormat(section: Omit<Section, 'vector'>): unknown {
+    return {
+      id: section.id,
+      document_path: section.documentPath,        // snake_case
+      heading: section.heading,
+      depth: section.depth,
+      content: section.content,
+      token_count: section.tokenCount,            // snake_case
+      // vector はPython側で生成されるため送信しない
+      parent_id: section.parentId,                // snake_case
+      order: section.order,
+      is_dirty: section.isDirty,                  // snake_case
+      document_hash: section.documentHash,        // snake_case
+      created_at: section.createdAt,
+      updated_at: section.updatedAt,
+      summary: section.summary,
+      document_summary: section.documentSummary,  // snake_case
+    };
+  }
+
+  /**
    * セクションを追加
    */
   async addSection(section: Omit<Section, 'vector'>): Promise<{ id: string }> {
-    const result = await this.sendRequest('addSection', { section });
+    const pythonSection = this.convertSectionToPythonFormat(section);
+    const result = await this.sendRequest('addSection', { section: pythonSection });
     return result as { id: string };
   }
 
@@ -338,7 +375,8 @@ export class DBEngine extends EventEmitter {
    * 複数のセクションを一括追加
    */
   async addSections(sections: Array<Omit<Section, 'vector'>>): Promise<{ count: number }> {
-    const result = await this.sendRequest('addSections', { sections });
+    const pythonSections = sections.map((s) => this.convertSectionToPythonFormat(s));
+    const result = await this.sendRequest('addSections', { sections: pythonSections });
     return result as { count: number };
   }
 
@@ -436,7 +474,7 @@ export class DBEngine extends EventEmitter {
     }
     try {
       return await this.ping();
-    } catch (e) {
+    } catch (_e) {
       return {
         status: 'error',
       };

@@ -167,7 +167,7 @@ export class FileWatcher extends EventEmitter {
       }
 
       const gitignorePath = path.join(this.rootDir, '.gitignore');
-      const content = await fs.readFile(gitignorePath, 'utf-8');
+      const content = await readFile(gitignorePath, 'utf-8');
       this.ignoreFilter = ignoreFactory().add(content);
     } catch (error) {
       // .gitignoreが存在しない場合は無視

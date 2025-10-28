@@ -1,6 +1,7 @@
 import fg from 'fast-glob';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { minimatch } from 'minimatch';
 import type { FilesConfig } from '@search-docs/types';
 
 // ignoreパッケージの型定義（手動）
@@ -67,20 +68,30 @@ export class FileDiscovery {
    */
   matchesPattern(filePath: string): boolean {
     // includeパターンにマッチするか
-    const includePatterns = this.config.include.map((pattern) =>
-      this.convertGlobToRegex(pattern)
-    );
-    const matchesInclude = includePatterns.some((regex) => regex.test(filePath));
+    const matchesInclude = this.config.include.some((pattern) => {
+      // minimatchはfast-globと異なり、**/patternがルートレベルにマッチしない
+      // fast-globの挙動に合わせるため、**/で始まるパターンは
+      // ルートレベルとネストレベルの両方をチェック
+      if (pattern.startsWith('**/')) {
+        const rootPattern = pattern.slice(3); // '**/'を除去
+        return minimatch(filePath, pattern) || minimatch(filePath, rootPattern);
+      }
+      return minimatch(filePath, pattern);
+    });
 
     if (!matchesInclude) {
       return false;
     }
 
     // excludeパターンにマッチしないか
-    const excludePatterns = this.config.exclude.map((pattern) =>
-      this.convertGlobToRegex(pattern)
-    );
-    const matchesExclude = excludePatterns.some((regex) => regex.test(filePath));
+    const matchesExclude = this.config.exclude.some((pattern) => {
+      // exclude側も同様の処理
+      if (pattern.startsWith('**/')) {
+        const rootPattern = pattern.slice(3);
+        return minimatch(filePath, pattern) || minimatch(filePath, rootPattern);
+      }
+      return minimatch(filePath, pattern);
+    });
 
     return !matchesExclude;
   }
@@ -122,31 +133,5 @@ export class FileDiscovery {
         throw error;
       }
     }
-  }
-
-  /**
-   * Globパターンを正規表現に変換（簡易版）
-   */
-  private convertGlobToRegex(pattern: string): RegExp {
-    // **/*.md → ^(.*/)?[^/]+\.md$
-    // *.md → ^[^/]+\.md$
-    let regexPattern = pattern
-      .replace(/\./g, '\\.') // . → \.
-      .replace(/\?/g, '___QUESTION___') // ? → プレースホルダー（先に処理）
-      .replace(/\*\*\//g, '___GLOBSTAR___') // **/ → プレースホルダー
-      .replace(/\*\*/g, '.*') // ** → .* (任意の文字列)
-      .replace(/\*/g, '[^/]+') // * → [^/]+ (スラッシュ以外)
-      .replace(/___GLOBSTAR___/g, '(.*/)?' ) // プレースホルダー → (.*/)?
-      .replace(/___QUESTION___/g, '.'); // プレースホルダー → . (任意の1文字)
-
-    // パターンの先頭に^、末尾に$を追加
-    if (!regexPattern.startsWith('^')) {
-      regexPattern = '^' + regexPattern;
-    }
-    if (!regexPattern.endsWith('$')) {
-      regexPattern = regexPattern + '$';
-    }
-
-    return new RegExp(regexPattern);
   }
 }

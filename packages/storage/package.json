@@ -12,7 +12,9 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0"
   },
   "dependencies": {
     "@search-docs/types": "workspace:*"

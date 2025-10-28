@@ -12,7 +12,9 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0"
   },
   "dependencies": {
     "@search-docs/db-engine": "workspace:*",
@@ -25,6 +27,7 @@
     "gpt-tokenizer": "^2.6.1",
     "ignore": "^6.0.2",
     "marked": "^16.0.0",
+    "minimatch": "^10.0.3",
     "nanoid": "^5.0.11"
   },
   "devDependencies": {

@@ -232,9 +232,9 @@ H5の内容`;
 
       // すべてのセクションで確認
       expect(sections[0].documentPath).toBe('/docs/test.md');
-      expect(sections[0].metadata.documentHash).toBe('abc123');
+      expect(sections[0].documentHash).toBe('abc123');
       expect(sections[1].documentPath).toBe('/docs/test.md');
-      expect(sections[1].metadata.documentHash).toBe('abc123');
+      expect(sections[1].documentHash).toBe('abc123');
     });
 
     it('サマリフィールドはundefined', () => {
@@ -242,16 +242,16 @@ H5の内容`;
 Content`;
       const sections = splitter.split(md, '/test.md', 'hash123');
 
-      expect(sections[0].metadata.summary).toBeUndefined();
-      expect(sections[0].metadata.documentSummary).toBeUndefined();
+      expect(sections[0].summary).toBeUndefined();
+      expect(sections[0].documentSummary).toBeUndefined();
     });
 
     it('作成日時と更新日時が設定される', () => {
       const md = '# Test';
       const sections = splitter.split(md, '/test.md', 'hash123');
 
-      expect(sections[0].metadata.createdAt).toBeInstanceOf(Date);
-      expect(sections[0].metadata.updatedAt).toBeInstanceOf(Date);
+      expect(sections[0].createdAt).toBeInstanceOf(Date);
+      expect(sections[0].updatedAt).toBeInstanceOf(Date);
     });
 
     it('isDirtyフラグはfalse', () => {

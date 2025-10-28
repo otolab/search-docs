@@ -8,6 +8,7 @@ import sys
 import json
 import traceback
 from typing import Any, Dict, Optional, List
+from datetime import datetime
 import lancedb
 import pyarrow as pa
 import pandas as pd
@@ -74,6 +75,36 @@ class SearchDocsWorker:
             sys.stderr.write(f"Traceback: {traceback.format_exc()}\n")
             sys.stderr.flush()
             raise
+
+    def format_section(self, section: Dict[str, Any]) -> Dict[str, Any]:
+        """LanceDBのセクションデータをJSON-serializable形式に変換
+
+        Args:
+            section: LanceDBから取得した生のセクションデータ
+
+        Returns:
+            JSON-serializable形式のセクションデータ（camelCase）
+        """
+        # datetimeをISO文字列に変換
+        created_at = section.get("created_at")
+        updated_at = section.get("updated_at")
+
+        return {
+            "id": section["id"],
+            "documentPath": section["document_path"],
+            "heading": section["heading"],
+            "depth": section["depth"],
+            "content": section["content"],
+            "tokenCount": section["token_count"],
+            "parentId": section.get("parent_id"),
+            "order": section["order"],
+            "isDirty": section["is_dirty"],
+            "documentHash": section["document_hash"],
+            "createdAt": created_at.isoformat() if isinstance(created_at, datetime) else created_at,
+            "updatedAt": updated_at.isoformat() if isinstance(updated_at, datetime) else updated_at,
+            "summary": section.get("summary"),
+            "documentSummary": section.get("document_summary"),
+        }
 
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """JSON-RPCリクエストを処理"""
@@ -269,7 +300,10 @@ class SearchDocsWorker:
         table = self.db.open_table(SECTIONS_TABLE)
         results = table.search().where(f"document_path = '{document_path}'").to_list()
 
-        return {"sections": results}
+        # 結果をフォーマット
+        formatted_sections = [self.format_section(section) for section in results]
+
+        return {"sections": formatted_sections}
 
     def delete_sections_by_path(self, params: Dict[str, Any]) -> Dict[str, int]:
         """指定パスのセクションを削除"""
@@ -307,7 +341,10 @@ class SearchDocsWorker:
             .limit(limit)\
             .to_list()
 
-        return {"sections": results}
+        # 結果をフォーマット
+        formatted_sections = [self.format_section(section) for section in results]
+
+        return {"sections": formatted_sections}
 
     def get_stats(self) -> Dict[str, Any]:
         """統計情報を取得"""

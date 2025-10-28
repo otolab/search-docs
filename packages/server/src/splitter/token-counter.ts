@@ -13,7 +13,7 @@ export class TokenCounter {
     try {
       const tokens = encode(text);
       return tokens.length;
-    } catch (error) {
+    } catch (_error) {
       // エラー時は文字数の1/4を概算値として使用
       // （日本語は平均2-3文字で1トークン、英語は平均4文字で1トークン）
       console.warn('Token counting failed, using character count / 4 as fallback');

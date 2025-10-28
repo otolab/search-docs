@@ -1,5 +1,8 @@
 /**
  * セクションデータの型定義
+ *
+ * Note: Python DBスキーマとの一致のため、フラット構造を採用
+ * メタデータフィールドはネストせず、トップレベルに配置
  */
 
 export interface Section {
@@ -23,17 +26,12 @@ export interface Section {
   order: number;
   /** Dirtyフラグ */
   isDirty: boolean;
-  /** メタデータ */
-  metadata: SectionMetadata;
-}
-
-export interface SectionMetadata {
+  /** 対応する文書のハッシュ */
+  documentHash: string;
   /** 作成日時 */
   createdAt: Date;
   /** 更新日時 */
   updatedAt: Date;
-  /** 対応する文書のハッシュ */
-  documentHash: string;
   /** セクションの要約（後で生成） */
   summary?: string;
   /** 文書全体の要約（コンテキスト保持用） */

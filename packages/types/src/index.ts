@@ -7,7 +7,7 @@
 export type { Document, DocumentMetadata } from './document.js';
 
 // Section
-export type { Section, SectionMetadata } from './section.js';
+export type { Section } from './section.js';
 
 // Config
 export type {

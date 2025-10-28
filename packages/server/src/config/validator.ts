@@ -119,7 +119,7 @@ function validateIndexingConfig(indexing: unknown): void {
     throw new Error('config.indexing.maxTokensPerSection must be a number');
   }
 
-  if (idx.maxTokensPerSection !== undefined && (idx.maxTokensPerSection as number) <= 0) {
+  if (idx.maxTokensPerSection !== undefined && (idx.maxTokensPerSection) <= 0) {
     throw new Error('config.indexing.maxTokensPerSection must be positive');
   }
 
@@ -127,7 +127,7 @@ function validateIndexingConfig(indexing: unknown): void {
     throw new Error('config.indexing.minTokensForSplit must be a number');
   }
 
-  if (idx.minTokensForSplit !== undefined && (idx.minTokensForSplit as number) <= 0) {
+  if (idx.minTokensForSplit !== undefined && (idx.minTokensForSplit) <= 0) {
     throw new Error('config.indexing.minTokensForSplit must be positive');
   }
 
@@ -136,7 +136,7 @@ function validateIndexingConfig(indexing: unknown): void {
   }
 
   if (idx.maxDepth !== undefined) {
-    const maxDepth = idx.maxDepth as number;
+    const maxDepth = idx.maxDepth;
     if (maxDepth < 0 || maxDepth > 3) {
       throw new Error('config.indexing.maxDepth must be between 0 and 3');
     }
@@ -147,7 +147,7 @@ function validateIndexingConfig(indexing: unknown): void {
   }
 
   if (idx.vectorDimension !== undefined) {
-    const dim = idx.vectorDimension as number;
+    const dim = idx.vectorDimension;
     if (dim !== 256 && dim !== 768) {
       throw new Error('config.indexing.vectorDimension must be 256 or 768');
     }
@@ -169,7 +169,7 @@ function validateSearchConfig(search: unknown): void {
     throw new Error('config.search.defaultLimit must be a number');
   }
 
-  if (src.defaultLimit !== undefined && (src.defaultLimit as number) <= 0) {
+  if (src.defaultLimit !== undefined && (src.defaultLimit) <= 0) {
     throw new Error('config.search.defaultLimit must be positive');
   }
 
@@ -177,7 +177,7 @@ function validateSearchConfig(search: unknown): void {
     throw new Error('config.search.maxLimit must be a number');
   }
 
-  if (src.maxLimit !== undefined && (src.maxLimit as number) <= 0) {
+  if (src.maxLimit !== undefined && (src.maxLimit) <= 0) {
     throw new Error('config.search.maxLimit must be positive');
   }
 
@@ -241,7 +241,7 @@ function validateWorkerConfig(worker: unknown): void {
     throw new Error('config.worker.interval must be a number');
   }
 
-  if (wrk.interval !== undefined && (wrk.interval as number) <= 0) {
+  if (wrk.interval !== undefined && (wrk.interval) <= 0) {
     throw new Error('config.worker.interval must be positive');
   }
 
@@ -249,7 +249,7 @@ function validateWorkerConfig(worker: unknown): void {
     throw new Error('config.worker.maxConcurrent must be a number');
   }
 
-  if (wrk.maxConcurrent !== undefined && (wrk.maxConcurrent as number) <= 0) {
+  if (wrk.maxConcurrent !== undefined && (wrk.maxConcurrent) <= 0) {
     throw new Error('config.worker.maxConcurrent must be positive');
   }
 }
@@ -269,7 +269,7 @@ function validateWatcherConfig(watcher: unknown): void {
     throw new Error('config.watcher.debounceMs must be a number');
   }
 
-  if (wtc.debounceMs !== undefined && (wtc.debounceMs as number) < 0) {
+  if (wtc.debounceMs !== undefined && (wtc.debounceMs) < 0) {
     throw new Error('config.watcher.debounceMs must be non-negative');
   }
 
@@ -277,7 +277,7 @@ function validateWatcherConfig(watcher: unknown): void {
     throw new Error('config.watcher.awaitWriteFinishMs must be a number');
   }
 
-  if (wtc.awaitWriteFinishMs !== undefined && (wtc.awaitWriteFinishMs as number) < 0) {
+  if (wtc.awaitWriteFinishMs !== undefined && (wtc.awaitWriteFinishMs) < 0) {
     throw new Error('config.watcher.awaitWriteFinishMs must be non-negative');
   }
 }

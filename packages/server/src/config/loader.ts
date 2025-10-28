@@ -17,7 +17,7 @@ export class ConfigLoader {
 
       // ファイル読み込み
       const content = await readFile(configPath, 'utf-8');
-      const parsed = JSON.parse(content);
+      const parsed: unknown = JSON.parse(content);
 
       // バリデーション
       const config = validateConfig(parsed);

@@ -81,7 +81,7 @@ export class SearchDocsServer {
       await this.watcher.stop();
     }
 
-    await this.dbEngine.disconnect();
+    this.dbEngine.disconnect();
   }
 
   /**

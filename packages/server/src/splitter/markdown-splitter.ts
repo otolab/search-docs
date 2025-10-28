@@ -1,4 +1,4 @@
-import { marked, type Token } from 'marked';
+import { marked, type Token, type Tokens } from 'marked';
 import { nanoid } from 'nanoid';
 import type { Section, IndexingConfig } from '@search-docs/types';
 import { TokenCounter } from './token-counter.js';
@@ -53,12 +53,14 @@ export class MarkdownSplitter {
     let currentDepth1: HeadingNode | null = null;
     let currentDepth2: HeadingNode | null = null;
     let currentDepth3: HeadingNode | null = null;
-    let contentBuffer: string[] = [];
+    const contentBuffer: string[] = [];
 
     for (const token of tokens) {
       if (token.type === 'heading') {
-        const depth = token.depth; // 1-6
-        const heading = token.text;
+        // 型ガード: heading型であることを明示
+        const headingToken = token as Tokens.Heading;
+        const depth = headingToken.depth; // 1-6
+        const heading = headingToken.text;
 
         if (depth === 1) {
           // H1: 新しいdepth 1ノード
@@ -155,14 +157,12 @@ export class MarkdownSplitter {
         parentId,
         order: order++,
         isDirty: false,
-        metadata: {
-          documentHash,
-          createdAt: now,
-          updatedAt: now,
-          // サマリフィールド（現時点ではundefined）
-          summary: undefined,
-          documentSummary: undefined,
-        },
+        // メタデータフィールド（フラット構造）
+        documentHash,
+        createdAt: now,
+        updatedAt: now,
+        summary: undefined,
+        documentSummary: undefined,
       };
 
       sections.push(section);

@@ -2,6 +2,12 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import type { Server } from 'http';
 import type { SearchDocsServer } from './search-docs-server.js';
+import type {
+  SearchRequest,
+  GetDocumentRequest,
+  IndexDocumentRequest,
+  RebuildIndexRequest,
+} from '@search-docs/types';
 
 /**
  * JSON-RPC 2.0 リクエスト
@@ -45,6 +51,13 @@ const JSON_RPC_ERROR_CODES = {
   INVALID_PARAMS: -32602,
   INTERNAL_ERROR: -32603,
 } as const;
+
+/**
+ * コード付きエラー（JSON-RPCエラー用）
+ */
+interface ErrorWithCode extends Error {
+  code: number;
+}
 
 /**
  * HTTP JSON-RPCサーバ
@@ -145,16 +158,16 @@ export class JsonRpcServer {
   private async executeMethod(method: string, params: unknown): Promise<unknown> {
     switch (method) {
       case 'search':
-        return await this.searchDocsServer.search(params as any);
+        return await this.searchDocsServer.search(params as SearchRequest);
 
       case 'getDocument':
-        return await this.searchDocsServer.getDocument(params as any);
+        return await this.searchDocsServer.getDocument(params as GetDocumentRequest);
 
       case 'indexDocument':
-        return await this.searchDocsServer.indexDocument(params as any);
+        return await this.searchDocsServer.indexDocument(params as IndexDocumentRequest);
 
       case 'rebuildIndex':
-        return await this.searchDocsServer.rebuildIndex(params as any);
+        return await this.searchDocsServer.rebuildIndex(params as RebuildIndexRequest);
 
       case 'getStatus':
         return await this.searchDocsServer.getStatus();
@@ -201,9 +214,9 @@ export class JsonRpcServer {
   /**
    * メソッド未検出エラー作成
    */
-  private createMethodNotFoundError(method: string): Error {
-    const error = new Error(`Method not found: ${method}`);
-    (error as any).code = JSON_RPC_ERROR_CODES.METHOD_NOT_FOUND;
+  private createMethodNotFoundError(method: string): ErrorWithCode {
+    const error = new Error(`Method not found: ${method}`) as ErrorWithCode;
+    error.code = JSON_RPC_ERROR_CODES.METHOD_NOT_FOUND;
     return error;
   }
 
