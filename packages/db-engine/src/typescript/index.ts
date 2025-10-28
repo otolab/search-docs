@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import type { Section } from '@search-docs/types';
+import type { Section, SearchOptions, SearchResult } from '@search-docs/types';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -44,25 +44,13 @@ export interface DBEngineStatus {
   dimension?: number;
 }
 
-export interface SearchParams {
+// SearchParams is deprecated. Use SearchOptions from @search-docs/types
+export interface SearchParams extends SearchOptions {
   query: string;
-  limit?: number;
-  depth?: number | number[];
-  includeCleanOnly?: boolean;
 }
 
-export interface SearchResult {
-  id: string;
-  documentPath: string;
-  heading: string;
-  depth: number;
-  content: string;
-  score: number;
-  isDirty: boolean;
-  tokenCount: number;
-}
-
-export interface SearchResponse {
+// DBEngine returns SearchResponse without 'took' field (added by Server layer)
+export interface DBEngineSearchResponse {
   results: SearchResult[];
   total: number;
 }
@@ -109,8 +97,8 @@ export class DBEngine extends EventEmitter {
       return;
     }
 
-    const pythonScript = path.join(__dirname, '../../src/python/worker.py');
-    const packageRoot = path.join(__dirname, '../..'); // packages/db-engine
+    const pythonScript = path.join(__dirname, '../src/python/worker.py');
+    const packageRoot = path.join(__dirname, '..'); // packages/db-engine
 
     console.log('[DBEngine.connect] packageRoot:', packageRoot);
     console.log('[DBEngine.connect] pythonScript:', pythonScript);
@@ -239,6 +227,18 @@ export class DBEngine extends EventEmitter {
       }
       throw new Error(String(error));
     }
+
+    // モデルの初期化を確認
+    console.log('[DBEngine.connect] Initializing embedding model...');
+    const initResult = await this.initModel();
+    if (!initResult.success) {
+      throw new Error(
+        `Failed to initialize embedding model: ${initResult.model_name}. ` +
+        'Vector search will not function properly. ' +
+        'Please ensure all Python dependencies (protobuf, sentencepiece) are installed.'
+      );
+    }
+    console.log(`[DBEngine.connect] Embedding model initialized: ${initResult.model_name} (${initResult.dimension}d)`);
   }
 
   /**
@@ -383,9 +383,9 @@ export class DBEngine extends EventEmitter {
   /**
    * セクションを検索
    */
-  async search(params: SearchParams): Promise<SearchResponse> {
+  async search(params: SearchParams): Promise<DBEngineSearchResponse> {
     const result = await this.sendRequest('search', params);
-    return result as SearchResponse;
+    return result as DBEngineSearchResponse;
   }
 
   /**
