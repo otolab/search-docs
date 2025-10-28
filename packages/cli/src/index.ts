@@ -19,6 +19,10 @@ import {
   executeServerStatus,
   type ServerStatusOptions,
 } from './commands/server/status.js';
+import {
+  executeServerRestart,
+  type ServerRestartOptions,
+} from './commands/server/restart.js';
 
 // package.jsonからバージョンを読み込む
 const __filename = fileURLToPath(import.meta.url);
@@ -70,8 +74,12 @@ serverCmd
 serverCmd
   .command('restart')
   .description('サーバを再起動')
-  .action(() => {
-    console.log('server restart: 未実装');
+  .option('--config <path>', '設定ファイルのパス')
+  .option('--port <port>', 'ポート番号')
+  .option('--daemon, -d', 'バックグラウンドで起動')
+  .option('--log <path>', 'ログファイルのパス')
+  .action((options: ServerRestartOptions) => {
+    void executeServerRestart(options);
   });
 
 // search コマンド

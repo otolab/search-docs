@@ -360,9 +360,93 @@ packages/client/
 - 9 passed, 4 skipped (統合テスト)
 - 統合テストはサーバが起動している環境でのみ実行
 
+### 3.2 CLIツール (packages/cli) ✅ 完了（Phase 3: serverコマンド）
+
+#### 基本構造とsearchコマンド ✅ 完了（2025-10-28）
+
+- ✅ パッケージ設定（package.json, tsconfig.json）
+- ✅ bin/search-docs.ts エントリポイント作成
+- ✅ commander.js でCLI基本構造
+- ✅ searchコマンド実装（text/json出力形式対応）
+- ✅ E2Eテスト作成（サーバプロセス管理含む）
+- ✅ テスト出力抑制（TEST_VERBOSE環境変数）
+- ✅ ビルド成功、lint成功
+
+**コミット**:
+- `0936f5b feat(cli): CLIパッケージとE2Eテストを実装`
+- `f16c07c test: E2Eテストの出力を抑制し、エラーハンドリングを改善`
+
+#### serverコマンド実装 ✅ 完了（2025-10-28）
+
+**ユーティリティ実装**:
+- ✅ `src/utils/pid.ts` (104行) - PIDファイル管理
+  - PIDファイル作成・読み込み・削除
+  - パーミッション: 0600（セキュリティ考慮）
+- ✅ `src/utils/process.ts` (276行) - プロセス管理
+  - プロセス生存確認（`process.kill(pid, 0)`）
+  - プロセス停止（SIGTERM → SIGKILL）
+  - ポート利用可能性確認
+  - サーバプロセス起動（デーモンモード対応）
+  - ヘルスチェック（`/health`エンドポイント）
+  - クロスプラットフォーム対応（Windows: taskkill、Unix: SIGTERM/SIGKILL）
+- ✅ `src/utils/project.ts` (119行) - プロジェクトルート管理
+  - プロジェクトルート検索・正規化
+  - 設定ファイルパス解決
+  - シンボリックリンク解決
+
+**serverコマンド群**:
+- ✅ `server start` (183行) - サーバ起動
+  - フォアグラウンド/デーモンモード
+  - 既存プロセスチェック（重複起動防止）
+  - 古いPIDファイル自動削除（異常終了対応）
+  - ポート競合チェック
+  - PIDファイル作成
+  - 起動確認（ヘルスチェック）
+- ✅ `server stop` (50行) - サーバ停止
+  - PIDファイル読み込み
+  - プロセス生存確認
+  - 優雅な停止（SIGTERM）
+  - PIDファイル削除
+- ✅ `server status` (76行) - サーバ状態確認
+  - プロセス生存確認
+  - ヘルスチェック
+  - インデックス統計表示
+  - ワーカー状態表示
+- ✅ `server restart` (40行) - サーバ再起動
+  - stop + start の組み合わせ
+
+**プロセス管理仕様**:
+- ✅ 1プロジェクト1サーバプロセスの原則
+- ✅ PIDファイル: `.search-docs/server.pid`
+- ✅ 重複起動防止（3段階チェック）
+  1. PIDファイルの存在確認
+  2. プロセス生存確認
+  3. ポート利用可能性確認
+- ✅ 異常終了時の古いPIDファイル自動削除
+- ✅ クロスプラットフォーム対応
+
+**ドキュメント**:
+- ✅ `docs/server-process-management.md` (635行) - 詳細な仕様書
+- ✅ `docs/adr/001-cli-server-process-management.md` (437行) - ADR
+- ✅ `prompts/tasks/task4.cli-remaining-commands.v1.md` (533行) - 実装計画
+
+**テスト結果**:
+- ビルド成功
+- lint成功（0 warnings）
+- 既存E2Eテスト通過（2/2）
+- 総コード量: 1,125行（TypeScript）
+
+**コミット**:
+- `2c30951 feat(cli): serverコマンド（start/stop/status）を実装`
+
+#### 未実装
+
+- ❌ indexコマンド（rebuild, status, clean）
+- ❌ configコマンド（init, validate, show）
+
 ### 次のステップ
 
-⏳ Phase 3.2: CLIツール (packages/cli) または Phase 4: MCP Server
+⏳ Phase 3.3: indexコマンド実装 または Phase 3.4: configコマンド実装
 
 ## 次のアクション
 
@@ -383,6 +467,11 @@ packages/client/
 15. ✅ コミット完了（4dce5a5, 086097c, 0d67355）
 16. ✅ Phase 3.1 - クライアントライブラリ完了
 17. ✅ コミット完了（94a0f91）
+18. ✅ Phase 3.2 - CLIツール基本構造・searchコマンド完了
+19. ✅ コミット完了（0936f5b, f16c07c）
+20. ✅ Phase 3.2 - serverコマンド（start/stop/status/restart）完了
+21. ✅ サーバプロセス管理仕様・ADR作成完了
+22. ✅ コミット完了（2c30951）
 
 ## メモ
 
