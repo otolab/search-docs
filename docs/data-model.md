@@ -130,18 +130,26 @@ interface Section {
   parentId: string | null;   // 親セクションID
   order: number;             // 文書内の順序
   isDirty: boolean;          // Dirtyフラグ
-  metadata: {
-    createdAt: Date;
-    updatedAt: Date;
-    documentHash: string;    // 対応する文書のハッシュ
-  };
+  // メタデータフィールド（フラット構造）
+  documentHash: string;      // 対応する文書のハッシュ
+  createdAt: Date;           // 作成日時
+  updatedAt: Date;           // 更新日時
+  summary?: string;          // セクションの要約（後で生成）
+  documentSummary?: string;  // 文書全体の要約（コンテキスト保持用）
 }
 ```
+
+**設計上の注意**:
+- **フラット構造を採用**: `metadata`ネストを使用せず、すべてのフィールドをトップレベルに配置
+- **理由**: PyArrow/LanceDBのパフォーマンス最適化のため
+  - ネストした構造はPyArrowで非効率（追加のシリアライズが必要）
+  - sebas-chanプロジェクトでの実績に基づく設計判断
+  - TypeScript-Python間の変換層でcamelCase↔snake_caseを処理
 
 #### SearchIndex（検索インデックス）
 LanceDBのテーブルとして実装:
 ```python
-# PyArrowスキーマ
+# PyArrowスキーマ（フラット構造）
 SectionSchema = pa.schema([
     ("id", pa.string()),
     ("document_path", pa.string()),
@@ -153,11 +161,20 @@ SectionSchema = pa.schema([
     ("parent_id", pa.string()),
     ("order", pa.int32()),
     ("is_dirty", pa.bool_()),
+    # メタデータフィールド（フラット構造）
     ("document_hash", pa.string()),
     ("created_at", pa.timestamp('ms')),
-    ("updated_at", pa.timestamp('ms'))
+    ("updated_at", pa.timestamp('ms')),
+    # 将来の拡張用（オプショナル）
+    # ("summary", pa.string()),           # セクションの要約
+    # ("document_summary", pa.string())   # 文書全体の要約
 ])
 ```
+
+**実装上の注意**:
+- TypeScript側はcamelCase（`documentPath`, `tokenCount`など）
+- Python側はsnake_case（`document_path`, `token_count`など）
+- db-engineの変換層で自動的に相互変換を行う
 
 ## 状態遷移
 

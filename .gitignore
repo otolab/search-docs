@@ -39,6 +39,7 @@ data/
 *.db
 *.sqlite
 *.lancedb/
+.search-docs/
 
 # Logs
 *.log
