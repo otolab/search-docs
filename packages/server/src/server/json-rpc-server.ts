@@ -244,7 +244,13 @@ export class JsonRpcServer {
       return new Promise((resolve, reject) => {
         this.server!.close((err) => {
           if (err) {
-            reject(err);
+            // ERR_SERVER_NOT_RUNNING は無視（既に停止している場合）
+            if ((err as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') {
+              console.log('JSON-RPC server already stopped');
+              resolve();
+            } else {
+              reject(err);
+            }
           } else {
             console.log('JSON-RPC server stopped');
             resolve();

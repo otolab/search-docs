@@ -16,6 +16,7 @@ describe('E2E Test: CLI → Server → DB', () => {
   let serverProcess: ChildProcess | null = null;
   let testDir: string;
   const serverPort = 24281; // テスト用ポート（デフォルトと衝突回避）
+  const verbose = process.env.TEST_VERBOSE === 'true'; // デバッグモード
 
   beforeAll(async () => {
     // 一時ディレクトリ作成
@@ -91,9 +92,11 @@ Vector検索機能をテストします。
     // サーバ起動（ビルド済みのJSを実行）
     const serverScript = path.join(__dirname, '../../server/dist/bin/server.js');
 
-    console.log('[E2E] Starting server...');
-    console.log('  Server script:', serverScript);
-    console.log('  Config:', configPath);
+    if (verbose) {
+      console.log('[E2E] Starting server...');
+      console.log('  Server script:', serverScript);
+      console.log('  Config:', configPath);
+    }
 
     serverProcess = spawn('node', [serverScript], {
       cwd: testDir,
@@ -112,8 +115,14 @@ Vector検索機能をテストします。
       }, 30000);
 
       serverProcess!.stdout?.on('data', (data: Buffer) => {
-        output += data.toString();
-        console.log('[Server]', data.toString().trim());
+        const message = data.toString();
+        output += message;
+
+        // verboseモードでは全て出力
+        if (verbose) {
+          console.log('[Server]', message.trim());
+        }
+
         if (output.includes('Server started successfully')) {
           clearTimeout(timeout);
           resolve();
@@ -121,7 +130,11 @@ Vector検索機能をテストします。
       });
 
       serverProcess!.stderr?.on('data', (data: Buffer) => {
-        console.error('[Server Error]', data.toString().trim());
+        const message = data.toString().trim();
+        // Ruriモデルの読み込みメッセージは情報なのでverboseモードのみ
+        if (verbose || !message.includes('Ruri model loaded')) {
+          console.error('[Server Error]', message);
+        }
       });
 
       serverProcess!.on('error', (error) => {
@@ -137,7 +150,9 @@ Vector検索機能をテストします。
       });
     });
 
-    console.log('[E2E] Server started successfully');
+    if (verbose) {
+      console.log('[E2E] Server started successfully');
+    }
 
     // サーバが完全に起動するまで少し待つ
     await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -146,16 +161,29 @@ Vector検索機能をテストします。
     const client = new SearchDocsClient({ baseUrl: `http://localhost:${serverPort}` });
     await client.indexDocument({ path: testMdPath });
 
-    console.log('[E2E] Test document indexed');
+    if (verbose) {
+      console.log('[E2E] Test document indexed');
+    }
   }, 60000); // 60秒タイムアウト
 
   afterAll(async () => {
     // サーバ停止
     if (serverProcess) {
-      console.log('[E2E] Stopping server...');
+      if (verbose) {
+        console.log('[E2E] Stopping server...');
+      }
       serverProcess.kill('SIGTERM');
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      if (!serverProcess.killed) {
+
+      // プロセス終了を待つ（最大2秒）
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          serverProcess!.on('exit', () => resolve());
+        }),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+
+      // まだ生きていたら強制終了
+      if (serverProcess && !serverProcess.killed) {
         serverProcess.kill('SIGKILL');
       }
       serverProcess = null;
@@ -164,7 +192,9 @@ Vector検索機能をテストします。
     // クリーンアップ
     try {
       await fs.rm(testDir, { recursive: true, force: true });
-      console.log('[E2E] Cleanup completed');
+      if (verbose) {
+        console.log('[E2E] Cleanup completed');
+      }
     } catch (error) {
       console.error('[E2E] Cleanup failed:', error);
     }
@@ -188,7 +218,9 @@ Vector検索機能をテストします。
     expect(response.total).toBeGreaterThanOrEqual(0);
     expect(typeof response.took).toBe('number');
 
-    console.log(`[E2E] Search results: ${response.total} hits in ${response.took}ms`);
+    if (verbose) {
+      console.log(`[E2E] Search results: ${response.total} hits in ${response.took}ms`);
+    }
   });
 
   it('検索結果が正しい構造を持つ', async () => {
