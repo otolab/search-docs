@@ -427,7 +427,7 @@ packages/client/
 
 **ドキュメント**:
 - ✅ `docs/server-process-management.md` (635行) - 詳細な仕様書
-- ✅ `docs/adr/001-cli-server-process-management.md` (437行) - ADR
+- ✅ `docs/architecture-decisions.md` - ADR-013として追加 (228行)
 - ✅ `prompts/tasks/task4.cli-remaining-commands.v1.md` (533行) - 実装計画
 
 **テスト結果**:
