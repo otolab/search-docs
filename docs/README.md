@@ -63,6 +63,16 @@
 #### [client-server-architecture.md](./client-server-architecture.md)
 クライアント・サーバーアーキテクチャ
 
+#### [client-library.md](./client-library.md)
+クライアントライブラリ仕様
+
+- インストールと基本的な使用方法
+- 全APIメソッドの詳細（search, getDocument, indexDocument, rebuildIndex, getStatus, healthCheck）
+- エラーハンドリング
+- タイムアウト制御
+- 完全な使用例
+- トラブルシューティング
+
 #### [type-definitions.md](./type-definitions.md)
 型定義の詳細
 
