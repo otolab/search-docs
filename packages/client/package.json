@@ -1,0 +1,30 @@
+{
+  "name": "@search-docs/client",
+  "version": "0.1.0",
+  "description": "search-docs JSON-RPCクライアントライブラリ",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0"
+  },
+  "dependencies": {
+    "@search-docs/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "keywords": [
+    "search-docs",
+    "client",
+    "json-rpc"
+  ]
+}
