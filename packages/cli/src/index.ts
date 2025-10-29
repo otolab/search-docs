@@ -108,8 +108,9 @@ indexCmd
   .argument('[paths...]', '再構築するファイルのパス')
   .option('--force', '強制的に再インデックス')
   .option('--server <url>', 'サーバURL', 'http://localhost:24280')
-  .action(() => {
-    console.log('index rebuild: 未実装');
+  .action(async (paths: string[], options: { force?: boolean; server?: string }) => {
+    const { executeIndexRebuild } = await import('./commands/index/rebuild.js');
+    await executeIndexRebuild({ paths, ...options });
   });
 
 indexCmd
