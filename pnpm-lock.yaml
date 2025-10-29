@@ -32,6 +32,9 @@ importers:
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
+      '@search-docs/server':
+        specifier: workspace:*
+        version: link:../server
       '@search-docs/types':
         specifier: workspace:*
         version: link:../types
