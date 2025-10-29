@@ -70,6 +70,12 @@ search-docs/
 - **ドキュメント・コード・テスト同期**: `~/Develop/otolab/ai-agent-prompts/recipes/document-code-test/`
 - **Serena統合**: `~/Develop/otolab/ai-agent-prompts/recipes/serena-integration/`
 
+### search-docs利用
+
+このプロジェクト自身のドキュメントをsearch-docsで検索可能にしています。
+
+**利用マニュアル**: @prompts/SEARCH_DOCS.md
+
 ### 作業メモ
 
 作業計画やメモは `prompts/tasks/` に配置します。このディレクトリは、時系列にセッションごとの作業を記録する場所です。
