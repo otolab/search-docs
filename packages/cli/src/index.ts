@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * search-docs CLI
  */
@@ -27,7 +28,7 @@ import {
 // package.jsonからバージョンを読み込む
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const packageJsonPath = join(__dirname, '../..', 'package.json');
+const packageJsonPath = join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as {
   version: string;
 };

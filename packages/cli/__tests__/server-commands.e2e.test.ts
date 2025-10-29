@@ -25,7 +25,7 @@ describe('E2E Test: Server Commands', () => {
       timeout?: number;
     } = {}
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
-    const cliScript = path.join(__dirname, '../dist/bin/search-docs.js');
+    const cliScript = path.join(__dirname, '../dist/index.js');
 
     return new Promise((resolve, reject) => {
       let stdout = '';

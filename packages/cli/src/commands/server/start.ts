@@ -136,8 +136,8 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
       packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     } catch (error) {
       // Fallback: __dirname から相対的に取得 (開発環境用)
-      // dist/src/commands/server/ → ../../../../package.json
-      const fallbackPath = path.join(__dirname, '../../../../package.json');
+      // dist/commands/server/ → ../../../package.json
+      const fallbackPath = path.join(__dirname, '../../../package.json');
       packageJson = JSON.parse(readFileSync(fallbackPath, 'utf-8'));
     }
 

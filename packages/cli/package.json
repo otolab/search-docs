@@ -4,7 +4,7 @@
   "description": "search-docs コマンドラインツール",
   "type": "module",
   "bin": {
-    "search-docs": "./dist/bin/search-docs.js"
+    "search-docs": "./dist/index.js"
   },
   "files": [
     "dist"
@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean",
-    "dev": "tsx bin/search-docs.ts",
+    "dev": "tsx src/index.ts",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
