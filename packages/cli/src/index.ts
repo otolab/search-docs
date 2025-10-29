@@ -49,7 +49,7 @@ serverCmd
   .description('サーバを起動')
   .option('--config <path>', '設定ファイルのパス')
   .option('--port <port>', 'ポート番号')
-  .option('--daemon, -d', 'バックグラウンドで起動')
+  .option('-d, --daemon', 'バックグラウンドで起動')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerStartOptions) => {
     void executeServerStart(options);
@@ -76,7 +76,7 @@ serverCmd
   .description('サーバを再起動')
   .option('--config <path>', '設定ファイルのパス')
   .option('--port <port>', 'ポート番号')
-  .option('--daemon, -d', 'バックグラウンドで起動')
+  .option('-d, --daemon', 'バックグラウンドで起動')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerRestartOptions) => {
     void executeServerRestart(options);

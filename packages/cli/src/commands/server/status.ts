@@ -30,19 +30,19 @@ export async function executeServerStatus(
     const pidFile = await readPidFile(projectRoot);
 
     if (!pidFile) {
-      console.log('Server Status: Not Running');
-      console.log('  No PID file found.');
-      return;
+      console.error('Server is not running');
+      console.error('  No PID file found.');
+      process.exit(1);
     }
 
     // 3. プロセス生存確認
     const processAlive = isProcessAlive(pidFile.pid);
 
     if (!processAlive) {
-      console.log('Server Status: Not Running');
-      console.log(`  PID file exists but process (PID: ${pidFile.pid}) not found.`);
-      console.log('  Run \'search-docs server start\' to start the server.');
-      return;
+      console.error('Server is not running');
+      console.error(`  PID file exists but process (PID: ${pidFile.pid}) not found.`);
+      console.error('  Run \'search-docs server start\' to start the server.');
+      process.exit(1);
     }
 
     // 4. ヘルスチェック

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@search-docs/client": "workspace:*",
+    "@search-docs/server": "workspace:*",
     "@search-docs/types": "workspace:*",
     "commander": "^12.0.0"
   },

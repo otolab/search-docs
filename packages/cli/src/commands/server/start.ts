@@ -33,12 +33,13 @@ export interface ServerStartOptions {
 }
 
 /**
- * server start コマンドを実行
+ * サーバ起動の内部ロジック（process.exit()を呼ばない）
+ * restart等から再利用可能
  */
-export async function executeServerStart(
-  options: ServerStartOptions
-): Promise<void> {
-  try {
+export async function startServer(options: ServerStartOptions): Promise<void> {
+    // デバッグ: optionsの内容を確認
+    console.log('[DEBUG] executeServerStart options:', JSON.stringify(options, null, 2));
+
     // 1. プロジェクトルート決定
     const projectRoot = await findProjectRoot({
       configPath: options.config,
@@ -100,11 +101,13 @@ export async function executeServerStart(
     }
 
     // 7. サーバスクリプトパス
-    // CLIパッケージから見たserverパッケージのパス
-    const serverScript = path.join(
-      __dirname,
-      '../../../../server/dist/bin/server.js'
-    );
+    // import.meta.resolve()でインストール環境に依存しないパス解決
+    // 開発環境: packages/server/dist/index.js
+    // インストール環境: node_modules/@search-docs/server/dist/index.js
+    const serverModulePath = import.meta.resolve('@search-docs/server');
+    const serverModuleFile = fileURLToPath(serverModulePath);
+    const serverDistDir = path.dirname(serverModuleFile);
+    const serverScript = path.join(serverDistDir, 'bin/server.js');
 
     // 8. サーバプロセス起動
     console.log(`Starting server${options.daemon ? ' (daemon mode)' : ''}...`);
@@ -121,10 +124,22 @@ export async function executeServerStart(
     }
 
     // 9. PIDファイル作成
-    const packageJsonPath = path.join(__dirname, '../../../package.json');
-    const packageJson = JSON.parse(
-      readFileSync(packageJsonPath, 'utf-8')
-    ) as { version: string };
+    // CLIモジュールのパスからpackage.jsonを解決
+    // workspace環境では import.meta.resolve() が失敗することがあるため、
+    // fallbackとして __dirname からの相対パスも試行
+    let packageJson: { version: string };
+    try {
+      const cliModulePath = import.meta.resolve('@search-docs/cli');
+      const cliModuleFile = fileURLToPath(cliModulePath);
+      const cliPkgDir = path.dirname(path.dirname(cliModuleFile)); // dist/index.js → dist → cli/
+      const packageJsonPath = path.join(cliPkgDir, 'package.json');
+      packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+    } catch (error) {
+      // Fallback: __dirname から相対的に取得 (開発環境用)
+      // dist/src/commands/server/ → ../../../../package.json
+      const fallbackPath = path.join(__dirname, '../../../../package.json');
+      packageJson = JSON.parse(readFileSync(fallbackPath, 'utf-8'));
+    }
 
     const pidFileContent: PidFileContent = {
       pid: serverProcess.pid,
@@ -181,6 +196,16 @@ export async function executeServerStart(
       // 終了時にPIDファイル削除
       await deletePidFile(projectRoot);
     }
+}
+
+/**
+ * server start コマンドを実行（CLIエントリポイント）
+ */
+export async function executeServerStart(
+  options: ServerStartOptions
+): Promise<void> {
+  try {
+    await startServer(options);
   } catch (error) {
     console.error('Error:', (error as Error).message);
     process.exit(1);

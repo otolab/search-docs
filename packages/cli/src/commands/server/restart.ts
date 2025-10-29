@@ -2,8 +2,8 @@
  * server restart コマンド
  */
 
-import { executeServerStop } from './stop.js';
-import { executeServerStart } from './start.js';
+import { stopServer } from './stop.js';
+import { startServer } from './start.js';
 
 /**
  * server restart コマンドのオプション
@@ -24,14 +24,23 @@ export async function executeServerRestart(
   try {
     // 1. サーバ停止
     console.log('Stopping server...');
-    await executeServerStop({ config: options.config });
+    try {
+      await stopServer({ config: options.config });
+    } catch (error) {
+      // サーバが動いていない場合もエラーではない
+      console.log('Server was not running, skipping stop.');
+    }
 
     // 2. 少し待機（プロセスの完全な終了を待つ）
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // 3. サーバ起動
+    // restart時は常にデーモンモードで起動
     console.log('\nStarting server...');
-    await executeServerStart(options);
+    await startServer({
+      ...options,
+      daemon: true,
+    });
   } catch (error) {
     console.error('Error:', (error as Error).message);
     process.exit(1);
