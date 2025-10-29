@@ -84,6 +84,61 @@ packages/cli/dist/
     └── project.js
 ```
 
+## 完了サマリー
+
+### 実施内容
+
+1. **bin/ディレクトリの削除**
+   - `bin/search-docs.ts` を削除（単なるreexportで不要）
+
+2. **src/index.tsの修正**
+   - shebang `#!/usr/bin/env node` を追加
+   - __dirname相対パス: `../../package.json` → `../package.json`
+
+3. **設定ファイルの修正**
+   - package.json: bin を `./dist/index.js` に変更
+   - package.json: dev スクリプトを `tsx src/index.ts` に変更
+   - tsconfig.json: `rootDir: "src"`, `include: ["src/**/*"]`
+
+4. **start.tsの修正**
+   - fallback __dirname相対パス: `../../../../package.json` → `../../../package.json`
+
+5. **E2Eテストの修正**
+   - テスト内のパス参照: `../dist/bin/search-docs.js` → `../dist/index.js`
+
+### 結果
+
+**変更前**:
+```
+dist/
+├── bin/
+│   └── search-docs.js
+└── src/              # 冗長
+    ├── index.js
+    ├── commands/
+    └── utils/
+```
+
+**変更後**:
+```
+dist/
+├── index.js         # CLIエントリポイント
+├── commands/
+│   └── server/
+└── utils/
+```
+
+**テスト結果**: 5/5 E2Eテスト合格 ✅
+
+**コミット**: d20d93f
+
+### 効果
+
+- ✅ dist/src/という冗長な構造を解消
+- ✅ モノレポ内で一貫した構造（他パッケージと同様にdist/直下に出力）
+- ✅ __dirname相対パスが正しく動作
+- ✅ bin/という不要なディレクトリを削除
+
 ## 将来の課題
 
 なし
