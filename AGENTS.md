@@ -119,7 +119,7 @@ search-docs/
 - ✅ 時間差を前提とした設計
 
 ### 4. 設定ファイル
-- ✅ `.search-docs/config.json`
+- ✅ `.search-docs.json` (推奨) または `search-docs.json`
 - ✅ ファイル検索ルール（include/exclude glob）
 - ✅ .gitignoreの尊重
 

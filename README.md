@@ -123,7 +123,24 @@ claude mcp add search-docs -- search-docs mcp-server --project $(pwd)
 }
 ```
 
-詳細な設定オプションは [docs/client-server-architecture.md](docs/client-server-architecture.md) を参照してください。
+詳細な設定オプションは [ユーザーガイド](docs/user-guide.md#設定ファイル) を参照してください。
+
+## ドキュメント
+
+### ユーザー向けドキュメント
+
+- **[クイックスタート](docs/quick-start.md)** - 5分で試す基本的な使い方
+- **[ユーザーガイド](docs/user-guide.md)** - 包括的な使用方法ガイド
+- **[CLIリファレンス](docs/cli-reference.md)** - 全コマンドの詳細な説明
+- **[MCP統合ガイド](docs/mcp-integration.md)** - Claude Code統合の手順
+
+### 開発者向けドキュメント
+
+- **[クライアント・サーバアーキテクチャ](docs/client-server-architecture.md)** - システム構成の詳細
+- **[データモデル設計](docs/data-model.md)** - データ構造の設計
+- **[システムアーキテクチャ](docs/architecture.md)** - 技術スタックと実装詳細
+- **[クライアントライブラリ](docs/client-library.md)** - APIリファレンス
+- **[ドキュメント一覧](docs/README.md)** - 全ドキュメントの索引
 
 ## ライセンス
 

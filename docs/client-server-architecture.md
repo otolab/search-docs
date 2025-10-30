@@ -75,8 +75,8 @@ search-docs-server start --port 24280
 #### 2. Configuration Loader
 
 **設定ファイルパス**:
-1. `.search-docs/config.json` (プロジェクトルート)
-2. `search-docs.config.json` (プロジェクトルート)
+1. `.search-docs.json` (プロジェクトルート) - 推奨
+2. `search-docs.json` (プロジェクトルート)
 3. デフォルト設定
 
 **設定ファイル形式**:
@@ -231,12 +231,9 @@ search-docs search "クエリ" [--depth 1] [--limit 10]
 # インデックス管理
 search-docs index rebuild
 search-docs index status
-search-docs index clean-dirty
 
 # 設定
 search-docs config init
-search-docs config validate
-search-docs config show
 ```
 
 #### 2. MCP Server (Claude Code統合)

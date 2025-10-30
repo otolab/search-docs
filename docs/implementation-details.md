@@ -107,7 +107,7 @@ export interface SearchDocsConfig {
 ```
 
 **設計意図**:
-- プロジェクト単位の設定を`.search-docs/config.json`で管理
+- プロジェクト単位の設定を`.search-docs.json`で管理
 - Gitignore互換のパターンマッチング
 - インデックス作成と更新のパフォーマンス調整
 

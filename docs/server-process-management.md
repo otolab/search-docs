@@ -537,8 +537,8 @@ async function writePidFile(content: PidFileContent): Promise<void> {
 |--------|------|------|
 | `Server already running` | 既にサーバが起動中 | `server stop`で停止してから再起動 |
 | `Port in use` | ポートが使用中 | `--port`で別ポートを指定 |
-| `Config file not found` | 設定ファイルが存在しない | `config init`で設定ファイル作成 |
-| `Invalid config` | 設定ファイルが不正 | `config validate`で検証 |
+| `Config file not found` | 設定ファイルが存在しない | `.search-docs.json`を手動作成 |
+| `Invalid config` | 設定ファイルが不正 | 設定ファイルの構文を確認 |
 
 ### 停止時のエラー
 

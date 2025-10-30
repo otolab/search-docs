@@ -99,9 +99,43 @@ Section型構造の調査レポート (2025-01-27)
 - 実装変更の完全な記録
 - **配置**: prompts/tasks（調査完了）
 
-### 今後追加予定
+### ユーザー向けドキュメント
 
-- **setup.md**: セットアップガイド
-- **usage.md**: 使用方法
-- **api.md**: API リファレンス
-- **development.md**: 開発ガイド
+#### [user-guide.md](./user-guide.md)
+包括的な使用方法ガイド
+
+- 初回セットアップ手順
+- 基本的な使い方（サーバ起動、検索、インデックス管理）
+- 設定ファイルの詳細説明
+- CLIコマンドの概要
+- Claude Code統合
+- トラブルシューティング
+- FAQ
+
+#### [quick-start.md](./quick-start.md)
+5分で試すクイックスタートガイド
+
+- ステップバイステップのチュートリアル
+- サンプルプロジェクトの作成
+- 実際の検索体験
+- クリーンアップ手順
+
+#### [cli-reference.md](./cli-reference.md)
+CLIコマンドの完全なリファレンス
+
+- グローバルオプション
+- serverコマンド（start, stop, status, restart）
+- searchコマンド
+- indexコマンド（rebuild, status）
+- configコマンド
+- 終了コード
+
+#### [mcp-integration.md](./mcp-integration.md)
+Claude Code統合ガイド（MCP Server）
+
+- MCPの概要
+- セットアップ方法（プロジェクトスコープ、グローバル、CLI）
+- 利用可能なツール（search, get_document, index_status）
+- 使用例
+- トラブルシューティング
+- パフォーマンス最適化
