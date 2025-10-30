@@ -5,31 +5,25 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 /**
- * プロジェクトルートを探す
- * package.jsonとpyproject.tomlの両方が存在する最初のディレクトリ
+ * パッケージルートディレクトリを取得
+ * 現在のファイル（src/typescript/index.ts または dist/index.js）から相対パスで計算
  */
-function findProjectRoot(startDir: string): string {
-  let currentDir = startDir;
-  const root = path.parse(currentDir).root;
+function getPackageRoot(): string {
+  const currentFile = fileURLToPath(import.meta.url);
 
-  while (currentDir !== root) {
-    const packageJsonPath = path.join(currentDir, 'package.json');
-    const pyprojectPath = path.join(currentDir, 'pyproject.toml');
+  // src/typescript/index.ts -> src/typescript/ -> src/ -> packages/db-engine/
+  // または
+  // dist/index.js -> dist/ -> packages/db-engine/
+  const currentDir = path.dirname(currentFile);
 
-    // package.jsonとpyproject.tomlの両方が存在 = プロジェクトルート
-    if (fs.existsSync(packageJsonPath) && fs.existsSync(pyprojectPath)) {
-      return currentDir;
-    }
-
-    // 1階層上へ
-    currentDir = path.dirname(currentDir);
+  // src/typescript/の場合は2階層上、dist/の場合は1階層上
+  if (currentDir.endsWith('src/typescript')) {
+    return path.dirname(path.dirname(currentDir));
+  } else {
+    // dist/の場合
+    return path.dirname(currentDir);
   }
-
-  throw new Error(`Project root not found from ${startDir}`);
 }
 
 interface PendingRequest {
@@ -159,9 +153,8 @@ export class DBEngine extends EventEmitter {
       return;
     }
 
-    // パッケージルートを探す（package.json + pyproject.tomlがある場所）
-    // これはdb-engineパッケージのルート（packages/db-engine）を指す
-    const packageRoot = findProjectRoot(__dirname);
+    // パッケージルートを取得（@search-docs/db-engineパッケージのルート）
+    const packageRoot = getPackageRoot();
     console.log('[DBEngine.connect] packageRoot:', packageRoot);
 
     // Pythonスクリプトのパス（パッケージルートからの相対パス）
