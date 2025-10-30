@@ -4,6 +4,7 @@
   "description": "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供",
   "private": true,
   "scripts": {
+    "postinstall": "uv sync",
     "build": "tsc --build",
     "build:all": "pnpm run -r build",
     "clean": "tsc --build --clean",
