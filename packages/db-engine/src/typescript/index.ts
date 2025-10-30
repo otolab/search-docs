@@ -8,6 +8,30 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * プロジェクトルートを探す
+ * package.jsonとpyproject.tomlの両方が存在する最初のディレクトリ
+ */
+function findProjectRoot(startDir: string): string {
+  let currentDir = startDir;
+  const root = path.parse(currentDir).root;
+
+  while (currentDir !== root) {
+    const packageJsonPath = path.join(currentDir, 'package.json');
+    const pyprojectPath = path.join(currentDir, 'pyproject.toml');
+
+    // package.jsonとpyproject.tomlの両方が存在 = プロジェクトルート
+    if (fs.existsSync(packageJsonPath) && fs.existsSync(pyprojectPath)) {
+      return currentDir;
+    }
+
+    // 1階層上へ
+    currentDir = path.dirname(currentDir);
+  }
+
+  throw new Error(`Project root not found from ${startDir}`);
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -135,13 +159,17 @@ export class DBEngine extends EventEmitter {
       return;
     }
 
-    const pythonScript = path.join(__dirname, '../python/worker.py');
-    const packageRoot = path.join(__dirname, '../..'); // packages/db-engine
-
+    // パッケージルートを探す（package.json + pyproject.tomlがある場所）
+    // これはdb-engineパッケージのルート（packages/db-engine）を指す
+    const packageRoot = findProjectRoot(__dirname);
     console.log('[DBEngine.connect] packageRoot:', packageRoot);
-    console.log('[DBEngine.connect] pythonScript:', pythonScript);
 
-    // uvを必須とする（環境未整備の場合はエラー）
+    // Pythonスクリプトのパス（パッケージルートからの相対パス）
+    const pythonScript = path.join(packageRoot, 'src/python/worker.py');
+    console.log('[DBEngine.connect] pythonScript:', pythonScript);
+    console.log('[DBEngine.connect] pythonScript exists:', fs.existsSync(pythonScript));
+
+    // pyproject.tomlの存在確認（パッケージルート）
     const pyprojectPath = path.join(packageRoot, 'pyproject.toml');
     console.log('[DBEngine.connect] Checking pyproject.toml at:', pyprojectPath);
     console.log('[DBEngine.connect] pyproject.toml exists:', fs.existsSync(pyprojectPath));
@@ -154,9 +182,9 @@ export class DBEngine extends EventEmitter {
     }
     console.log('[DBEngine.connect] pyproject.toml found OK');
 
-    // uv --project でPythonを実行
+    // uv --project でPythonを実行（パッケージルートを指定）
     const pythonCmd = 'uv';
-    const pythonArgs = ['--project', '.', 'run', 'python', pythonScript];
+    const pythonArgs = ['--project', packageRoot, 'run', 'python', pythonScript];
 
     // モデル選択オプションを追加
     if (this.options.embeddingModel) {
@@ -173,16 +201,12 @@ export class DBEngine extends EventEmitter {
     console.log('[DBEngine.connect] Starting Python worker with:');
     console.log('  Command:', pythonCmd);
     console.log('  Args:', pythonArgs);
-    console.log('  CWD:', packageRoot);
     console.log('  process.cwd():', process.cwd());
     console.log('  this.options.dbPath:', this.options.dbPath);
     console.log('  absoluteDbPath:', absoluteDbPath);
-    console.log('  Script path:', pythonScript);
-    console.log('  Script exists:', fs.existsSync(pythonScript));
 
     this.worker = spawn(pythonCmd, pythonArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: packageRoot,
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1', // Pythonの出力をバッファリングしない
