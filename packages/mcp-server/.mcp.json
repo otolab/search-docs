@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "search-docs": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "packages/mcp-server/dist/server.js",
+        "--project-dir",
+        "/Users/naoto.kato/Develop/otolab/search-docs"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -770,8 +770,85 @@ Phase 1から順次実装を開始。
 
 ---
 
+## 実装履歴
+
+### 2025-10-30 午前セッション
+
+**完了内容**:
+1. pyproject.tomlパス解決の修正
+   - `findProjectRoot()`から`import.meta.url`ベースの相対パス計算に変更
+   - コミット: `0934fe0`, `7baed8f`
+
+2. handleFileChangeのストレージ保存追加
+   - ファイル変更時のストレージ保存処理が抜けていた問題を修正
+   - コミット: `dfde13f`
+
+**学んだこと**:
+- 過度な一般化を避け、シンプルな解決策を選ぶ
+- 実装より先に仕様書・設計ドキュメントを確認する
+
+### 2025-10-30 午後セッション
+
+**完了内容**:
+1. __dirname ESM互換性問題の修正
+   - db-engineパッケージのクリーンビルドで解決
+
+2. サーバ起動と検索機能の有効化
+   - watcher.enabled, worker.enabled を true に設定
+   - 30ドキュメント、817セクションのインデックス化成功
+
+3. rebuildIndex機能の改善
+   - デフォルトでハッシュチェック有効（`force: false`）
+   - `--force` オプション追加（強制再インデックス）
+   - サーバ起動時に自動的にインデックス同期
+
+**変更ファイル**:
+- `packages/types/src/api.ts`: RebuildIndexRequestに`force`追加
+- `packages/server/src/server/search-docs-server.ts`: rebuildIndex修正、起動時同期追加
+- `packages/cli/src/commands/index/rebuild.ts`: forceパラメータ追加、モード表示
+
+**動作確認**:
+```bash
+# スマートリビルド（変更検知）
+$ node packages/cli/dist/index.js index rebuild
+Mode: Smart rebuild (skip unchanged files)
+
+# 強制リビルド
+$ node packages/cli/dist/index.js index rebuild --force
+Mode: Force rebuild (ignore hash check)
+
+# 検索機能
+$ node packages/cli/dist/index.js search "LanceDB" --limit 3
+検索結果: 3件（115ms）
+1. [score: 712.85] ... [最新]
+```
+
+**設計判断**:
+- `indexDocument`はリクエスト作成のみで軽量
+- 実際の重い処理（セクション分割、Vector化）はIndexWorkerが担当
+- 起動時の自動同期は負荷が軽いため、毎回実行しても問題なし
+
+---
+
+## 次のステップ
+
+Task 8は完了しました。次の作業候補：
+
+### Task 9: MCP Server実装（推奨）
+- Claude Codeから直接search-docsを利用可能に
+- @docs/client-server-architecture.md に設計記載済み
+- 推定工数: 4-6時間
+
+### その他の候補
+- Task 4残り: `index status`, `config`コマンド（低優先度）
+- Task 7: dbPath修正の検証（30分）
+- ドキュメント整備
+
+---
+
 **作成日**: 2025-10-30
 **バージョン**: v2（IndexRequestテーブル導入版）
-**状態**: 仕様確定、実装準備完了
+**状態**: 完了 ✅（Phase 1-7 + サーバ起動時同期機能）
 **関連タスク**: Task 6（設計と実装の乖離調査）
-**推定工数**: 17時間
+**実装工数**: 約12時間（推定17時間のうち）
+**完了日**: 2025-10-30

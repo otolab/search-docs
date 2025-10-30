@@ -80,6 +80,15 @@ export class SearchDocsServer {
     this.startTime = Date.now();
     await this.dbEngine.connect();
 
+    // 起動時にインデックスを同期（変更されたファイルのみ）
+    console.log('Syncing index on startup...');
+    try {
+      const result = await this.rebuildIndex({ force: false });
+      console.log(`Index sync completed: ${result.documentsProcessed} documents processed`);
+    } catch (error) {
+      console.error('Failed to sync index on startup:', error);
+    }
+
     // FileWatcher開始
     if (this.watcher) {
       await this.watcher.start();
@@ -259,7 +268,7 @@ export class SearchDocsServer {
    * インデックス再構築API
    */
   async rebuildIndex(request: RebuildIndexRequest = {}): Promise<RebuildIndexResponse> {
-    const { paths } = request;
+    const { paths, force = false } = request;
 
     let filesToIndex: string[];
 
@@ -278,7 +287,7 @@ export class SearchDocsServer {
       try {
         const result = await this.indexDocument({
           path: filePath,
-          force: true,
+          force,
         });
         documentsProcessed++;
         sectionsCreated += result.sectionsCreated;

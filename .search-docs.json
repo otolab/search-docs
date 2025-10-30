@@ -42,15 +42,11 @@
     "cachePath": ".search-docs/cache"
   },
   "watcher": {
-    "enabled": false,
-    "debounce": 1000,
-    "ignored": [
-      "**/node_modules/**",
-      "**/.git/**"
-    ]
+    "enabled": true,
+    "debounceMs": 1000
   },
   "worker": {
-    "enabled": false,
+    "enabled": true,
     "interval": 5000,
     "maxConcurrent": 3
   }

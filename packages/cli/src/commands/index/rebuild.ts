@@ -29,9 +29,15 @@ export async function executeIndexRebuild(
     } else {
       console.log('Target: All documents');
     }
+    if (options.force) {
+      console.log('Mode: Force rebuild (ignore hash check)');
+    } else {
+      console.log('Mode: Smart rebuild (skip unchanged files)');
+    }
 
     const result = await client.rebuildIndex({
       paths: options.paths,
+      force: options.force,
     });
 
     console.log('✓ Index rebuild completed');

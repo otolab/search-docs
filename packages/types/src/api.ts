@@ -108,6 +108,7 @@ export interface GetStatusResponse {
 
 export interface RebuildIndexRequest {
   paths?: string[];
+  force?: boolean;
 }
 
 export interface RebuildIndexResponse {

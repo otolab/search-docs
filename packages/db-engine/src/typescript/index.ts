@@ -138,7 +138,6 @@ export class DBEngine extends EventEmitter {
    */
   async connect(): Promise<void> {
     console.log('[DBEngine.connect] Starting connection...');
-    console.log('[DBEngine.connect] __dirname:', __dirname);
 
     if (this.worker && this.isReady) {
       // 既に接続済みかつ準備完了の場合は何もしない（冪等性）
