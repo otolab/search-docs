@@ -2,7 +2,7 @@
 
 このファイルには、現在未完了または保留中のタスクをまとめています。
 
-**最終更新**: 2025-10-30
+**最終更新**: 2025-10-30（Task 7検証結果追記）
 
 ---
 
@@ -50,48 +50,29 @@
 
 ## 📋 保留タスク
 
-### Task 7: dbPath修正の検証（保留）
+### Task 7: dbPath修正の検証（完了）
 
 **元ファイル**: task7.verify-dbpath-fix.v1.md（削除済み）
-**状態**: 保留（検証は必要に応じて実施）
+**状態**: ✅ 完了
 **関連**: Task 6（問題A修正）
+**検証日**: 2025-10-30
 
-#### 目的
+#### 検証結果
 
-Task 6で実施したdbPath問題（問題A）の修正が正しく動作しているか検証する。
+**コード修正**: ✅ 完了
+- Python worker: `_get_db_path()` メソッドと `--db-path` 引数処理が実装済み
+- TypeScript DBEngine: 絶対パスを渡す処理が実装済み
+- Server: パス解決が実装済み
 
-#### 背景
+**データ保存場所**: ✅ 確認完了
+- データは期待通り `./.search-docs/index/` に保存される
+- 古いデータ（`packages/db-engine/.search-docs/`）は削除済み
 
-Task 6で以下の修正を実施：
-
-**実施した修正**:
-1. **Python worker (worker.py)** - `--db-path` 引数を受け取る
-2. **TypeScript DBEngine (db-engine/index.ts)** - 絶対パスを渡す
-3. **Server エントリポイント (server/bin/server.ts)** - パス解決
-
-**期待される動作**:
-- LanceDB データは `.search-docs/index/` (プロジェクトルート) に保存される
-
-#### 検証手順（必要時に実施）
-
-```bash
-# 1. クリーンな状態から開始
-rm -rf .search-docs/ packages/db-engine/.search-docs/
-
-# 2. サーバを起動
-node packages/cli/dist/index.js server start
-
-# 3. インデックス作成
-node packages/cli/dist/index.js index rebuild AGENTS.md
-
-# 4. データの保存場所を確認
-find . -name "*.lance" -type d 2>/dev/null | grep -v node_modules
-```
-
-**期待される出力**:
-```
-./.search-docs/index/sections.lance  # ← プロジェクトルート
-```
+**クリーンアップ実施**: ✅ 完了
+- 修正前の古いデータを削除
+- `.gitignore` にテスト用ディレクトリパターンを追加
+  - `.search-docs-*/` (テスト用)
+  - `test-db*/` (テスト用)
 
 ---
 

@@ -40,6 +40,8 @@ data/
 *.sqlite
 *.lancedb/
 .search-docs/
+.search-docs-*/
+test-db*/
 
 # Logs
 *.log
