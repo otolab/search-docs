@@ -25,5 +25,8 @@
   "keywords": [
     "search-docs",
     "storage"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

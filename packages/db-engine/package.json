@@ -29,5 +29,8 @@
     "search-docs",
     "lancedb",
     "vector-search"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

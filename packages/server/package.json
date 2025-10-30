@@ -41,5 +41,8 @@
     "server",
     "markdown",
     "indexing"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

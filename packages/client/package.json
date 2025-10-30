@@ -26,5 +26,8 @@
     "search-docs",
     "client",
     "json-rpc"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

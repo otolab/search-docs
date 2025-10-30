@@ -18,5 +18,8 @@
   "keywords": [
     "search-docs",
     "types"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
