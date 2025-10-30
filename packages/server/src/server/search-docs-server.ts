@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { createHash } from 'crypto';
 import type {
   SearchRequest,
   SearchResponse,
@@ -17,6 +18,7 @@ import { DBEngine } from '@search-docs/db-engine';
 import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
 import { FileDiscovery } from '../discovery/file-discovery.js';
 import { FileWatcher, type FileChangeEvent } from '../discovery/file-watcher.js';
+import { IndexWorker } from '../worker/index.js';
 
 /**
  * SearchDocsサーバのメインクラス
@@ -25,6 +27,7 @@ export class SearchDocsServer {
   private splitter: MarkdownSplitter;
   private discovery: FileDiscovery;
   private watcher: FileWatcher | null = null;
+  private indexWorker: IndexWorker | null = null;
   private startTime: number = 0;
 
   constructor(
@@ -57,6 +60,17 @@ export class SearchDocsServer {
         console.error('File watcher error:', error);
       });
     }
+
+    // IndexWorker初期化（worker.enabledがtrueの場合のみ）
+    if (config.worker.enabled) {
+      this.indexWorker = new IndexWorker({
+        dbEngine: this.dbEngine,
+        storage: this.storage,
+        splitter: this.splitter,
+        interval: config.worker.interval,
+        maxConcurrent: config.worker.maxConcurrent,
+      });
+    }
   }
 
   /**
@@ -70,12 +84,22 @@ export class SearchDocsServer {
     if (this.watcher) {
       await this.watcher.start();
     }
+
+    // IndexWorker開始
+    if (this.indexWorker) {
+      this.indexWorker.start();
+    }
   }
 
   /**
    * サーバ停止
    */
   async stop(): Promise<void> {
+    // IndexWorker停止
+    if (this.indexWorker) {
+      this.indexWorker.stop();
+    }
+
     // FileWatcher停止
     if (this.watcher) {
       await this.watcher.stop();
@@ -93,8 +117,16 @@ export class SearchDocsServer {
     switch (event.type) {
       case 'add':
       case 'change':
-        // ファイルをDirtyにマーク
-        await this.dbEngine.markDirty(event.path);
+        // ファイルを読み込んでハッシュ計算
+        const content = await fs.readFile(event.path, 'utf-8');
+        const hash = createHash('sha256').update(content).digest('hex');
+
+        // IndexRequestを作成
+        await this.dbEngine.createIndexRequest({
+          documentPath: event.path,
+          documentHash: hash,
+        });
+        console.log(`Created IndexRequest for ${event.path} (${hash.slice(0, 8)})`);
         break;
 
       case 'unlink':
@@ -147,7 +179,6 @@ export class SearchDocsServer {
     const content = await fs.readFile(path, 'utf-8');
 
     // 2. ハッシュ計算
-    const { createHash } = await import('crypto');
     const hash = createHash('sha256').update(content).digest('hex');
 
     // 3. 既存文書をチェック
@@ -157,13 +188,7 @@ export class SearchDocsServer {
       return { success: true, sectionsCreated: 0 };
     }
 
-    // 4. Markdown分割
-    const sections = this.splitter.split(content, path, hash);
-
-    // 5. 既存セクションを削除（DocumentStorageとSearchIndexの整合性に関係なく、常に実行）
-    await this.dbEngine.deleteSectionsByPath(path);
-
-    // 6. 文書をストレージに保存
+    // 4. 文書をストレージに保存
     const document: Document = {
       path,
       title: path, // ファイルパスをタイトルとして使用
@@ -176,14 +201,19 @@ export class SearchDocsServer {
     };
     await this.storage.save(path, document);
 
-    // 7. セクションをDBに追加
-    for (const section of sections) {
-      await this.dbEngine.addSection(section);
-    }
+    // 5. IndexRequestを作成（IndexWorkerが処理する）
+    await this.dbEngine.createIndexRequest({
+      documentPath: path,
+      documentHash: hash,
+    });
 
+    console.log(`Created IndexRequest for ${path} (${hash.slice(0, 8)})`);
+
+    // Note: IndexWorkerがバックグラウンドで処理するため、
+    // sectionsCreatedは0を返す（実際のセクション数は不明）
     return {
       success: true,
-      sectionsCreated: sections.length,
+      sectionsCreated: 0,
     };
   }
 
@@ -232,6 +262,12 @@ export class SearchDocsServer {
   async getStatus(): Promise<GetStatusResponse> {
     const stats = await this.dbEngine.getStats();
 
+    // IndexWorkerの状態を取得
+    const workerStatus = this.indexWorker?.getStatus() ?? { running: false, processing: false };
+
+    // pendingリクエストの数を取得
+    const pendingRequests = await this.dbEngine.findIndexRequests({ status: 'pending' });
+
     return {
       server: {
         version: '0.1.0',
@@ -244,9 +280,9 @@ export class SearchDocsServer {
         dirtyCount: stats.dirtyCount,
       },
       worker: {
-        running: false, // DirtyWorker未実装
-        processing: 0,
-        queue: 0,
+        running: workerStatus.running,
+        processing: workerStatus.processing ? 1 : 0,
+        queue: pendingRequests.length,
       },
     };
   }

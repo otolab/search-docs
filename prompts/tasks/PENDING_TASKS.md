@@ -27,13 +27,30 @@ IndexRequestテーブルを導入した新しいインデックス管理アー�
 
 #### 実装フェーズ
 
-- [ ] Phase 1: IndexRequestテーブル実装（3時間）
-- [ ] Phase 2: Section関連API拡張（2時間）
-- [ ] Phase 3: IndexWorker実装（4時間）
-- [ ] Phase 4: IndexRequest作成（2時間）
-- [ ] Phase 5: 検索ロジック更新（3時間）
+- [x] Phase 1: IndexRequestテーブル実装（3時間）✅ 完了
+- [x] Phase 2: Section関連API拡張（2時間）✅ 完了
+- [x] Phase 3: IndexWorker実装（4時間）✅ 完了
+- [x] Phase 4: IndexRequest作成（2時間）✅ 完了（Phase 3と同時実装）
+- [ ] Phase 5: 検索ロジック更新（3時間）← 次はここ
 - [ ] Phase 6: CLI出力更新（1時間）
 - [ ] Phase 7: 統合テスト（2時間）
+
+**Phase 1-2完了** (2025-10-30):
+- IndexRequestテーブルのCRUD操作を完全実装
+- Section拡張API（findSectionsByPathAndHash, deleteSectionsByPathExceptHash）
+- 全23テスト合格
+- コミット: fb99b37
+
+**Phase 3-4完了** (2025-10-30):
+- IndexWorkerクラスを実装 (packages/server/src/worker/index-worker.ts)
+  - getNextRequests(): 各document_path毎に最新のpendingリクエストを取得
+  - processRequest(): リクエストを処理してセクションを生成
+  - start/stop(): ワーカーの起動・停止
+- SearchDocsServerにIndexWorkerを統合
+  - handleFileChange(): ファイル変更時にIndexRequestを作成
+  - indexDocument(): rebuild時にIndexRequestを作成
+  - getStatus(): IndexWorkerの状態を返す
+- ビルド成功
 
 #### 関連タスク
 

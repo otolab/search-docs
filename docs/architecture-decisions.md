@@ -1162,9 +1162,144 @@ async function checkServerHealth(
 
 ---
 
+## ADR-014: IndexRequestテーブルによる非同期インデックス管理
+
+**日付**: 2025-10-30
+**状態**: 採用
+**決定者**: 実装チーム
+
+### コンテキスト
+
+Task 6で発見された問題：
+- **問題C**: 設計書（Dirtyマーキングシステム）と実装（同期的削除→追加）が乖離
+- 設計書では非同期更新を想定していたが、実装は即座に整合性を保つ方式だった
+- ファイル更新時の高速応答とインデックス生成の時間がかかる処理の両立が必要
+
+### 検討した選択肢
+
+#### 1. 単純なDirtyマーキング
+**方式**:
+- `is_dirty`フラグでセクションをマーク
+- バックグラウンドワーカーで順次更新
+
+**長所**:
+- 設計書に忠実
+- 実装がシンプル
+
+**短所**:
+- 同じファイルに複数回更新がある場合の扱いが曖昧
+- デバウンス機構が必要
+- 処理中の状態が不明確
+
+#### 2. IndexRequestテーブル（採用）
+**方式**:
+- IndexRequestテーブルで更新要求を管理
+- WorkerがLatest Onlyルールで処理（各document_path毎に最新のpendingリクエストのみ）
+- 明確な状態遷移（pending → processing → completed/failed/skipped）
+
+**長所**:
+- 要求のキューイングが明示的
+- 状態管理が明確（status, created_at, started_at, completed_at）
+- デバウンス不要（最新のみ処理で自然に解決）
+- 処理の追跡が容易
+- 検索時に最新・更新中を区別可能
+
+**短所**:
+- テーブルが1つ増える
+- やや複雑
+
+### 決定
+
+IndexRequestテーブルを導入した非同期インデックス管理を採用。
+
+**理由**:
+1. **明確な状態管理**: pending/processing/completed/failed/skippedで状態を追跡
+2. **Latest Onlyルール**: 各document_path毎に最新のpendingリクエストのみ処理することで、自然にデバウンス
+3. **監査可能性**: 全てのインデックス作成要求が記録される
+4. **検索時の柔軟性**: 更新中のドキュメントを除外するオプションを提供可能
+
+### アーキテクチャ
+
+#### IndexRequestテーブル
+```typescript
+interface IndexRequest {
+  id: string;
+  documentPath: string;
+  documentHash: string;  // バージョン識別子
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+```
+
+#### IndexWorker
+```typescript
+class IndexWorker {
+  // 定期的にpendingリクエストをチェック
+  async getNextRequests(): Promise<IndexRequest[]> {
+    // 1. 全pendingリクエストを取得
+    // 2. document_path毎にグループ化
+    // 3. 各グループで最新（created_at降順の先頭）のみ抽出
+  }
+
+  async processRequest(request: IndexRequest): Promise<void> {
+    // 1. status='processing', started_at設定
+    // 2. 古いpendingをstatus='skipped'に更新
+    // 3. ストレージから文書取得、ハッシュ確認
+    // 4. 既存の同じハッシュのindexがあればスキップ
+    // 5. セクション生成、DBに保存
+    // 6. 古いindexを削除
+    // 7. status='completed', completed_at設定
+  }
+}
+```
+
+#### ファイル更新フロー
+```
+1. ファイル変更検知
+2. 文書をStorageに保存
+3. IndexRequestを作成（status='pending'）
+   ← 即座に完了（高速応答）
+4. [バックグラウンド] IndexWorkerが処理
+   ← 時間がかかる処理
+```
+
+### 実装フェーズ
+
+- **Phase 1**: IndexRequestテーブル実装 ✅
+- **Phase 2**: Section拡張API ✅
+- **Phase 3**: IndexWorker実装 ✅
+- **Phase 4**: IndexRequest作成 ✅
+- **Phase 5**: 検索ロジック更新（予定）
+- **Phase 6**: CLI出力更新（予定）
+- **Phase 7**: 統合テスト（予定）
+
+### 影響
+
+**メリット**:
+- ファイル更新時の即座の応答
+- バックグラウンドでの非同期インデックス生成
+- 高頻度更新時のデバウンス不要
+- インデックス作成状況の可視化
+
+**トレードオフ**:
+- テーブルが1つ増える（管理コスト若干増）
+- IndexRequestテーブルのクリーンアップが必要（完了済みレコードの定期削除）
+
+### 関連ドキュメント
+
+- 仕様書: `prompts/tasks/task8.dirty-marking-system-spec.v2.md`
+- 問題調査: `prompts/tasks/task6.design-implementation-divergence.v1.md`
+- 実装: `packages/server/src/worker/index-worker.ts`
+
+---
+
 ## 更新履歴
 
 - 2025-01-27: 初版作成（ADR-001〜010）
 - 2025-01-27: ADR-011追加（階層的コンテンツによるベクトル検索精度向上）
 - 2025-01-27: ADR-012追加（Section型のフラット構造採用）
 - 2025-10-28: ADR-013追加（CLIサーバプロセス管理の実装方針）
+- 2025-10-30: ADR-014追加（IndexRequestテーブルによる非同期インデックス管理）
