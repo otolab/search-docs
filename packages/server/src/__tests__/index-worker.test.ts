@@ -203,7 +203,6 @@ Content of section 2.
       // ストレージに文書を保存
       await storage.save(testPath, {
         path: testPath,
-        title: testPath,
         content: testContent,
         metadata: {
           createdAt: new Date(),
@@ -265,7 +264,6 @@ Content of section 2.
       // 最新のハッシュで文書を更新
       await storage.save(testPath, {
         path: testPath,
-        title: testPath,
         content: testContent + '\n## Section 3\nNew content.',
         metadata: {
           createdAt: new Date(),
@@ -365,7 +363,6 @@ Content of section 2.
       // 新しいハッシュで文書を更新
       await storage.save(testPath, {
         path: testPath,
-        title: testPath,
         content: testContent,
         metadata: {
           createdAt: new Date(),
@@ -399,7 +396,6 @@ Content of section 2.
 
       await storage.save(testPath, {
         path: testPath,
-        title: testPath,
         content: '# Auto Test\n\nContent.',
         metadata: {
           createdAt: new Date(),

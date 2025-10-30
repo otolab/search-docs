@@ -282,6 +282,7 @@ class SearchDocsWorker:
         limit = params.get("limit", 10)
         depth = params.get("depth")
         include_clean_only = params.get("includeCleanOnly", False)
+        exclude_paths = params.get("excludePaths", [])
 
         if not query:
             raise ValueError("query parameter is required")
@@ -309,6 +310,12 @@ class SearchDocsWorker:
         if include_clean_only:
             filters.append("is_dirty = false")
 
+        if exclude_paths:
+            # パス除外フィルタ（NOT IN形式）
+            # LanceDBのSQL構文でNOT INを使用
+            escaped_paths = [f"'{path}'" for path in exclude_paths]
+            filters.append(f"document_path NOT IN ({', '.join(escaped_paths)})")
+
         if filters:
             search_query = search_query.where(" AND ".join(filters))
 
@@ -320,6 +327,7 @@ class SearchDocsWorker:
             formatted_results.append({
                 "id": result["id"],
                 "documentPath": result["document_path"],
+                "documentHash": result["document_hash"],
                 "heading": result["heading"],
                 "depth": result["depth"],
                 "content": result["content"],

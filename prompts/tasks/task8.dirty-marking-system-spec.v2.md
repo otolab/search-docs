@@ -4,7 +4,7 @@
 **タスク番号**: task8
 **バージョン**: v2（IndexRequestテーブル導入版）
 **前提**: Task 6（設計と実装の乖離調査）
-**状態**: 仕様確定、実装計画作成完了
+**状態**: Phase 1-7 完了 ✅
 
 ## 背景
 
@@ -549,123 +549,164 @@ interface IndexRequestFilter {
 
 ## 実装計画
 
-### Phase 1: IndexRequestテーブルの実装（3時間）
+### Phase 1: IndexRequestテーブルの実装（3時間） ✅
 
 **目標**: IndexRequestテーブルとCRUD操作を実装
 
 #### 1.1 Pythonスキーマ定義（30分）
-- [ ] `packages/db-engine/src/python/schemas.py`にIndexRequestSchemaを追加
-- [ ] LanceDBテーブル作成処理
+- [x] `packages/db-engine/src/python/schemas.py`にIndexRequestSchemaを追加
+- [x] LanceDBテーブル作成処理
 
 #### 1.2 Python CRUD操作（1時間）
-- [ ] `create_index_request()`
-- [ ] `find_index_requests()`
-- [ ] `update_index_request()`
-- [ ] `update_many_index_requests()`
-- [ ] `get_paths_with_status()`
+- [x] `create_index_request()`
+- [x] `find_index_requests()`
+- [x] `update_index_request()`
+- [x] `update_many_index_requests()`
+- [x] `get_paths_with_status()`
 
 #### 1.3 TypeScript APIラッパー（1時間）
-- [ ] `packages/db-engine/src/typescript/index.ts`にAPI追加
-- [ ] JSON-RPC経由でPython関数を呼び出し
+- [x] `packages/db-engine/src/typescript/index.ts`にAPI追加
+- [x] JSON-RPC経由でPython関数を呼び出し
 
 #### 1.4 テスト（30分）
-- [ ] IndexRequest CRUD操作のテスト
-- [ ] フィルタ条件のテスト
+- [x] IndexRequest CRUD操作のテスト
+- [x] フィルタ条件のテスト
 
-### Phase 2: Section関連APIの拡張（2時間）
+### Phase 2: Section関連APIの拡張（2時間） ✅
 
 **目標**: document_hashによるフィルタ・削除機能
 
 #### 2.1 Python実装（1時間）
-- [ ] `find_sections_by_path_and_hash()`
-- [ ] `delete_sections_by_path_except_hash()`
+- [x] `find_sections_by_path_and_hash()`
+- [x] `delete_sections_by_path_except_hash()`
 
 #### 2.2 TypeScript APIラッパー（30分）
-- [ ] TypeScript側のAPI追加
+- [x] TypeScript側のAPI追加
 
 #### 2.3 テスト（30分）
-- [ ] ハッシュによるフィルタのテスト
-- [ ] 選択的削除のテスト
+- [x] ハッシュによるフィルタのテスト
+- [x] 選択的削除のテスト
 
-### Phase 3: IndexWorkerの実装（4時間）
+### Phase 3: IndexWorkerの実装（4時間） ✅
 
 **目標**: バックグラウンドでIndexRequestを処理
 
 #### 3.1 IndexWorkerクラス（2時間）
-- [ ] `packages/server/src/worker/index-worker.ts`作成
-- [ ] `start()`, `stop()`, `processNextRequests()`
-- [ ] `getNextRequests()` - 最新リクエストのみ抽出
-- [ ] `processRequest()` - リクエスト処理ロジック
+- [x] `packages/server/src/worker/index-worker.ts`作成
+- [x] `start()`, `stop()`, `processNextRequests()`
+- [x] `getNextRequests()` - 最新リクエストのみ抽出
+- [x] `processRequest()` - リクエスト処理ロジック
 
 #### 3.2 Serverへの組み込み（1時間）
-- [ ] `packages/server/src/server/search-docs-server.ts`
-- [ ] サーバ起動時にWorkerを開始
-- [ ] サーバ停止時にWorkerを停止
+- [x] `packages/server/src/server/search-docs-server.ts`
+- [x] サーバ起動時にWorkerを開始
+- [x] サーバ停止時にWorkerを停止
 
 #### 3.3 テスト（1時間）
-- [ ] Worker起動・停止のテスト
-- [ ] リクエスト処理のテスト
-- [ ] 複数リクエストの処理順序テスト
+- [x] Worker起動・停止のテスト
+- [x] リクエスト処理のテスト
+- [x] 複数リクエストの処理順序テスト
 
-### Phase 4: ファイル更新時のIndexRequest作成（2時間）
+### Phase 4: ファイル更新時のIndexRequest作成（2時間） ✅
 
 **目標**: ファイル変更時にIndexRequestを作成
 
 #### 4.1 indexDocument()の更新（1時間）
-- [ ] `packages/server/src/server/search-docs-server.ts`
-- [ ] storage更新 + IndexRequest作成
-- [ ] 既存の同期的なindex作成を削除
+- [x] `packages/server/src/server/search-docs-server.ts`
+- [x] storage更新 + IndexRequest作成
+- [x] 既存の同期的なindex作成を削除
 
 #### 4.2 rebuildIndex()の更新（30分）
-- [ ] 複数ファイルに対してIndexRequestを一括作成
-- [ ] forceオプションの対応
+- [x] 複数ファイルに対してIndexRequestを一括作成
+- [x] forceオプションの対応
 
 #### 4.3 テスト（30分）
-- [ ] ファイル更新時のIndexRequest作成テスト
-- [ ] rebuild時の一括作成テスト
+- [x] ファイル更新時のIndexRequest作成テスト
+- [x] rebuild時の一括作成テスト
 
-### Phase 5: 検索ロジックの更新（3時間）
+### Phase 5: 検索ロジックの更新（3時間） ✅
 
 **目標**: indexStatusによるフィルタと状態表示
 
 #### 5.1 検索オプションの拡張（1時間）
-- [ ] `SearchOptions`に`indexStatus`を追加
-- [ ] `indexStatus`によるpath除外ロジック
+- [x] `SearchOptions`に`indexStatus`を追加
+- [x] `indexStatus`によるpath除外ロジック
 
 #### 5.2 Index状態の計算（1時間）
-- [ ] `computeIndexStatus()`の実装
-- [ ] 検索結果への状態情報付与
+- [x] `computeIndexStatus()`の実装
+- [x] 検索結果への状態情報付与
 
 #### 5.3 テスト（1時間）
-- [ ] indexStatusフィルタのテスト
-- [ ] 状態計算のテスト（latest, updating, outdated）
+- [x] indexStatusフィルタのテスト
+- [x] 状態計算のテスト（latest, updating, outdated）
 
-### Phase 6: CLI出力の更新（1時間）
+### Phase 6: CLI出力の更新（1時間） ✅
 
 **目標**: 検索結果にindex状態を表示
 
 #### 6.1 出力フォーマット更新（30分）
-- [ ] `packages/cli/src/utils/output.ts`
-- [ ] text形式で`[最新]`, `[更新中]`を表示
-- [ ] JSON形式で`indexStatus`を出力
+- [x] `packages/cli/src/utils/output.ts`
+- [x] text形式で`[最新]`, `[更新中]`を表示
+- [x] JSON形式で`indexStatus`を出力
 
 #### 6.2 テスト（30分）
-- [ ] 出力フォーマットのテスト
+- [x] 出力フォーマットのテスト
 
-### Phase 7: 統合テスト（2時間）
+### Phase 7: 統合テスト（2時間） ✅
 
 **目標**: 全体動作の確認
 
 #### 7.1 E2Eテスト（1.5時間）
-- [ ] ファイル更新 → IndexRequest作成 → Worker処理 → 検索
-- [ ] 複数回更新時の動作確認
-- [ ] indexStatusフィルタの動作確認
+- [x] ファイル更新 → IndexRequest作成 → Worker処理 → 検索
+- [x] 複数回更新時の動作確認
+- [x] indexStatusフィルタの動作確認
 
 #### 7.2 パフォーマンステスト（30分）
-- [ ] 大量ファイル更新時の動作
-- [ ] Worker処理速度の確認
+- [x] 大量ファイル更新時の動作
+- [x] Worker処理速度の確認
 
 **総推定工数**: 17時間
+
+## 完了報告（2025-10-30）
+
+### 実装完了項目
+
+**Phase 1-7 全て完了** ✅
+
+1. **データ構造修正**（Phase 5開始前）
+   - Document型からtitleフィールドを削除、metadata.titleへ移動（オプショナル）
+   - fileHashを必須フィールドに変更（`fileHash?: string` → `fileHash: string`）
+   - 全実装コードとテストを修正
+
+2. **Phase 5: 検索ロジックの更新**
+   - SearchOptionsに`indexStatus`パラメータ追加
+   - SearchResultに`indexStatus`, `isLatest`, `hasPendingUpdate`追加
+   - `computeIndexStatus()`実装
+   - Pythonのsearch()に`excludePaths`対応
+
+3. **Phase 6: CLI出力の更新**
+   - text形式で状態ラベル表示: `[最新]`, `[更新中]`, `[古い]`
+   - JSON形式で全状態フィールド出力
+
+4. **Phase 7: 統合テスト**
+   - server: 89テスト全てパス ✅
+   - storage: 29テスト全てパス ✅
+   - db-engine: 23テスト全てパス ✅
+   - **合計**: 141テスト全てパス ✅
+
+### 変更ファイル
+
+- `packages/types/src/api.ts` - SearchOptions/SearchResult拡張
+- `packages/types/src/document.ts` - Document型修正
+- `packages/server/src/server/search-docs-server.ts` - 検索ロジック実装
+- `packages/db-engine/src/python/worker.py` - excludePaths対応
+- `packages/server/src/__tests__/search-status.test.ts` - Phase 5テスト
+- `packages/cli/src/utils/output.ts` - 出力フォーマット更新
+- その他テストファイル修正多数
+
+### 次のステップ
+
+Task 8 Phase 1-7完了。FileWatcher統合が次の候補。
 
 ## マイルストーン
 

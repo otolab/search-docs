@@ -29,11 +29,11 @@ describe('FileStorage', () => {
     it('文書を保存できる', async () => {
       const document: Document = {
         path: 'test/document.md',
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-1',
         },
       };
 
@@ -47,11 +47,11 @@ describe('FileStorage', () => {
     it('文書にハッシュが追加される', async () => {
       const document: Document = {
         path: 'test/document.md',
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-2',
         },
       };
 
@@ -65,11 +65,11 @@ describe('FileStorage', () => {
     it('ネストされたパスで保存できる', async () => {
       const document: Document = {
         path: 'a/b/c/document.md',
-        title: 'ネストされた文書',
         content: '深い階層の文書',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-3',
         },
       };
 
@@ -84,11 +84,11 @@ describe('FileStorage', () => {
     it('保存した文書を取得できる', async () => {
       const document: Document = {
         path: 'test/document.md',
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-4',
         },
       };
 
@@ -97,7 +97,6 @@ describe('FileStorage', () => {
 
       expect(retrieved).not.toBeNull();
       expect(retrieved?.path).toBe(document.path);
-      expect(retrieved?.title).toBe(document.title);
       expect(retrieved?.content).toBe(document.content);
     });
 
@@ -109,11 +108,11 @@ describe('FileStorage', () => {
     it('取得した文書のメタデータがDate型である', async () => {
       const document: Document = {
         path: 'test/document.md',
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-5',
         },
       };
 
@@ -129,11 +128,11 @@ describe('FileStorage', () => {
     it('文書を削除できる', async () => {
       const document: Document = {
         path: 'test/document.md',
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-6',
         },
       };
 
@@ -154,21 +153,18 @@ describe('FileStorage', () => {
       const documents: Document[] = [
         {
           path: 'doc1.md',
-          title: '文書1',
           content: '内容1',
-          metadata: { createdAt: new Date(), updatedAt: new Date() },
+          metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-7' },
         },
         {
           path: 'dir/doc2.md',
-          title: '文書2',
           content: '内容2',
-          metadata: { createdAt: new Date(), updatedAt: new Date() },
+          metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-8' },
         },
         {
           path: 'dir/subdir/doc3.md',
-          title: '文書3',
           content: '内容3',
-          metadata: { createdAt: new Date(), updatedAt: new Date() },
+          metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-9' },
         },
       ];
 
@@ -194,11 +190,11 @@ describe('FileStorage', () => {
     it('存在する文書に対してtrueを返す', async () => {
       const document: Document = {
         path: 'test/document.md',
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-10',
         },
       };
 
@@ -218,11 +214,11 @@ describe('FileStorage', () => {
     it('バックスラッシュをスラッシュに変換する', async () => {
       const document: Document = {
         path: 'test\\document.md', // Windowsスタイルのパス
-        title: 'テスト文書',
         content: 'これはテスト文書です。',
         metadata: {
           createdAt: new Date(),
           updatedAt: new Date(),
+          fileHash: 'test-hash-11',
         },
       };
 
@@ -239,15 +235,13 @@ describe('FileStorage', () => {
       const content = 'これはテスト文書です。';
       const doc1: Document = {
         path: 'doc1.md',
-        title: '文書1',
         content,
-        metadata: { createdAt: new Date(), updatedAt: new Date() },
+        metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-12' },
       };
       const doc2: Document = {
         path: 'doc2.md',
-        title: '文書2',
         content,
-        metadata: { createdAt: new Date(), updatedAt: new Date() },
+        metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-13' },
       };
 
       await storage.save(doc1.path, doc1);
@@ -262,15 +256,13 @@ describe('FileStorage', () => {
     it('内容が異なる場合、異なるハッシュが計算される', async () => {
       const doc1: Document = {
         path: 'doc1.md',
-        title: '文書1',
         content: '内容1',
-        metadata: { createdAt: new Date(), updatedAt: new Date() },
+        metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-14' },
       };
       const doc2: Document = {
         path: 'doc2.md',
-        title: '文書2',
         content: '内容2',
-        metadata: { createdAt: new Date(), updatedAt: new Date() },
+        metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: 'test-hash-15' },
       };
 
       await storage.save(doc1.path, doc1);

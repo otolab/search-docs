@@ -24,17 +24,28 @@ export interface SearchOptions {
   includeCleanOnly?: boolean;
   /** ソート基準 */
   sortBy?: 'score' | 'depth' | 'path';
+  /** インデックス状態フィルタ */
+  indexStatus?: 'all' | 'latest_only' | 'completed_only';
+  /** 除外するドキュメントパス（内部使用） */
+  excludePaths?: string[];
 }
 
 export interface SearchResult {
   id: string;
   documentPath: string;
+  documentHash: string;
   heading: string;
   depth: number;
   content: string;
   score: number;
   isDirty: boolean;
   tokenCount: number;
+  /** インデックス状態 */
+  indexStatus?: 'latest' | 'outdated' | 'updating';
+  /** 最新のインデックスかどうか */
+  isLatest?: boolean;
+  /** 更新待ちリクエストがあるか */
+  hasPendingUpdate?: boolean;
 }
 
 export interface SearchResponse {

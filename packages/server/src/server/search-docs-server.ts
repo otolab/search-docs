@@ -127,7 +127,6 @@ export class SearchDocsServer {
         const existingDoc = await this.storage.get(event.path);
         const document: Document = {
           path: event.path,
-          title: event.path,
           content,
           metadata: {
             createdAt: existingDoc?.metadata.createdAt || new Date(),
@@ -160,13 +159,37 @@ export class SearchDocsServer {
   async search(request: SearchRequest): Promise<SearchResponse> {
     const startTime = Date.now();
 
+    // indexStatusによるフィルタ処理
+    let excludePaths: string[] | undefined;
+    if (
+      request.options?.indexStatus === 'latest_only' ||
+      request.options?.indexStatus === 'completed_only'
+    ) {
+      // pending/processingのリクエストがあるdocument_pathを除外
+      excludePaths = await this.dbEngine.getPathsWithStatus(['pending', 'processing']);
+    }
+
     const response = await this.dbEngine.search({
       query: request.query,
       ...request.options,
+      excludePaths,
     });
 
+    // 各結果にindex状態情報を付与
+    const resultsWithStatus = await Promise.all(
+      response.results.map(async (section) => {
+        const status = await this.computeIndexStatus(section.documentPath, section.documentHash);
+        return {
+          ...section,
+          indexStatus: status.status,
+          isLatest: status.isLatest,
+          hasPendingUpdate: status.hasPendingUpdate,
+        };
+      })
+    );
+
     return {
-      results: response.results,
+      results: resultsWithStatus,
       total: response.total,
       took: Date.now() - startTime,
     };
@@ -207,7 +230,6 @@ export class SearchDocsServer {
     // 4. 文書をストレージに保存
     const document: Document = {
       path,
-      title: path, // ファイルパスをタイトルとして使用
       content,
       metadata: {
         createdAt: existingDoc?.metadata.createdAt || new Date(),
@@ -301,5 +323,49 @@ export class SearchDocsServer {
         queue: pendingRequests.length,
       },
     };
+  }
+
+  /**
+   * インデックス状態を計算
+   */
+  private async computeIndexStatus(
+    documentPath: string,
+    sectionHash: string
+  ): Promise<{
+    status: 'latest' | 'outdated' | 'updating';
+    isLatest: boolean;
+    hasPendingUpdate: boolean;
+  }> {
+    // 1. storageから最新のdocument_hashを取得
+    const doc = await this.storage.get(documentPath);
+    if (!doc) {
+      return {
+        status: 'outdated',
+        isLatest: false,
+        hasPendingUpdate: false,
+      };
+    }
+
+    const isLatest = sectionHash === doc.metadata.fileHash;
+
+    // 2. pending/processingのリクエストがあるか確認
+    const pendingRequests = await this.dbEngine.findIndexRequests({
+      documentPath,
+      status: ['pending', 'processing'],
+    });
+
+    const hasPendingUpdate = pendingRequests.length > 0;
+
+    // 3. ステータスを判定
+    let status: 'latest' | 'outdated' | 'updating';
+    if (hasPendingUpdate) {
+      status = 'updating';
+    } else if (isLatest) {
+      status = 'latest';
+    } else {
+      status = 'outdated'; // 通常ありえない（古いindexは削除されるため）
+    }
+
+    return { status, isLatest, hasPendingUpdate };
   }
 }
