@@ -117,16 +117,10 @@ indexCmd
   .command('status')
   .description('インデックスのステータスを確認')
   .option('--server <url>', 'サーバURL', 'http://localhost:24280')
-  .action(() => {
-    console.log('index status: 未実装');
-  });
-
-indexCmd
-  .command('clean')
-  .description('Dirtyセクションをクリーン')
-  .option('--server <url>', 'サーバURL', 'http://localhost:24280')
-  .action(() => {
-    console.log('index clean: 未実装');
+  .option('--format <format>', '出力形式 (text, json)', 'text')
+  .action(async (options: { server?: string; format?: 'text' | 'json' }) => {
+    const { executeIndexStatus } = await import('./commands/index/status.js');
+    await executeIndexStatus(options);
   });
 
 // config コマンド
@@ -143,19 +137,6 @@ configCmd
     console.log('config init: 未実装');
   });
 
-configCmd
-  .command('validate')
-  .description('設定ファイルを検証')
-  .action(() => {
-    console.log('config validate: 未実装');
-  });
-
-configCmd
-  .command('show')
-  .description('設定内容を表示')
-  .action(() => {
-    console.log('config show: 未実装');
-  });
 
 // コマンドラインを解析
 program.parse(process.argv);
