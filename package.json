@@ -13,9 +13,13 @@
     "test:integration": "pnpm run -r test:integration",
     "lint": "pnpm run -r lint",
     "lint:fix": "pnpm run -r lint:fix",
-    "typecheck": "pnpm run -r typecheck"
+    "typecheck": "pnpm run -r typecheck",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "@eslint/js": "^9.0.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
