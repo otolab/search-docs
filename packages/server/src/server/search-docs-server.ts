@@ -29,6 +29,13 @@ export class SearchDocsServer {
   private watcher: FileWatcher | null = null;
   private indexWorker: IndexWorker | null = null;
   private startTime: number = 0;
+  private requestStats = {
+    total: 0,
+    search: 0,
+    getDocument: 0,
+    indexDocument: 0,
+    rebuildIndex: 0,
+  };
 
   constructor(
     private config: SearchDocsConfig,
@@ -167,6 +174,8 @@ export class SearchDocsServer {
    * 検索API
    */
   async search(request: SearchRequest): Promise<SearchResponse> {
+    this.requestStats.total++;
+    this.requestStats.search++;
     const startTime = Date.now();
 
     // indexStatusによるフィルタ処理
@@ -209,6 +218,8 @@ export class SearchDocsServer {
    * 文書取得API
    */
   async getDocument(request: GetDocumentRequest): Promise<GetDocumentResponse> {
+    this.requestStats.total++;
+    this.requestStats.getDocument++;
     const document = await this.storage.get(request.path);
 
     if (!document) {
@@ -222,6 +233,8 @@ export class SearchDocsServer {
    * 文書インデックスAPI
    */
   async indexDocument(request: IndexDocumentRequest): Promise<IndexDocumentResponse> {
+    this.requestStats.total++;
+    this.requestStats.indexDocument++;
     const { path, force = false } = request;
 
     // 1. ファイル読み込み
@@ -269,6 +282,8 @@ export class SearchDocsServer {
    * インデックス再構築API
    */
   async rebuildIndex(request: RebuildIndexRequest = {}): Promise<RebuildIndexResponse> {
+    this.requestStats.total++;
+    this.requestStats.rebuildIndex++;
     const { paths, force = false } = request;
 
     let filesToIndex: string[];
@@ -321,6 +336,13 @@ export class SearchDocsServer {
         version: '0.1.0',
         uptime: Date.now() - this.startTime,
         pid: process.pid,
+        requests: {
+          total: this.requestStats.total,
+          search: this.requestStats.search,
+          getDocument: this.requestStats.getDocument,
+          indexDocument: this.requestStats.indexDocument,
+          rebuildIndex: this.requestStats.rebuildIndex,
+        },
       },
       index: {
         totalDocuments: stats.totalDocuments,

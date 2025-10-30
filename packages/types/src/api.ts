@@ -89,6 +89,13 @@ export interface GetStatusResponse {
     version: string;
     uptime: number; // ms
     pid: number;
+    requests: {
+      total: number;
+      search: number;
+      getDocument: number;
+      indexDocument: number;
+      rebuildIndex: number;
+    };
   };
   index: {
     totalDocuments: number;

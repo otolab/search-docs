@@ -38,6 +38,13 @@ export async function executeIndexStatus(
     console.log(`  Uptime:     ${formatUptime(status.server.uptime)}`);
     console.log(`  PID:        ${status.server.pid}`);
     console.log();
+    console.log('Requests:');
+    console.log(`  Total:      ${status.server.requests.total}`);
+    console.log(`  Search:     ${status.server.requests.search}`);
+    console.log(`  GetDoc:     ${status.server.requests.getDocument}`);
+    console.log(`  Index:      ${status.server.requests.indexDocument}`);
+    console.log(`  Rebuild:    ${status.server.requests.rebuildIndex}`);
+    console.log();
     console.log('Index:');
     console.log(`  Documents:  ${status.index.totalDocuments}`);
     console.log(`  Sections:   ${status.index.totalSections}`);
