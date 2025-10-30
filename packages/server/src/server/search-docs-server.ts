@@ -117,11 +117,27 @@ export class SearchDocsServer {
     switch (event.type) {
       case 'add':
       case 'change':
-        // ファイルを読み込んでハッシュ計算
+        // 1. ファイルを読み込み
         const content = await fs.readFile(event.path, 'utf-8');
+
+        // 2. ハッシュ計算
         const hash = createHash('sha256').update(content).digest('hex');
 
-        // IndexRequestを作成
+        // 3. ストレージに保存
+        const existingDoc = await this.storage.get(event.path);
+        const document: Document = {
+          path: event.path,
+          title: event.path,
+          content,
+          metadata: {
+            createdAt: existingDoc?.metadata.createdAt || new Date(),
+            updatedAt: new Date(),
+            fileHash: hash,
+          },
+        };
+        await this.storage.save(event.path, document);
+
+        // 4. IndexRequestを作成
         await this.dbEngine.createIndexRequest({
           documentPath: event.path,
           documentHash: hash,
