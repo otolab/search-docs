@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "postinstall": "uv sync",
+    "prepublishOnly": "pnpm run build:all",
     "build": "tsc --build",
     "build:all": "pnpm run -r build",
     "clean": "tsc --build --clean",
