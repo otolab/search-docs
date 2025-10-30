@@ -85,10 +85,8 @@ export interface IndexRequestFilter {
 }
 
 export interface CreateIndexRequestParams {
-  id: string;
   documentPath: string;
   documentHash: string;
-  status: IndexRequest['status'];
 }
 
 export interface UpdateIndexRequestParams {

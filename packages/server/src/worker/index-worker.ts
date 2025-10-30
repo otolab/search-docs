@@ -222,7 +222,7 @@ export class IndexWorker {
 
       // 6. インデックスを生成
       console.log(`[IndexWorker] Generating index for ${request.documentPath}`);
-      const sections = await this.splitter.split(
+      const sections = this.splitter.split(
         doc.content,
         request.documentPath,
         request.documentHash
