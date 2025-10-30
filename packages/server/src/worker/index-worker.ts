@@ -4,7 +4,7 @@
  */
 
 import type { DBEngine, IndexRequest } from '@search-docs/db-engine';
-import type { DocumentStorage, Section } from '@search-docs/types';
+import type { DocumentStorage } from '@search-docs/types';
 import type { Splitter } from '../splitter/index.js';
 
 export interface IndexWorkerOptions {

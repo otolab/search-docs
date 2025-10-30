@@ -26,7 +26,7 @@ export async function executeServerRestart(
     console.log('Stopping server...');
     try {
       await stopServer({ config: options.config });
-    } catch (error) {
+    } catch (_error) {
       // サーバが動いていない場合もエラーではない
       console.log('Server was not running, skipping stop.');
     }

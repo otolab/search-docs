@@ -10,6 +10,26 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// MCP型定義（mcp-debugの型が不完全なため）
+interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+}
+
+interface MCPToolsListResponse {
+  tools: MCPTool[];
+}
+
+interface MCPTextContent {
+  type: 'text';
+  text: string;
+}
+
+interface MCPToolResult {
+  content?: MCPTextContent[];
+}
+
 describe('search-docs MCP Server E2E Tests', () => {
   let tester: MCPServiceE2ETester;
 
@@ -35,7 +55,7 @@ describe('search-docs MCP Server E2E Tests', () => {
   });
 
   describe('基本的なMCP動作確認', () => {
-    test('MCPサーバーの起動と初期化', async () => {
+    test('MCPサーバーの起動と初期化', () => {
       const status = tester.getStatus();
 
       expect(status.isReady).toBe(true);
@@ -44,12 +64,12 @@ describe('search-docs MCP Server E2E Tests', () => {
     });
 
     test('利用可能なツールの確認', async () => {
-      const response = (await tester.sendRequest('tools/list', {})) as any;
+      const response = (await tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
 
       expect(response.tools).toBeDefined();
       expect(Array.isArray(response.tools)).toBe(true);
 
-      const toolNames = response.tools.map((t: any) => t.name);
+      const toolNames = response.tools.map((t) => t.name);
       expect(toolNames).toContain('search');
       expect(toolNames).toContain('get_document');
       expect(toolNames).toContain('index_status');
@@ -65,7 +85,7 @@ describe('search-docs MCP Server E2E Tests', () => {
       expect(result.duration).toBeLessThan(2000); // 2秒以内に応答
 
       // レスポンステキストにインデックス情報が含まれる
-      const content = (result.result as any)?.content?.[0]?.text;
+      const content = (result.result as MCPToolResult)?.content?.[0]?.text;
       expect(content).toContain('インデックス状態');
       expect(content).toContain('総文書数');
       expect(content).toContain('総セクション数');
@@ -82,7 +102,7 @@ describe('search-docs MCP Server E2E Tests', () => {
       expect(result.success).toBe(true);
       expect(result.result).toBeDefined();
 
-      const content = (result.result as any)?.content?.[0]?.text;
+      const content = (result.result as MCPToolResult)?.content?.[0]?.text;
       expect(content).toContain('検索結果');
     });
 
@@ -106,7 +126,7 @@ describe('search-docs MCP Server E2E Tests', () => {
       });
 
       expect(result.success).toBe(true);
-      const content = (result.result as any)?.content?.[0]?.text;
+      const content = (result.result as MCPToolResult)?.content?.[0]?.text;
       // 検索結果フォーマットを確認
       expect(content).toContain('検索結果:');
       expect(content).toContain('処理時間:');
@@ -124,7 +144,7 @@ describe('search-docs MCP Server E2E Tests', () => {
       expect(searchResult.success).toBe(true);
 
       // 検索結果からパスを抽出（簡易的な方法）
-      const searchContent = (searchResult.result as any)?.content?.[0]?.text || '';
+      const searchContent = (searchResult.result as MCPToolResult)?.content?.[0]?.text || '';
       const pathMatch = searchContent.match(/文書: (.+\.md)/);
 
       if (pathMatch) {
@@ -135,7 +155,7 @@ describe('search-docs MCP Server E2E Tests', () => {
         });
 
         expect(result.success).toBe(true);
-        const content = (result.result as any)?.content?.[0]?.text;
+        const content = (result.result as MCPToolResult)?.content?.[0]?.text;
         expect(content).toContain('文書:');
         expect(content).toContain('内容:');
       }
@@ -149,7 +169,7 @@ describe('search-docs MCP Server E2E Tests', () => {
       // エラーレスポンスまたは空の結果を返す
       // 実装次第で成功するがエラーメッセージを含む場合もある
       if (result.success) {
-        const content = (result.result as any)?.content?.[0]?.text;
+        const content = (result.result as MCPToolResult)?.content?.[0]?.text;
         expect(content).toBeDefined();
       } else {
         expect(result.error).toBeDefined();

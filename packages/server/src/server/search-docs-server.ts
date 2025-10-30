@@ -125,7 +125,7 @@ export class SearchDocsServer {
 
     switch (event.type) {
       case 'add':
-      case 'change':
+      case 'change': {
         // 1. ファイルを読み込み
         const content = await fs.readFile(event.path, 'utf-8');
 
@@ -152,6 +152,7 @@ export class SearchDocsServer {
         });
         console.log(`Created IndexRequest for ${event.path} (${hash.slice(0, 8)})`);
         break;
+      }
 
       case 'unlink':
         // セクションを削除

@@ -133,12 +133,12 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
       const cliModuleFile = fileURLToPath(cliModulePath);
       const cliPkgDir = path.dirname(path.dirname(cliModuleFile)); // dist/index.js → dist → cli/
       const packageJsonPath = path.join(cliPkgDir, 'package.json');
-      packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    } catch (error) {
+      packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version: string };
+    } catch (_error) {
       // Fallback: __dirname から相対的に取得 (開発環境用)
       // dist/commands/server/ → ../../../package.json
       const fallbackPath = path.join(__dirname, '../../../package.json');
-      packageJson = JSON.parse(readFileSync(fallbackPath, 'utf-8'));
+      packageJson = JSON.parse(readFileSync(fallbackPath, 'utf-8')) as { version: string };
     }
 
     const pidFileContent: PidFileContent = {

@@ -42,7 +42,7 @@ async function loadConfig(projectDir: string): Promise<SearchDocsConfig> {
         port: config.server?.port || DEFAULT_CONFIG.server.port,
       },
     };
-  } catch (error) {
+  } catch (_error) {
     console.error(`[mcp-server] Config file not found or invalid, using defaults: ${configPath}`);
     return DEFAULT_CONFIG;
   }
@@ -68,7 +68,7 @@ function parseArgs(): CLIOptions {
     .requiredOption('--project-dir <path>', 'Project directory path')
     .parse(process.argv);
 
-  const options = program.opts();
+  const options = program.opts<{ projectDir: string }>();
 
   return {
     projectDir: path.resolve(options.projectDir),
@@ -133,7 +133,7 @@ async function main() {
           .describe('Clean状態のセクションのみを検索対象とする（デフォルト: false）'),
       },
     },
-    async (args: any) => {
+    async (args: { query: string; depth?: number | number[]; limit?: number; includeCleanOnly?: boolean }) => {
       const { query, depth, limit, includeCleanOnly } = args;
 
       try {
@@ -186,7 +186,7 @@ async function main() {
         path: z.string().describe('文書パス'),
       },
     },
-    async (args: any) => {
+    async (args: { path: string }) => {
       const { path: documentPath } = args;
 
       try {
