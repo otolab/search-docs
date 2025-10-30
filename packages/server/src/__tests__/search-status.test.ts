@@ -66,6 +66,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
     watcher: {
       enabled: false, // テストではWatcherを無効化
       debounceMs: 1000,
+      awaitWriteFinishMs: 100,
     },
   };
 
