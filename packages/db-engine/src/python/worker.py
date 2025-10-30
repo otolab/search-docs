@@ -7,6 +7,7 @@ search-docs LanceDB JSON-RPC Worker
 import sys
 import json
 import traceback
+import uuid
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 import lancedb
@@ -19,8 +20,11 @@ from embedding import create_embedding_model
 # スキーマ定義をインポート
 from schemas import (
     get_sections_schema,
+    get_index_requests_schema,
     SECTIONS_TABLE,
-    validate_section
+    INDEX_REQUESTS_TABLE,
+    validate_section,
+    validate_index_request
 )
 
 
@@ -55,6 +59,19 @@ class SearchDocsWorker:
 
         return model_name
 
+    @staticmethod
+    def _get_db_path() -> str:
+        """コマンドライン引数からdb_pathを取得
+
+        Returns:
+            db_path文字列
+        """
+        for arg in sys.argv[1:]:
+            if arg.startswith('--db-path='):
+                return arg.split('=', 1)[1]
+        # デフォルト値
+        return "./.search-docs/index"
+
     def init_tables(self):
         """必要なテーブルを初期化"""
         try:
@@ -68,6 +85,16 @@ class SearchDocsWorker:
                     if "already exists" not in str(e):
                         raise
                     sys.stderr.write(f"Warning: Table {SECTIONS_TABLE} already exists, skipping creation\n")
+                    sys.stderr.flush()
+
+            # IndexRequests テーブル
+            if INDEX_REQUESTS_TABLE not in existing_tables:
+                try:
+                    self.db.create_table(INDEX_REQUESTS_TABLE, schema=get_index_requests_schema())
+                except ValueError as e:
+                    if "already exists" not in str(e):
+                        raise
+                    sys.stderr.write(f"Warning: Table {INDEX_REQUESTS_TABLE} already exists, skipping creation\n")
                     sys.stderr.flush()
 
         except Exception as e:
@@ -127,12 +154,27 @@ class SearchDocsWorker:
                 result = self.get_sections_by_path(params)
             elif method == "deleteSectionsByPath":
                 result = self.delete_sections_by_path(params)
+            elif method == "findSectionsByPathAndHash":
+                result = self.find_sections_by_path_and_hash(params)
+            elif method == "deleteSectionsByPathExceptHash":
+                result = self.delete_sections_by_path_except_hash(params)
             elif method == "markDirty":
                 result = self.mark_dirty(params)
             elif method == "getDirtySections":
                 result = self.get_dirty_sections(params)
             elif method == "getStats":
                 result = self.get_stats()
+            # IndexRequest操作
+            elif method == "createIndexRequest":
+                result = self.create_index_request(params)
+            elif method == "findIndexRequests":
+                result = self.find_index_requests(params)
+            elif method == "updateIndexRequest":
+                result = self.update_index_request(params)
+            elif method == "updateManyIndexRequests":
+                result = self.update_many_index_requests(params)
+            elif method == "getPathsWithStatus":
+                result = self.get_paths_with_status(params)
             else:
                 return {
                     "jsonrpc": "2.0",
@@ -316,6 +358,43 @@ class SearchDocsWorker:
 
         return {"deleted": True}
 
+    def find_sections_by_path_and_hash(self, params: Dict[str, Any]) -> Dict[str, List]:
+        """特定のdocument_pathとdocument_hashのセクションを取得"""
+        document_path = params.get("documentPath")
+        document_hash = params.get("documentHash")
+
+        if not document_path:
+            raise ValueError("documentPath parameter is required")
+        if not document_hash:
+            raise ValueError("documentHash parameter is required")
+
+        table = self.db.open_table(SECTIONS_TABLE)
+        results = table.search()\
+            .where(f"document_path = '{document_path}' AND document_hash = '{document_hash}'")\
+            .to_list()
+
+        # 結果をフォーマット
+        formatted_sections = [self.format_section(section) for section in results]
+
+        return {"sections": formatted_sections}
+
+    def delete_sections_by_path_except_hash(self, params: Dict[str, Any]) -> Dict[str, int]:
+        """指定パスのセクションのうち、指定したhash以外を削除"""
+        document_path = params.get("documentPath")
+        document_hash = params.get("documentHash")
+
+        if not document_path:
+            raise ValueError("documentPath parameter is required")
+        if not document_hash:
+            raise ValueError("documentHash parameter is required")
+
+        table = self.db.open_table(SECTIONS_TABLE)
+
+        # 指定したhash以外を削除
+        table.delete(f"document_path = '{document_path}' AND document_hash != '{document_hash}'")
+
+        return {"deleted": True}
+
     def mark_dirty(self, params: Dict[str, Any]) -> Dict[str, int]:
         """指定パスのセクションをDirtyにマーク"""
         document_path = params.get("documentPath")
@@ -367,10 +446,218 @@ class SearchDocsWorker:
             "totalDocuments": len(unique_paths)
         }
 
+    # ========================================
+    # IndexRequest操作
+    # ========================================
+
+    def create_index_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """IndexRequestを作成"""
+        # バリデーション（作成時用）
+        validate_index_request(params, for_creation=True)
+
+        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+
+        # IDを生成
+        request_id = str(uuid.uuid4())
+
+        # タイムスタンプをPyArrow形式に変換（ミリ秒精度）
+        now = pd.Timestamp.now(tz='UTC').floor('ms')
+        request_data = {
+            "id": request_id,
+            "document_path": params["document_path"],
+            "document_hash": params["document_hash"],
+            "status": "pending",  # 作成時は常にpending
+            "created_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
+        }
+
+        # データを追加
+        table.add([request_data])
+
+        # 完全なリクエストオブジェクトを返す（camelCaseに変換）
+        return {
+            "id": request_data["id"],
+            "documentPath": request_data["document_path"],
+            "documentHash": request_data["document_hash"],
+            "status": request_data["status"],
+            "createdAt": request_data["created_at"].isoformat(),
+            "startedAt": None,
+            "completedAt": None,
+            "error": None,
+        }
+
+    def find_index_requests(self, params: Dict[str, Any]) -> Dict[str, List]:
+        """IndexRequestを検索"""
+        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+
+        # フィルタ条件の構築
+        where_clauses = []
+
+        if "document_path" in params:
+            where_clauses.append(f"document_path = '{params['document_path']}'")
+
+        if "document_hash" in params:
+            where_clauses.append(f"document_hash = '{params['document_hash']}'")
+
+        if "status" in params:
+            status = params["status"]
+            if isinstance(status, list):
+                # 複数のstatusをORで結合
+                status_clauses = [f"status = '{s}'" for s in status]
+                where_clauses.append(f"({' OR '.join(status_clauses)})")
+            else:
+                where_clauses.append(f"status = '{status}'")
+
+        # クエリの実行
+        query = table.search()
+
+        if where_clauses:
+            where_str = " AND ".join(where_clauses)
+            query = query.where(where_str)
+
+        # order指定
+        order = params.get("order", "created_at ASC")
+        results = query.to_list()
+
+        # ソート
+        if "DESC" in order:
+            results = sorted(results, key=lambda x: x.get("created_at", pd.Timestamp.min), reverse=True)
+        else:
+            results = sorted(results, key=lambda x: x.get("created_at", pd.Timestamp.min))
+
+        # 結果をフォーマット
+        formatted_requests = []
+        for req in results:
+            formatted_req = {
+                "id": req["id"],
+                "documentPath": req["document_path"],
+                "documentHash": req["document_hash"],
+                "status": req["status"],
+                "createdAt": req["created_at"].isoformat() if req.get("created_at") else None,
+                "startedAt": req["started_at"].isoformat() if req.get("started_at") else None,
+                "completedAt": req["completed_at"].isoformat() if req.get("completed_at") else None,
+                "error": req.get("error"),
+            }
+            formatted_requests.append(formatted_req)
+
+        return {"requests": formatted_requests}
+
+    def update_index_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """IndexRequestを更新"""
+        request_id = params.get("id")
+        if not request_id:
+            raise ValueError("Missing required field: id")
+
+        updates = params.get("updates", {})
+        if not updates:
+            raise ValueError("Missing required field: updates")
+
+        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+
+        # タイムスタンプの変換（ミリ秒精度）
+        if "started_at" in updates and updates["started_at"]:
+            updates["started_at"] = pd.Timestamp(updates["started_at"], tz='UTC').floor('ms')
+        if "completed_at" in updates and updates["completed_at"]:
+            updates["completed_at"] = pd.Timestamp(updates["completed_at"], tz='UTC').floor('ms')
+
+        # 更新実行
+        table.update(
+            where=f"id = '{request_id}'",
+            values=updates
+        )
+
+        # 更新後のオブジェクトを取得して返す
+        df = table.search().where(f"id = '{request_id}'").limit(1).to_pandas()
+        if len(df) == 0:
+            raise ValueError(f"Request not found after update: {request_id}")
+
+        req = df.iloc[0].to_dict()
+        return {
+            "id": req["id"],
+            "documentPath": req["document_path"],
+            "documentHash": req["document_hash"],
+            "status": req["status"],
+            "createdAt": req["created_at"].isoformat() if req.get("created_at") else None,
+            "startedAt": req["started_at"].isoformat() if req.get("started_at") else None,
+            "completedAt": req["completed_at"].isoformat() if req.get("completed_at") else None,
+            "error": req.get("error"),
+        }
+
+    def update_many_index_requests(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """複数のIndexRequestを更新"""
+        filter_params = params.get("filter", {})
+        updates = params.get("updates", {})
+
+        if not updates:
+            raise ValueError("Missing required field: updates")
+
+        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+
+        # フィルタ条件の構築
+        where_clauses = []
+
+        if "document_path" in filter_params:
+            where_clauses.append(f"document_path = '{filter_params['document_path']}'")
+
+        if "status" in filter_params:
+            where_clauses.append(f"status = '{filter_params['status']}'")
+
+        if "created_at" in filter_params:
+            created_at = filter_params["created_at"]
+            if "$lt" in created_at:
+                timestamp = pd.Timestamp(created_at["$lt"])
+                where_clauses.append(f"created_at < timestamp '{timestamp.isoformat()}'")
+            if "$gt" in created_at:
+                timestamp = pd.Timestamp(created_at["$gt"])
+                where_clauses.append(f"created_at > timestamp '{timestamp.isoformat()}'")
+
+        if not where_clauses:
+            raise ValueError("Filter conditions are required for bulk update")
+
+        # タイムスタンプの変換（ミリ秒精度）
+        if "completed_at" in updates and updates["completed_at"]:
+            updates["completed_at"] = pd.Timestamp(updates["completed_at"], tz='UTC').floor('ms')
+
+        # 更新前の件数を取得
+        where_str = " AND ".join(where_clauses)
+        count_df = table.search().where(where_str).to_pandas()
+        count = len(count_df)
+
+        # 更新実行
+        table.update(
+            where=where_str,
+            values=updates
+        )
+
+        return {"updated": True, "count": count}
+
+    def get_paths_with_status(self, params: Dict[str, Any]) -> Dict[str, List]:
+        """特定のstatusを持つdocument_pathを取得"""
+        statuses = params.get("statuses", [])
+        if not statuses:
+            raise ValueError("Missing required field: statuses")
+
+        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+
+        # statusフィルタの構築
+        status_clauses = [f"status = '{s}'" for s in statuses]
+        where_str = " OR ".join(status_clauses)
+
+        # クエリ実行
+        results = table.search().where(where_str).to_list()
+
+        # ユニークなdocument_pathを抽出
+        paths = list(set(r["document_path"] for r in results))
+
+        return {"paths": paths}
+
 
 def main():
     """メインループ"""
-    worker = SearchDocsWorker()
+    db_path = SearchDocsWorker._get_db_path()
+    worker = SearchDocsWorker(db_path=db_path)
 
     # 標準入力からJSON-RPCリクエストを読み取る
     for line in sys.stdin:

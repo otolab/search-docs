@@ -16,14 +16,19 @@ async function main() {
     console.log(`Loading config from: ${configPath}`);
     const config = await ConfigLoader.load(configPath);
 
+    // プロジェクトルートを絶対パスに解決
+    const projectRoot = path.isAbsolute(config.project.root)
+      ? config.project.root
+      : path.resolve(process.cwd(), config.project.root);
+
     // ストレージ初期化
     const storage = new FileStorage({
-      basePath: path.resolve(config.project.root, config.storage.documentsPath),
+      basePath: path.resolve(projectRoot, config.storage.documentsPath),
     });
 
     // DBエンジン初期化
     const dbEngine = new DBEngine({
-      dbPath: path.resolve(config.project.root, config.storage.indexPath),
+      dbPath: path.resolve(projectRoot, config.storage.indexPath),
       embeddingModel: config.indexing.embeddingModel,
     });
 

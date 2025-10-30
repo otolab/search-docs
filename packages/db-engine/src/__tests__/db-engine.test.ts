@@ -169,4 +169,159 @@ describe('DBEngine', () => {
       expect(result.sections.length).toBe(0);
     });
   });
+
+  describe('IndexRequest操作', () => {
+    const testDocPath = '/test/request-doc.md';
+    const testHash = 'hash-v1';
+    let requestId: string;
+
+    it('IndexRequestを作成できる', async () => {
+      const result = await engine.createIndexRequest({
+        documentPath: testDocPath,
+        documentHash: testHash,
+      });
+      expect(result.id).toBeDefined();
+      expect(result.documentPath).toBe(testDocPath);
+      expect(result.documentHash).toBe(testHash);
+      expect(result.status).toBe('pending');
+      expect(result.createdAt).toBeDefined();
+      requestId = result.id;
+    });
+
+    it('IndexRequestを検索できる', async () => {
+      const result = await engine.findIndexRequests({
+        documentPath: testDocPath,
+      });
+      expect(result).toBeDefined();
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0].documentPath).toBe(testDocPath);
+    });
+
+    it('statusでIndexRequestを検索できる', async () => {
+      const result = await engine.findIndexRequests({
+        status: 'pending',
+      });
+      expect(result).toBeDefined();
+      expect(result.length).toBeGreaterThan(0);
+      for (const req of result) {
+        expect(req.status).toBe('pending');
+      }
+    });
+
+    it('複数のstatusでIndexRequestを検索できる', async () => {
+      const result = await engine.findIndexRequests({
+        status: ['pending', 'processing'],
+      });
+      expect(result).toBeDefined();
+      for (const req of result) {
+        expect(['pending', 'processing']).toContain(req.status);
+      }
+    });
+
+    it('created_at範囲でIndexRequestを検索できる', async () => {
+      const now = new Date().toISOString();
+      const result = await engine.findIndexRequests({
+        createdAt: {
+          $lt: now,
+        },
+      });
+      expect(result).toBeDefined();
+    });
+
+    it('IndexRequestを更新できる', async () => {
+      const result = await engine.updateIndexRequest(requestId, {
+        status: 'processing',
+        startedAt: new Date().toISOString(),
+      });
+      expect(result.id).toBe(requestId);
+      expect(result.status).toBe('processing');
+      expect(result.startedAt).toBeDefined();
+    });
+
+    it('複数のIndexRequestを一括更新できる', async () => {
+      // まず別のリクエストを作成
+      await engine.createIndexRequest({
+        documentPath: '/test/request-doc2.md',
+        documentHash: 'hash-v2',
+      });
+      await engine.createIndexRequest({
+        documentPath: '/test/request-doc3.md',
+        documentHash: 'hash-v3',
+      });
+
+      const result = await engine.updateManyIndexRequests(
+        { status: 'pending' },
+        { status: 'skipped' }
+      );
+      expect(result.updated).toBe(true);
+      expect(result.count).toBeGreaterThan(0);
+
+      // 更新を確認
+      const updated = await engine.findIndexRequests({ status: 'skipped' });
+      expect(updated.length).toBeGreaterThan(0);
+    });
+
+    it('特定のstatusを持つdocument_pathのリストを取得できる', async () => {
+      const result = await engine.getPathsWithStatus(['processing', 'skipped']);
+      expect(result).toBeDefined();
+      expect(result).toContain(testDocPath);
+    });
+  });
+
+  describe('Section拡張操作', () => {
+    const testPath = '/test/hash-test.md';
+    const hashV1 = 'hash-v1';
+    const hashV2 = 'hash-v2';
+
+    beforeAll(async () => {
+      // v1ハッシュのセクションを追加
+      await engine.addSection({
+        id: 'hash-test-section-1',
+        documentPath: testPath,
+        heading: 'Hash Test Section v1',
+        depth: 1,
+        content: 'This is version 1',
+        tokenCount: 5,
+        parentId: null,
+        order: 0,
+        isDirty: false,
+        documentHash: hashV1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // v2ハッシュのセクションを追加
+      await engine.addSection({
+        id: 'hash-test-section-2',
+        documentPath: testPath,
+        heading: 'Hash Test Section v2',
+        depth: 1,
+        content: 'This is version 2',
+        tokenCount: 5,
+        parentId: null,
+        order: 0,
+        isDirty: false,
+        documentHash: hashV2,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    it('特定のパスとハッシュでセクションを検索できる', async () => {
+      const result = await engine.findSectionsByPathAndHash(testPath, hashV1);
+      expect(result.length).toBe(1);
+      expect(result[0].documentHash).toBe(hashV1);
+      expect(result[0].content).toBe('This is version 1');
+    });
+
+    it('指定ハッシュ以外のセクションを削除できる', async () => {
+      const result = await engine.deleteSectionsByPathExceptHash(testPath, hashV2);
+      expect(result.deleted).toBe(true);
+
+      // v2のみ残っていることを確認
+      const remaining = await engine.getSectionsByPath(testPath);
+      expect(remaining.sections.length).toBe(1);
+      expect(remaining.sections[0].documentHash).toBe(hashV2);
+    });
+  });
 });

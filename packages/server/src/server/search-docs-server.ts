@@ -160,10 +160,8 @@ export class SearchDocsServer {
     // 4. Markdown分割
     const sections = this.splitter.split(content, path, hash);
 
-    // 5. 既存セクションを削除
-    if (existingDoc) {
-      await this.dbEngine.deleteSectionsByPath(path);
-    }
+    // 5. 既存セクションを削除（DocumentStorageとSearchIndexの整合性に関係なく、常に実行）
+    await this.dbEngine.deleteSectionsByPath(path);
 
     // 6. 文書をストレージに保存
     const document: Document = {

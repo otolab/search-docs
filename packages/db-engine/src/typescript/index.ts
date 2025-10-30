@@ -61,6 +61,46 @@ export interface StatsResponse {
   totalDocuments: number;
 }
 
+// IndexRequest関連の型定義
+export interface IndexRequest {
+  id: string;
+  documentPath: string;
+  documentHash: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
+  createdAt: string;  // ISO 8601
+  startedAt?: string;  // ISO 8601
+  completedAt?: string;  // ISO 8601
+  error?: string;
+}
+
+export interface IndexRequestFilter {
+  documentPath?: string;
+  documentHash?: string;
+  status?: IndexRequest['status'] | IndexRequest['status'][];
+  createdAt?: {
+    $lt?: string;  // ISO 8601
+    $gt?: string;  // ISO 8601
+  };
+  order?: 'created_at ASC' | 'created_at DESC';
+}
+
+export interface CreateIndexRequestParams {
+  id: string;
+  documentPath: string;
+  documentHash: string;
+  status: IndexRequest['status'];
+}
+
+export interface UpdateIndexRequestParams {
+  id: string;
+  updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash'>>;
+}
+
+export interface UpdateManyIndexRequestsParams {
+  filter: Omit<IndexRequestFilter, 'order'>;
+  updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash'>>;
+}
+
 export class DBEngine extends EventEmitter {
   private worker: ChildProcess | null = null;
   private requestId = 0;
@@ -97,8 +137,8 @@ export class DBEngine extends EventEmitter {
       return;
     }
 
-    const pythonScript = path.join(__dirname, '../src/python/worker.py');
-    const packageRoot = path.join(__dirname, '..'); // packages/db-engine
+    const pythonScript = path.join(__dirname, '../python/worker.py');
+    const packageRoot = path.join(__dirname, '../..'); // packages/db-engine
 
     console.log('[DBEngine.connect] packageRoot:', packageRoot);
     console.log('[DBEngine.connect] pythonScript:', pythonScript);
@@ -125,11 +165,20 @@ export class DBEngine extends EventEmitter {
       pythonArgs.push(`--model=${this.options.embeddingModel}`);
     }
 
+    // dbPathを絶対パスに解決して追加
+    const absoluteDbPath = path.isAbsolute(this.options.dbPath)
+      ? this.options.dbPath
+      : path.resolve(process.cwd(), this.options.dbPath);
+    pythonArgs.push(`--db-path=${absoluteDbPath}`);
+
     // デバッグ情報を出力
-    console.log('Starting Python worker with:');
+    console.log('[DBEngine.connect] Starting Python worker with:');
     console.log('  Command:', pythonCmd);
     console.log('  Args:', pythonArgs);
     console.log('  CWD:', packageRoot);
+    console.log('  process.cwd():', process.cwd());
+    console.log('  this.options.dbPath:', this.options.dbPath);
+    console.log('  absoluteDbPath:', absoluteDbPath);
     console.log('  Script path:', pythonScript);
     console.log('  Script exists:', fs.existsSync(pythonScript));
 
@@ -405,6 +454,29 @@ export class DBEngine extends EventEmitter {
   }
 
   /**
+   * 特定のdocument_pathとdocument_hashのセクションを取得
+   */
+  async findSectionsByPathAndHash(documentPath: string, documentHash: string): Promise<Section[]> {
+    const result = await this.sendRequest('findSectionsByPathAndHash', {
+      documentPath,
+      documentHash
+    });
+    const response = result as { sections: Section[] };
+    return response.sections;
+  }
+
+  /**
+   * 指定パスのセクションのうち、指定したhash以外を削除
+   */
+  async deleteSectionsByPathExceptHash(documentPath: string, documentHash: string): Promise<{ deleted: boolean }> {
+    const result = await this.sendRequest('deleteSectionsByPathExceptHash', {
+      documentPath,
+      documentHash
+    });
+    return result as { deleted: boolean };
+  }
+
+  /**
    * 指定パスのセクションをDirtyにマーク
    */
   async markDirty(documentPath: string): Promise<{ marked: boolean }> {
@@ -479,6 +551,131 @@ export class DBEngine extends EventEmitter {
         status: 'error',
       };
     }
+  }
+
+  // ========================================
+  // IndexRequest操作
+  // ========================================
+
+  /**
+   * IndexRequestを作成
+   */
+  async createIndexRequest(params: CreateIndexRequestParams): Promise<IndexRequest> {
+    // camelCase → snake_caseに変換
+    const pythonParams = {
+      document_path: params.documentPath,
+      document_hash: params.documentHash,
+    };
+
+    const result = await this.sendRequest('createIndexRequest', pythonParams);
+    return result as IndexRequest;
+  }
+
+  /**
+   * IndexRequestを検索
+   */
+  async findIndexRequests(filter: IndexRequestFilter = {}): Promise<IndexRequest[]> {
+    // camelCase → snake_caseに変換
+    const pythonParams: Record<string, unknown> = {};
+
+    if (filter.documentPath) {
+      pythonParams.document_path = filter.documentPath;
+    }
+    if (filter.documentHash) {
+      pythonParams.document_hash = filter.documentHash;
+    }
+    if (filter.status) {
+      pythonParams.status = filter.status;
+    }
+    if (filter.createdAt) {
+      pythonParams.created_at = filter.createdAt;
+    }
+    if (filter.order) {
+      pythonParams.order = filter.order.replace('created_at', 'created_at');
+    }
+
+    const result = await this.sendRequest('findIndexRequests', pythonParams);
+    const response = result as { requests: IndexRequest[] };
+    return response.requests;
+  }
+
+  /**
+   * IndexRequestを更新
+   */
+  async updateIndexRequest(id: string, updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash' | 'createdAt'>>): Promise<IndexRequest> {
+    // camelCase → snake_caseに変換
+    const pythonUpdates: Record<string, unknown> = {};
+
+    if (updates.status) {
+      pythonUpdates.status = updates.status;
+    }
+    if (updates.startedAt) {
+      pythonUpdates.started_at = updates.startedAt;
+    }
+    if (updates.completedAt) {
+      pythonUpdates.completed_at = updates.completedAt;
+    }
+    if (updates.error) {
+      pythonUpdates.error = updates.error;
+    }
+
+    const pythonParams = {
+      id: id,
+      updates: pythonUpdates,
+    };
+
+    const result = await this.sendRequest('updateIndexRequest', pythonParams);
+    return result as IndexRequest;
+  }
+
+  /**
+   * 複数のIndexRequestを更新
+   */
+  async updateManyIndexRequests(
+    filter: Partial<IndexRequestFilter>,
+    updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash' | 'createdAt'>>
+  ): Promise<{ updated: boolean; count: number }> {
+    // camelCase → snake_caseに変換
+    const pythonFilter: Record<string, unknown> = {};
+
+    if (filter.documentPath) {
+      pythonFilter.document_path = filter.documentPath;
+    }
+    if (filter.status) {
+      pythonFilter.status = filter.status;
+    }
+    if (filter.createdAt) {
+      pythonFilter.created_at = filter.createdAt;
+    }
+
+    const pythonUpdates: Record<string, unknown> = {};
+
+    if (updates.status) {
+      pythonUpdates.status = updates.status;
+    }
+    if (updates.completedAt) {
+      pythonUpdates.completed_at = updates.completedAt;
+    }
+    if (updates.error) {
+      pythonUpdates.error = updates.error;
+    }
+
+    const pythonParams = {
+      filter: pythonFilter,
+      updates: pythonUpdates,
+    };
+
+    const result = await this.sendRequest('updateManyIndexRequests', pythonParams);
+    return result as { updated: boolean; count: number };
+  }
+
+  /**
+   * 特定のstatusを持つdocument_pathを取得
+   */
+  async getPathsWithStatus(statuses: IndexRequest['status'][]): Promise<string[]> {
+    const result = await this.sendRequest('getPathsWithStatus', { statuses });
+    const response = result as { paths: string[] };
+    return response.paths;
   }
 }
 
