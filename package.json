@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "description": "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供",
   "private": true,
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git"
+  },
+  "keywords": [
+    "vector-search",
+    "markdown",
+    "documentation",
+    "lancedb",
+    "local-search",
+    "semantic-search"
+  ],
   "scripts": {
     "postinstall": "uv sync",
     "prepublishOnly": "pnpm run build:all",

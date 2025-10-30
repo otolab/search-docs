@@ -23,11 +23,18 @@
     "@types/node": "^22.0.0"
   },
   "keywords": [
-    "search-docs",
     "client",
+    "vector-search",
     "json-rpc"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/client"
   }
 }

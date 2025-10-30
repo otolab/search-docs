@@ -26,11 +26,19 @@
     "vitest": "^4.0.5"
   },
   "keywords": [
-    "search-docs",
+    "vector-search",
     "lancedb",
-    "vector-search"
+    "embeddings",
+    "python"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/db-engine"
   }
 }

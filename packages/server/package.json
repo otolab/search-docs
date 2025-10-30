@@ -37,12 +37,19 @@
     "vitest": "^2.1.9"
   },
   "keywords": [
-    "search-docs",
-    "server",
+    "vector-search",
     "markdown",
-    "indexing"
+    "lancedb",
+    "search-engine"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/server"
   }
 }

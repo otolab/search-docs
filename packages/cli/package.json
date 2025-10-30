@@ -29,5 +29,19 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "cli",
+    "vector-search",
+    "markdown",
+    "documentation",
+    "search"
+  ]
 }

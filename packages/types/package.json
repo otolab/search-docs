@@ -16,10 +16,19 @@
     "lint:fix": "eslint . --fix --max-warnings 0"
   },
   "keywords": [
-    "search-docs",
-    "types"
+    "typescript",
+    "types",
+    "vector-search",
+    "markdown"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/types"
   }
 }

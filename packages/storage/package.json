@@ -23,10 +23,18 @@
     "@types/node": "^22.0.0"
   },
   "keywords": [
-    "search-docs",
-    "storage"
+    "storage",
+    "document-storage",
+    "markdown"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/storage"
   }
 }
