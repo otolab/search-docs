@@ -1,5 +1,14 @@
 # @search-docs/mcp-server
 
+## 1.0.4
+
+### Patch Changes
+
+- MCP Server 起動時のログ出力を抑制
+
+  通常モードでは標準エラー出力にログを出さないように変更。
+  デバッグ時は`DEBUG=1`環境変数または`NODE_ENV=development`でログ出力。
+
 ## 1.0.3
 
 ### Patch Changes

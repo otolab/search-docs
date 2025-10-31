@@ -9,6 +9,20 @@ import * as path from 'path';
 import { ServerManager } from './server-manager.js';
 
 /**
+ * デバッグモードの判定
+ */
+const isDebugMode = process.env.DEBUG === '1' || process.env.NODE_ENV === 'development';
+
+/**
+ * デバッグログ出力（デバッグモード時のみ）
+ */
+function debugLog(message: string): void {
+  if (isDebugMode) {
+    console.error(`[mcp-server] ${message}`);
+  }
+}
+
+/**
  * CLIオプション
  */
 interface CLIOptions {
@@ -45,11 +59,11 @@ async function main() {
   // プロジェクトディレクトリを決定
   // 明示的に指定されていない場合は、カレントディレクトリから設定ファイルを探索
   const cwd = projectDir || process.cwd();
-  console.error(`[mcp-server] Working directory: ${cwd}`);
+  debugLog(`Working directory: ${cwd}`);
   if (projectDir) {
-    console.error(`[mcp-server] Project directory (explicit): ${projectDir}`);
+    debugLog(`Project directory (explicit): ${projectDir}`);
   } else {
-    console.error(`[mcp-server] Project directory: auto-detect from config file`);
+    debugLog(`Project directory: auto-detect from config file`);
   }
 
   // 設定ファイルの読み込み
@@ -58,9 +72,9 @@ async function main() {
     requireConfig: true,
   });
   const serverUrl = `http://${config.server.host}:${config.server.port}`;
-  console.error(`[mcp-server] Project root: ${projectRoot}`);
-  console.error(`[mcp-server] Config: ${configPath || 'default config'}`);
-  console.error(`[mcp-server] Server URL: ${serverUrl}`);
+  debugLog(`Project root: ${projectRoot}`);
+  debugLog(`Config: ${configPath || 'default config'}`);
+  debugLog(`Server URL: ${serverUrl}`);
 
   // SearchDocsClientの初期化
   const client = new SearchDocsClient({ baseUrl: serverUrl });
@@ -70,13 +84,13 @@ async function main() {
 
   // プロセス終了時のクリーンアップ
   process.on('SIGINT', () => {
-    console.error('[mcp-server] Received SIGINT, cleaning up...');
+    debugLog('Received SIGINT, cleaning up...');
     serverManager.cleanup();
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
-    console.error('[mcp-server] Received SIGTERM, cleaning up...');
+    debugLog('Received SIGTERM, cleaning up...');
     serverManager.cleanup();
     process.exit(0);
   });
@@ -84,9 +98,9 @@ async function main() {
   // 接続確認
   try {
     await client.healthCheck();
-    console.error('[mcp-server] Connection to search-docs server established');
+    debugLog('Connection to search-docs server established');
   } catch (_error) {
-    console.error('[mcp-server] Server is not running, attempting to start...');
+    debugLog('Server is not running, attempting to start...');
 
     try {
       // サーバを自動起動（projectRootを使用）
@@ -94,8 +108,9 @@ async function main() {
 
       // 起動後、再度接続確認
       await client.healthCheck();
-      console.error('[mcp-server] Successfully connected to auto-started server');
+      debugLog('Successfully connected to auto-started server');
     } catch (startError) {
+      // エラーは標準エラー出力に出す（ユーザーが問題解決に必要）
       console.error('[mcp-server] Failed to auto-start server');
       console.error('[mcp-server] Error:', (startError as Error).message);
       console.error('[mcp-server] Please ensure @search-docs/cli is installed:');
@@ -263,9 +278,9 @@ async function main() {
 
   // サーバの起動
   const transport = new StdioServerTransport();
-  console.error('[mcp-server] Starting MCP server...');
+  debugLog('Starting MCP server...');
   await server.connect(transport);
-  console.error('[mcp-server] MCP server started');
+  debugLog('MCP server started');
 }
 
 main().catch((error) => {
