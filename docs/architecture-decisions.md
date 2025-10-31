@@ -1296,6 +1296,260 @@ class IndexWorker {
 
 ---
 
+## ADR-015: CLI設定管理とサーバ起動の改善
+
+**日付**: 2025-10-30
+**状態**: 採用
+**決定者**: 実装チーム
+**関連**: Task 10, Task 11 - CLI改善
+
+### コンテキスト
+
+v1.0.0リリース後、CLIの使い勝手に関する複数の問題が発見された：
+
+1. **ポート設定の不整合**
+   - サーバ起動: 設定ファイルのポート番号を正しく読む ✅
+   - CLIコマンド（search, index等）: ハードコード `http://localhost:24280` を使用 ❌
+   - 問題: プロジェクト毎に異なるポートで複数サーバを立ち上げられない
+
+2. **サーバ起動のデフォルト動作**
+   - フォアグラウンドがデフォルト、`--daemon` でバックグラウンド
+   - 問題: 実運用ではバックグラウンドが基本、現状は使いにくい
+
+3. **--config オプションの位置**
+   - 各サブコマンドに個別定義（search, index等）
+   - 問題: `search-docs --config xxx search "query"` が通らない
+
+4. **設定ファイル探索の柔軟性不足**
+   - サブディレクトリから実行すると設定が見つからない
+
+### 検討した選択肢と決定
+
+#### 1. ポート設定の統一的な解決
+
+**決定内容**: `resolveServerUrl()` ユーティリティの導入
+
+```typescript
+// packages/cli/src/utils/server-url.ts
+export async function resolveServerUrl(
+  options: ResolveServerUrlOptions = {}
+): Promise<string> {
+  // 1. 明示的に指定されている場合は最優先
+  if (options.server) {
+    return options.server;
+  }
+
+  try {
+    // 2. 設定ファイルからポート番号を取得
+    const projectRoot = await findProjectRoot({
+      configPath: options.config,
+    });
+    const configPath = await resolveConfigPath(projectRoot, options.config);
+    const configContent = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configContent) as SearchDocsConfig;
+
+    if (config.server) {
+      const host = config.server.host || 'localhost';
+      const port = config.server.port || 24280;
+      return `http://${host}:${port}`;
+    }
+  } catch (error) {
+    // 設定ファイルが読み込めない場合はデフォルトにフォールバック
+  }
+
+  // 3. デフォルト
+  return 'http://localhost:24280';
+}
+```
+
+**優先順位**:
+1. `--server` オプション（明示的指定）
+2. 設定ファイルの `server.host` + `server.port`
+3. デフォルト: `http://localhost:24280`
+
+**理由**:
+- 設定ファイルとの一貫性確保
+- 複数プロジェクトでの異なるポート使用を可能に
+- 明示的指定による柔軟性維持
+
+#### 2. サーバ起動デフォルトをバックグラウンドに変更
+
+**変更前**:
+```bash
+search-docs server start           # フォアグラウンド
+search-docs server start --daemon  # バックグラウンド
+```
+
+**変更後**:
+```bash
+search-docs server start              # バックグラウンド（デフォルト）
+search-docs server start --foreground # フォアグラウンド（開発時）
+```
+
+**実装**:
+```typescript
+export interface ServerStartOptions {
+  config?: string;
+  port?: string;
+  foreground?: boolean;  // daemon から foreground に変更
+  log?: string;
+}
+
+// デフォルト動作を反転
+const isDaemon = !options.foreground;
+```
+
+**理由**:
+1. 実運用ではバックグラウンド起動が基本
+2. フォアグラウンドは主に開発・デバッグ時のみ使用
+3. ユーザビリティの向上（最も頻繁な操作をデフォルトに）
+
+**MCP Serverからの起動**:
+```typescript
+// packages/mcp-server/src/server-manager.ts
+const args = [
+  'server',
+  'start',
+  '--foreground',  // 明示的にフォアグラウンド指定
+  '--port',
+  port.toString()
+];
+```
+
+MCP Serverからの起動は、プロセス連動のため明示的にフォアグラウンド指定。
+
+#### 3. グローバル --config オプション
+
+**決定内容**: ルートレベルでのグローバルオプション定義
+
+```typescript
+// packages/cli/src/index.ts
+program
+  .name('search-docs')
+  .description('search-docs コマンドラインツール')
+  .version(packageJson.version)
+  .addOption(
+    new Option('-c, --config <path>', '設定ファイルのパス')
+      .default(undefined)
+      .env('SEARCH_DOCS_CONFIG')
+  );
+```
+
+**使用例**:
+```bash
+# 両方通るように
+search-docs --config ./custom.json search "query"
+search-docs search --config ./custom.json "query"
+
+# 環境変数も使える
+export SEARCH_DOCS_CONFIG=./custom.json
+search-docs search "query"
+```
+
+**理由**:
+- 標準的なCLI設計パターンに準拠
+- 環境変数サポートによるCI/CD対応
+- ユーザー体験の向上
+
+#### 4. 設定ファイル自動探索
+
+**CLI（search, index等）の探索順序**:
+```
+1. --config オプションで明示的に指定されたパス
+2. 環境変数 SEARCH_DOCS_CONFIG
+3. カレントディレクトリから親を遡って .search-docs.json を探す
+   - process.cwd()/.search-docs.json
+   - process.cwd()/../.search-docs.json
+   - ... (ルートディレクトリまたは見つかるまで)
+4. 見つからなければデフォルト設定で動作
+```
+
+**Server/MCP Serverの探索順序**:
+```
+1. --config オプションで明示的に指定されたパス
+2. 環境変数 SEARCH_DOCS_CONFIG
+3. カレントディレクトリの .search-docs.json のみ
+   - （親は遡らない - プロジェクトルートで起動される想定）
+4. 見つからなければデフォルト設定で動作
+```
+
+**実装**:
+```typescript
+// packages/cli/src/utils/config-resolver.ts
+export async function findConfigFile(
+  startDir: string = process.cwd(),
+  traverseUp: boolean = true
+): Promise<string | null> {
+  let currentDir = path.resolve(startDir);
+  const root = path.parse(currentDir).root;
+
+  while (true) {
+    const configPath = path.join(currentDir, '.search-docs.json');
+
+    try {
+      await fs.access(configPath);
+      return configPath;
+    } catch {
+      // ファイルが存在しない
+    }
+
+    if (!traverseUp || currentDir === root) {
+      return null;
+    }
+
+    currentDir = path.dirname(currentDir);
+  }
+}
+```
+
+**理由**:
+1. **CLI**: サブディレクトリからの実行を考慮（開発者の利便性）
+2. **Server/MCP**: プロジェクトルートでの実行を想定（一貫性重視）
+3. Git等のツールと同様の探索パターン
+
+### 影響
+
+**ポジティブ**:
+- 複数プロジェクトでの異なるポート使用が可能に
+- サブディレクトリからのコマンド実行が可能に
+- バックグラウンド起動がデフォルトでユーザビリティ向上
+- 環境変数サポートでCI/CD対応
+
+**ネガティブ**:
+- `--daemon` オプションが廃止（破壊的変更）
+  - 対処: v1.0.0でのリリースから間もないため、早期に変更を実施
+- 設定ファイル探索の複雑性増加（わずか）
+
+**移行ガイド**:
+```bash
+# v1.0.0
+search-docs server start --daemon
+
+# v1.0.1以降
+search-docs server start  # デフォルトでバックグラウンド
+```
+
+### 実装状況
+
+**Task 10 (v1.0.1)**:
+- ✅ `resolveServerUrl()` ユーティリティ実装
+- ✅ CLIコマンド（search, index等）にポート設定適用
+- ✅ MCP Serverサーバ自動起動機能
+
+**Task 11 (v1.0.2)**:
+- ✅ サーバ起動デフォルト変更（`--daemon` → `--foreground`）
+- ✅ グローバル --config オプション実装
+- ✅ 設定ファイル自動探索機能
+- ✅ 環境変数 SEARCH_DOCS_CONFIG サポート
+
+### 関連ドキュメント
+
+- 実装計画: `prompts/tasks/task10.port-config-and-auto-start.v1.md`
+- 実装計画: `prompts/tasks/task11.cli-improvements.v1.md`
+- 調査レポート: `prompts/tasks/research.config-startup.v1.md`
+
+---
+
 ## 更新履歴
 
 - 2025-01-27: 初版作成（ADR-001〜010）
@@ -1303,3 +1557,4 @@ class IndexWorker {
 - 2025-01-27: ADR-012追加（Section型のフラット構造採用）
 - 2025-10-28: ADR-013追加（CLIサーバプロセス管理の実装方針）
 - 2025-10-30: ADR-014追加（IndexRequestテーブルによる非同期インデックス管理）
+- 2025-10-31: ADR-015追加（CLI設定管理とサーバ起動の改善）
