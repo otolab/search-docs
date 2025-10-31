@@ -32,6 +32,19 @@ function getStatusLabel(indexStatus?: 'latest' | 'outdated' | 'updating'): strin
 }
 
 /**
+ * depthを分かりやすいラベルに変換
+ */
+function getDepthLabel(depth: number): string {
+  const labels = [
+    'document (全体)',
+    'H1 (章)',
+    'H2 (節)',
+    'H3 (項)',
+  ];
+  return labels[depth] || `depth-${depth}`;
+}
+
+/**
  * 検索結果をテキスト形式で出力
  */
 export function formatSearchResultsAsText(response: SearchResponse): string {
@@ -48,7 +61,7 @@ export function formatSearchResultsAsText(response: SearchResponse): string {
       `${index + 1}. [score: ${result.score.toFixed(2)}] ${result.heading || '(no heading)'} ${statusLabel}`
     );
     lines.push(`   Path: ${result.documentPath}`);
-    lines.push(`   Depth: ${result.depth}`);
+    lines.push(`   Level: ${getDepthLabel(result.depth)}`);
     if (result.content) {
       const preview = result.content.substring(0, 100);
       lines.push(`   Preview: ${preview}${result.content.length > 100 ? '...' : ''}`);
