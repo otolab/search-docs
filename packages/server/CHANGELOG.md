@@ -1,5 +1,22 @@
 # @search-docs/server
 
+## 1.0.6
+
+### Patch Changes
+
+- get_document の path と sectionId をオプショナルに変更し、どちらか一方で取得可能にしました。
+
+  変更内容:
+
+  - path と sectionId をどちらもオプショナルに変更（ただし、どちらか一方は必須）
+  - sectionId のみで特定のセクションを取得できるように
+  - マルチバイト文字（日本語）のテストを追加し、正しく扱えることを確認
+
+- Updated dependencies
+  - @search-docs/types@1.0.6
+  - @search-docs/db-engine@1.0.6
+  - @search-docs/storage@1.0.3
+
 ## 1.0.5
 
 ### Patch Changes

@@ -1,5 +1,22 @@
 # @search-docs/mcp-server
 
+## 1.0.10
+
+### Patch Changes
+
+- get_document の path と sectionId をオプショナルに変更し、どちらか一方で取得可能にしました。
+
+  変更内容:
+
+  - path と sectionId をどちらもオプショナルに変更（ただし、どちらか一方は必須）
+  - sectionId のみで特定のセクションを取得できるように
+  - マルチバイト文字（日本語）のテストを追加し、正しく扱えることを確認
+
+- Updated dependencies
+  - @search-docs/types@1.0.6
+  - @search-docs/cli@1.0.6
+  - @search-docs/client@1.0.6
+
 ## 1.0.9
 
 ### Patch Changes

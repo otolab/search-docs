@@ -221,6 +221,11 @@ export class SearchDocsServer {
     this.requestStats.total++;
     this.requestStats.getDocument++;
 
+    // pathとsectionIdのどちらか一方は必須
+    if (!request.path && !request.sectionId) {
+      throw new Error('pathまたはsectionIdのどちらか一方を指定してください');
+    }
+
     // sectionIdが指定されている場合はセクションを取得
     if (request.sectionId) {
       const result = await this.dbEngine.getSectionById(request.sectionId);
@@ -228,7 +233,7 @@ export class SearchDocsServer {
     }
 
     // 文書全体を取得
-    const document = await this.storage.get(request.path);
+    const document = await this.storage.get(request.path!);
 
     if (!document) {
       throw new Error(`Document not found: ${request.path}`);

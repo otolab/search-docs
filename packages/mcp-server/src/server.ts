@@ -265,20 +265,25 @@ async function main() {
   server.registerTool(
     'get_document',
     {
-      description: '文書の内容を取得します。パス指定で文書全体、またはセクションIDで特定セクションを取得できます。',
+      description: '文書の内容を取得します。パス指定で文書全体、またはセクションIDで特定セクションを取得できます。pathとsectionIdのどちらか一方は必須です。',
       inputSchema: {
-        path: z.string().describe('文書パス'),
-        sectionId: z.string().optional().describe('セクションID（検索結果から取得）'),
+        path: z.string().optional().describe('文書パス（sectionIdを指定しない場合は必須）'),
+        sectionId: z.string().optional().describe('セクションID（検索結果から取得。pathを指定しない場合は必須）'),
       },
     },
-    async (args: { path: string; sectionId?: string }) => {
+    async (args: { path?: string; sectionId?: string }) => {
       const { path: documentPath, sectionId } = args;
+
+      // どちらか一方は必須
+      if (!documentPath && !sectionId) {
+        throw new Error('pathまたはsectionIdのどちらか一方を指定してください');
+      }
 
       try {
         const response = await client.getDocument({ path: documentPath, sectionId });
 
-        if (!response.document) {
-          throw new Error(`Document not found: ${documentPath}`);
+        if (!response.document && !response.section) {
+          throw new Error(`Document or section not found`);
         }
 
         let resultText = '';
@@ -293,7 +298,7 @@ async function main() {
           resultText += `内容:\n${'='.repeat(60)}\n`;
           resultText += response.section.content;
           resultText += `\n${'='.repeat(60)}`;
-        } else {
+        } else if (response.document) {
           // 文書全体取得の場合
           resultText += `文書: ${response.document.path}\n`;
           if (response.document.metadata.title) {

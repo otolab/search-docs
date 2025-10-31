@@ -68,8 +68,9 @@ export interface SearchResponse {
 // ========================================
 
 export interface GetDocumentRequest {
-  path: string;
-  /** セクションID（指定した場合は特定セクションのみ取得） */
+  /** 文書パス（sectionIdを指定しない場合は必須） */
+  path?: string;
+  /** セクションID（pathを指定しない場合は必須） */
   sectionId?: string;
 }
 

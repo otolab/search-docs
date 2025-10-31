@@ -64,4 +64,44 @@ describe('DBEngine統合テスト', () => {
     expect(results.results.length).toBeGreaterThan(0);
     expect(results.results[0].documentPath).toBe('test.md');
   });
+
+  it('マルチバイト文字（日本語）を含むdocumentPathとcontentを正しく扱える', async () => {
+    const section = {
+      id: 'test-section-multibyte',
+      documentPath: 'research/中学受験地理資料作成指示.md',
+      heading: '地理資料の作成方法',
+      depth: 2,
+      content: '日本の地理に関する資料を作成します。これは中学受験用の学習資料です。',
+      tokenCount: 50,
+      parentId: null,
+      order: 1,
+      isDirty: false,
+      documentHash: 'multibyte-hash',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      startLine: 10,
+      endLine: 20,
+      sectionNumber: [1, 2],
+    };
+
+    await dbEngine.addSections([section]);
+
+    // documentPathで検索
+    const results = await dbEngine.search({
+      query: '地理資料',
+      limit: 10,
+    });
+
+    expect(results.results.length).toBeGreaterThan(0);
+    const found = results.results.find((r) => r.id === 'test-section-multibyte');
+    expect(found).toBeDefined();
+    expect(found?.documentPath).toBe('research/中学受験地理資料作成指示.md');
+    expect(found?.heading).toBe('地理資料の作成方法');
+
+    // sectionIdで取得
+    const getResult = await dbEngine.getSectionById('test-section-multibyte');
+    expect(getResult.section).toBeDefined();
+    expect(getResult.section?.documentPath).toBe('research/中学受験地理資料作成指示.md');
+    expect(getResult.section?.content).toContain('中学受験');
+  });
 });
