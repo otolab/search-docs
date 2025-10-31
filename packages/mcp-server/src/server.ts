@@ -12,7 +12,7 @@ import { ServerManager } from './server-manager.js';
  * CLIオプション
  */
 interface CLIOptions {
-  projectDir: string;
+  projectDir?: string;
 }
 
 /**
@@ -25,13 +25,13 @@ function parseArgs(): CLIOptions {
     .name('search-docs-mcp')
     .description('MCP Server for search-docs - Claude Code integration')
     .version('0.1.0')
-    .requiredOption('--project-dir <path>', 'Project directory path')
+    .option('--project-dir <path>', 'Project directory path (optional, will auto-detect from config file if not specified)')
     .parse(process.argv);
 
-  const options = program.opts<{ projectDir: string }>();
+  const options = program.opts<{ projectDir?: string }>();
 
   return {
-    projectDir: path.resolve(options.projectDir),
+    projectDir: options.projectDir ? path.resolve(options.projectDir) : undefined,
   };
 }
 
@@ -41,14 +41,24 @@ function parseArgs(): CLIOptions {
 async function main() {
   // コマンドライン引数の解析
   const { projectDir } = parseArgs();
-  console.error(`[mcp-server] Project directory: ${projectDir}`);
+
+  // プロジェクトディレクトリを決定
+  // 明示的に指定されていない場合は、カレントディレクトリから設定ファイルを探索
+  const cwd = projectDir || process.cwd();
+  console.error(`[mcp-server] Working directory: ${cwd}`);
+  if (projectDir) {
+    console.error(`[mcp-server] Project directory (explicit): ${projectDir}`);
+  } else {
+    console.error(`[mcp-server] Project directory: auto-detect from config file`);
+  }
 
   // 設定ファイルの読み込み
-  const { config, configPath } = await ConfigLoader.resolve({
-    cwd: projectDir,
+  const { config, configPath, projectRoot } = await ConfigLoader.resolve({
+    cwd,
     requireConfig: true,
   });
   const serverUrl = `http://${config.server.host}:${config.server.port}`;
+  console.error(`[mcp-server] Project root: ${projectRoot}`);
   console.error(`[mcp-server] Config: ${configPath || 'default config'}`);
   console.error(`[mcp-server] Server URL: ${serverUrl}`);
 
@@ -79,9 +89,8 @@ async function main() {
     console.error('[mcp-server] Server is not running, attempting to start...');
 
     try {
-      // サーバを自動起動
-      const configPath = path.join(projectDir, '.search-docs.json');
-      await serverManager.startServer(projectDir, config.server.port, configPath);
+      // サーバを自動起動（projectRootを使用）
+      await serverManager.startServer(projectRoot, config.server.port, configPath || undefined);
 
       // 起動後、再度接続確認
       await client.healthCheck();
