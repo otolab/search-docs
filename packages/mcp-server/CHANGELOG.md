@@ -1,5 +1,13 @@
 # @search-docs/mcp-server
 
+## 1.0.7
+
+### Patch Changes
+
+- 5781444: package.json からバージョンを動的に読み込むように修正
+
+  ハードコードされていた'0.1.0'を package.json から読み込むように変更し、-V オプションで正しいバージョンが表示されるようにしました。
+
 ## 1.0.6
 
 ### Patch Changes
