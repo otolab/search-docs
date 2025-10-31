@@ -70,18 +70,35 @@ npm install -g search-docs
 
 ## 使用方法
 
+### 設定ファイルの初期化
+
+プロジェクトで初めてsearch-docsを使用する場合は、まず設定ファイルを作成します：
+
+```bash
+# プロジェクトディレクトリに移動
+cd /path/to/your/project
+
+# 設定ファイルを初期化（ランダムポート）
+search-docs config init
+
+# ポート番号を指定する場合
+search-docs config init --port 12345
+```
+
+これにより、`.search-docs.json` 設定ファイルが生成されます。ポート番号はエフェメラルポート範囲（49152-65535）からランダムに選択されるため、複数プロジェクトでの衝突を回避できます。
+
 ### サーバの起動
 
 ```bash
-# プロジェクトディレクトリで起動
+# プロジェクトディレクトリで起動（デフォルト: バックグラウンド）
 cd /path/to/your/project
 search-docs server start
 
-# バックグラウンド起動
-search-docs server start --daemon
+# フォアグラウンドで起動（開発時）
+search-docs server start --foreground
 
-# 設定ファイルを指定
-search-docs server start --config ./search-docs.config.json
+# 設定ファイルを明示的に指定
+search-docs --config ./custom-config.json server start
 ```
 
 ### 検索

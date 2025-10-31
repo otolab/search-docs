@@ -14,6 +14,8 @@ export interface ConfigInitOptions {
   projectRoot?: string;
   /** 既存ファイルを上書き */
   force?: boolean;
+  /** カレントワーキングディレクトリ（テスト用、デフォルト: process.cwd()） */
+  cwd?: string;
 }
 
 /**
@@ -91,7 +93,7 @@ function createDefaultConfig(options: {
  * config init コマンドを実行
  */
 export async function initConfig(options: ConfigInitOptions = {}): Promise<void> {
-  const cwd = process.cwd();
+  const cwd = options.cwd || process.cwd();
   const projectRoot = options.projectRoot || cwd;
   const port = options.port || generateRandomPort();
   const configPath = path.join(cwd, '.search-docs.json');

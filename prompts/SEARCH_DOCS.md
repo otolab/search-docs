@@ -8,7 +8,22 @@ search-docs自身のドキュメント（README.md、docs/、AGENTS.mdなど）�
 
 ## セットアップ
 
-設定ファイル `.search-docs.json` はプロジェクトルートに配置済みです。
+### 設定ファイルの初期化（初回のみ）
+
+プロジェクトで初めてsearch-docsを使用する場合は、設定ファイルを生成します：
+
+```bash
+# 基本的な使い方（ランダムポート）
+node packages/cli/dist/index.js config init
+
+# ポート番号を指定
+node packages/cli/dist/index.js config init --port 12345
+
+# 既存ファイルを上書き
+node packages/cli/dist/index.js config init --force
+```
+
+**このプロジェクトでは既に設定ファイル `.search-docs.json` が配置済みです。**
 
 ### インデックス対象
 
