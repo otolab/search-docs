@@ -279,17 +279,33 @@ search-docs search "Vector検索" --server http://localhost:24281
     {
       "id": "...",
       "documentPath": "docs/README.md",
+      "documentHash": "abc123...",
       "heading": "概要",
       "depth": 1,
       "content": "...",
       "score": 0.95,
-      "isDirty": false
+      "isDirty": false,
+      "tokenCount": 150,
+      "startLine": 42,
+      "endLine": 68,
+      "sectionNumber": [1, 2, 1]
     }
   ],
   "total": 42,
   "took": 123
 }
 ```
+
+**フィールド説明**:
+- `documentPath`: 文書のパス
+- `heading`: セクションの見出し
+- `depth`: セクションの深度（0-3）
+- `content`: セクションの本文
+- `score`: 検索スコア（0-1、高いほど関連性が高い）
+- `isDirty`: セクションが最新でない場合 `true`
+- `startLine`: セクションの開始行番号 (v1.0.4以降)
+- `endLine`: セクションの終了行番号 (v1.0.4以降)
+- `sectionNumber`: セクション番号の配列 (v1.0.4以降、例: `[1, 2, 1]` は「第1章 > 第2節 > 第1項」)
 
 ### depthについて
 

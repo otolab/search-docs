@@ -90,13 +90,15 @@ class MockDBEngine {
     return toDelete.length;
   }
 
-  async addSection(section: Omit<Section, 'vector'>): Promise<void> {
-    // vectorフィールドを追加してSectionに変換
-    const fullSection: Section = {
-      ...section,
-      vector: new Float32Array(256),
-    };
-    this.sections.push(fullSection);
+  async addSections(sections: Array<Omit<Section, 'vector'>>): Promise<void> {
+    for (const section of sections) {
+      // vectorフィールドを追加してSectionに変換
+      const fullSection: Section = {
+        ...section,
+        vector: new Float32Array(256),
+      };
+      this.sections.push(fullSection);
+    }
   }
 }
 
@@ -357,8 +359,11 @@ Content of section 2.
         documentHash: oldHash,
         createdAt: new Date(),
         updatedAt: new Date(),
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
       };
-      await dbEngine.addSection(oldSection);
+      await dbEngine.addSections([oldSection]);
 
       // 新しいハッシュで文書を更新
       await storage.save(testPath, {

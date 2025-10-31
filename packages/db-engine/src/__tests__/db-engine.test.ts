@@ -64,8 +64,8 @@ describe('DBEngine', () => {
     };
 
     it('セクションを追加できる', async () => {
-      const result = await engine.addSection(testSection);
-      expect(result.id).toBe(testSection.id);
+      const result = await engine.addSections([testSection]);
+      expect(result.count).toBe(1);
     });
 
     it('パスでセクションを取得できる', async () => {
@@ -275,7 +275,7 @@ describe('DBEngine', () => {
 
     beforeAll(async () => {
       // v1ハッシュのセクションを追加
-      await engine.addSection({
+      await engine.addSections([{
         id: 'hash-test-section-1',
         documentPath: testPath,
         heading: 'Hash Test Section v1',
@@ -288,10 +288,10 @@ describe('DBEngine', () => {
         documentHash: hashV1,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+      }]);
 
       // v2ハッシュのセクションを追加
-      await engine.addSection({
+      await engine.addSections([{
         id: 'hash-test-section-2',
         documentPath: testPath,
         heading: 'Hash Test Section v2',
@@ -304,7 +304,7 @@ describe('DBEngine', () => {
         documentHash: hashV2,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+      }]);
     });
 
     it('特定のパスとハッシュでセクションを検索できる', async () => {

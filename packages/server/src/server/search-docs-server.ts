@@ -220,6 +220,14 @@ export class SearchDocsServer {
   async getDocument(request: GetDocumentRequest): Promise<GetDocumentResponse> {
     this.requestStats.total++;
     this.requestStats.getDocument++;
+
+    // sectionIdが指定されている場合はセクションを取得
+    if (request.sectionId) {
+      const result = await this.dbEngine.getSectionById(request.sectionId);
+      return { document: null, section: result.section };
+    }
+
+    // 文書全体を取得
     const document = await this.storage.get(request.path);
 
     if (!document) {

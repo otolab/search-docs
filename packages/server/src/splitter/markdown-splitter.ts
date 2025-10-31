@@ -8,6 +8,9 @@ interface HeadingNode {
   heading: string;
   content: string[];
   children: HeadingNode[];
+  // 位置情報（Task 14 Phase 2）
+  startLine: number;    // 開始行（1-indexed）
+  endLine: number;      // 終了行（1-indexed）
 }
 
 /**
@@ -36,7 +39,7 @@ export class MarkdownSplitter {
     const tokens = marked.lexer(content);
 
     // 2. 見出し構造を抽出
-    const structure = this.extractHeadingStructure(tokens);
+    const structure = this.extractHeadingStructure(tokens, content);
 
     // 3. セクションに変換
     const sections = this.buildSections(structure, documentPath, documentHash);
@@ -47,15 +50,21 @@ export class MarkdownSplitter {
   /**
    * 見出し構造を抽出
    */
-  private extractHeadingStructure(tokens: Token[]): HeadingNode[] {
+  private extractHeadingStructure(tokens: Token[], content: string): HeadingNode[] {
     const nodes: HeadingNode[] = [];
     let currentDepth0: HeadingNode | null = null;
     let currentDepth1: HeadingNode | null = null;
     let currentDepth2: HeadingNode | null = null;
     let currentDepth3: HeadingNode | null = null;
     const contentBuffer: string[] = [];
+    let currentLine = 1;  // 現在の行番号（1-indexed）
 
     for (const token of tokens) {
+      const tokenRaw = 'raw' in token && typeof token.raw === 'string' ? token.raw : '';
+      const tokenStartLine = currentLine;
+      // トークンの行数を計算
+      const tokenLines = tokenRaw.split('\n').length - 1;
+      const tokenEndLine = currentLine + tokenLines;
       if (token.type === 'heading') {
         // 型ガード: heading型であることを明示
         const headingToken = token as Tokens.Heading;
@@ -64,13 +73,27 @@ export class MarkdownSplitter {
 
         if (depth === 1) {
           // H1: 新しいdepth 1ノード
-          currentDepth1 = { depth: 1, heading, content: [], children: [] };
+          currentDepth1 = {
+            depth: 1,
+            heading,
+            content: [],
+            children: [],
+            startLine: tokenStartLine,
+            endLine: tokenEndLine,
+          };
           nodes.push(currentDepth1);
           currentDepth2 = null;
           currentDepth3 = null;
         } else if (depth === 2) {
           // H2: depth 1の子、またはdepth 2として扱う
-          currentDepth2 = { depth: 2, heading, content: [], children: [] };
+          currentDepth2 = {
+            depth: 2,
+            heading,
+            content: [],
+            children: [],
+            startLine: tokenStartLine,
+            endLine: tokenEndLine,
+          };
           if (currentDepth1) {
             currentDepth1.children.push(currentDepth2);
           } else {
@@ -80,7 +103,14 @@ export class MarkdownSplitter {
           currentDepth3 = null;
         } else if (depth === 3) {
           // H3: depth 2の子、またはdepth 3として扱う
-          currentDepth3 = { depth: 3, heading, content: [], children: [] };
+          currentDepth3 = {
+            depth: 3,
+            heading,
+            content: [],
+            children: [],
+            startLine: tokenStartLine,
+            endLine: tokenEndLine,
+          };
           if (currentDepth2) {
             currentDepth2.children.push(currentDepth3);
           } else if (currentDepth1) {
@@ -101,21 +131,29 @@ export class MarkdownSplitter {
 
           if (targetNode) {
             targetNode.content.push(text);
+            // endLineを更新
+            targetNode.endLine = tokenEndLine;
           } else {
             // 見出しのない前文
             contentBuffer.push(text);
           }
         }
       }
+
+      // 次のトークンのために行番号を更新
+      currentLine = tokenEndLine;
     }
 
     // depth=0は常に文書全体を表す
     // 前文（contentBuffer）を持ち、すべてのH1セクション（nodes）を子として持つ
+    const totalLines = content.split('\n').length;
     currentDepth0 = {
       depth: 0,
       heading: '', // 文書ルート
       content: contentBuffer, // 前文（あれば）
       children: nodes, // すべてのH1セクション
+      startLine: 1,
+      endLine: totalLines,
     };
 
     return [currentDepth0];
@@ -129,12 +167,14 @@ export class MarkdownSplitter {
     documentPath: string,
     documentHash: string,
     parentId: string | null = null,
-    orderStart: number = 0
+    orderStart: number = 0,
+    parentSectionNumber: number[] = []
   ): Array<Omit<Section, 'vector'>> {
     const sections: Array<Omit<Section, 'vector'>> = [];
     let order = orderStart;
 
-    for (const node of nodes) {
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
       const id = nanoid();
       const content = this.buildContent(node);
       const tokenCount = this.tokenCounter.count(content);
@@ -145,6 +185,12 @@ export class MarkdownSplitter {
           `Section "${node.heading || '(document root)'}" in ${documentPath} exceeds maxTokensPerSection (${tokenCount} > ${this.config.maxTokensPerSection})`
         );
       }
+
+      // 行番号はHeadingNodeに保存済み
+      const startLine = node.startLine;
+      const endLine = node.endLine;
+      // セクション番号（階層的な配列、例: [1], [1, 2], [1, 2, 1]）
+      const sectionNumber = [...parentSectionNumber, i + 1];
 
       const now = new Date();
       const section: Omit<Section, 'vector'> = {
@@ -163,6 +209,10 @@ export class MarkdownSplitter {
         updatedAt: now,
         summary: undefined,
         documentSummary: undefined,
+        // Task 14 Phase 2: 行番号とセクション番号
+        startLine,
+        endLine,
+        sectionNumber,
       };
 
       sections.push(section);
@@ -174,7 +224,8 @@ export class MarkdownSplitter {
           documentPath,
           documentHash,
           id,
-          0
+          0,
+          sectionNumber
         );
         sections.push(...childSections);
       }

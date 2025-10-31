@@ -23,6 +23,37 @@ function debugLog(message: string): void {
 }
 
 /**
+ * depthを分かりやすいラベルに変換
+ */
+function getDepthLabel(depth: number): string {
+  const labels = [
+    'document (全体)',
+    'H1 (章)',
+    'H2 (節)',
+    'H3 (項)',
+  ];
+  return labels[depth] || `depth-${depth}`;
+}
+
+/**
+ * コンテンツのプレビューを取得（行ベース）
+ */
+function getPreviewContent(content: string, maxLines: number = 5): string {
+  const lines = content.split('\n');
+
+  if (lines.length <= maxLines) {
+    return content;
+  }
+
+  const previewLines = lines.slice(0, maxLines);
+  const remaining = lines.length - maxLines;
+  previewLines.push(`... (残り${remaining}行)`);
+
+  return previewLines.join('\n');
+}
+
+
+/**
  * CLIオプション
  */
 interface CLIOptions {
@@ -148,10 +179,17 @@ async function main() {
           .boolean()
           .optional()
           .describe('Clean状態のセクションのみを検索対象とする（デフォルト: false）'),
+        previewLines: z.number().optional().describe('プレビュー行数（デフォルト: 5）'),
       },
     },
-    async (args: { query: string; depth?: number | number[]; limit?: number; includeCleanOnly?: boolean }) => {
-      const { query, depth, limit, includeCleanOnly } = args;
+    async (args: {
+      query: string;
+      depth?: number | number[];
+      limit?: number;
+      includeCleanOnly?: boolean;
+      previewLines?: number;
+    }) => {
+      const { query, depth, limit, includeCleanOnly, previewLines = 5 } = args;
 
       try {
         const response = await client.search({
@@ -171,12 +209,35 @@ async function main() {
           resultText += '該当する結果が見つかりませんでした。';
         } else {
           response.results.forEach((result, index) => {
-            resultText += `${index + 1}. ${result.documentPath}\n`;
-            resultText += `   見出し: ${result.heading}\n`;
-            resultText += `   深度: ${result.depth}\n`;
-            resultText += `   スコア: ${result.score.toFixed(4)}\n`;
-            resultText += `   Dirty: ${result.isDirty ? 'Yes' : 'No'}\n`;
-            resultText += `   内容プレビュー: ${result.content.substring(0, 100)}...\n\n`;
+            // ヘッダー行
+            const heading = result.heading || '(no heading)';
+            resultText += `${index + 1}. ${result.documentPath} > ${heading}\n`;
+
+            // メタデータ（1行にまとめる）
+            const depthLabel = getDepthLabel(result.depth);
+            const sectionPath = result.sectionNumber.join('-');
+            const metaParts = [
+              `Level: ${depthLabel}`,
+              `Section: ${sectionPath}`,
+              `Line: ${result.startLine}-${result.endLine}`,
+              `Score: ${result.score.toFixed(4)}`,
+            ];
+
+            // indexStatusが'updating'または'outdated'の場合のみ表示
+            if (result.indexStatus === 'updating' || result.indexStatus === 'outdated') {
+              metaParts.push(`Status: ${result.indexStatus}`);
+            }
+
+            resultText += metaParts.join(' | ') + '\n\n';
+
+            // コンテンツ（引用として明確に）
+            resultText += '```markdown\n';
+            const preview = getPreviewContent(result.content, previewLines);
+            resultText += preview + '\n';
+            resultText += '```\n\n';
+
+            // セクションID（get_documentで取得するため）
+            resultText += `(セクションID: ${result.id})\n\n`;
           });
         }
 
@@ -208,6 +269,10 @@ async function main() {
 
       try {
         const response = await client.getDocument({ path: documentPath });
+
+        if (!response.document) {
+          throw new Error(`Document not found: ${documentPath}`);
+        }
 
         let resultText = `文書: ${response.document.path}\n`;
         if (response.document.metadata.title) {

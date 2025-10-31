@@ -129,7 +129,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
       await storage.save(doc2.path, doc2);
 
       // 2. doc1とdoc2のセクションを作成（完成状態）
-      await dbEngine.addSection({
+      await dbEngine.addSections([{
         id: 'section-1',
         documentPath: doc1.path,
         documentHash: doc1.metadata.fileHash,
@@ -142,9 +142,12 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
         isDirty: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      }]);
 
-      await dbEngine.addSection({
+      await dbEngine.addSections([{
         id: 'section-2',
         documentPath: doc2.path,
         documentHash: doc2.metadata.fileHash,
@@ -157,7 +160,10 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
         isDirty: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      }]);
 
       // 3. doc1にpendingリクエストを作成（更新中状態）
       await dbEngine.createIndexRequest({
@@ -193,7 +199,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
 
       await storage.save(doc3.path, doc3);
 
-      await dbEngine.addSection({
+      await dbEngine.addSections([{
         id: 'section-3-all',
         documentPath: doc3.path,
         documentHash: doc3.metadata.fileHash,
@@ -206,7 +212,10 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
         isDirty: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      }]);
 
       // indexStatus未指定またはallの場合、すべて返す
       const results = await server.search({
@@ -244,7 +253,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
       // storage.save() recalculates hash, so retrieve the saved document
       const saved = await storage.get(doc.path);
 
-      await dbEngine.addSection({
+      await dbEngine.addSections([{
         id: 'latest-section',
         documentPath: doc.path,
         documentHash: saved!.metadata.fileHash,
@@ -257,7 +266,10 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
         isDirty: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      }]);
 
       const results = await server.search({
         query: 'unique latest document xyzlatest',
@@ -294,7 +306,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
       await storage.save(doc.path, doc);
 
       // 古いバージョンのセクション
-      await dbEngine.addSection({
+      await dbEngine.addSections([{
         id: 'updating-section',
         documentPath: doc.path,
         documentHash: createHash('sha256').update('updating-v1').digest('hex'),
@@ -307,7 +319,10 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
         isDirty: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      }]);
 
       // pendingリクエストを作成
       await dbEngine.createIndexRequest({
@@ -340,7 +355,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
       await storage.save(doc.path, doc);
 
       // 古いバージョンのセクション
-      await dbEngine.addSection({
+      await dbEngine.addSections([{
         id: 'outdated-section',
         documentPath: doc.path,
         documentHash: createHash('sha256').update('outdated-v1').digest('hex'),
@@ -353,7 +368,10 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
         isDirty: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      }]);
 
       // pendingリクエストは作成しない
 

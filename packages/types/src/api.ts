@@ -3,6 +3,7 @@
  */
 
 import type { Document } from './document.js';
+import type { Section } from './section.js';
 
 // ========================================
 // Search API
@@ -28,6 +29,8 @@ export interface SearchOptions {
   indexStatus?: 'all' | 'latest_only' | 'completed_only';
   /** 除外するドキュメントパス（内部使用） */
   excludePaths?: string[];
+  /** プレビュー行数（デフォルト: 5） */
+  previewLines?: number;
 }
 
 export interface SearchResult {
@@ -46,6 +49,12 @@ export interface SearchResult {
   isLatest?: boolean;
   /** 更新待ちリクエストがあるか */
   hasPendingUpdate?: boolean;
+  /** セクション開始行（1-indexed） */
+  startLine: number;
+  /** セクション終了行（1-indexed） */
+  endLine: number;
+  /** 階層的なセクション番号（例: [1], [1, 2], [1, 2, 1]） */
+  sectionNumber: number[];
 }
 
 export interface SearchResponse {
@@ -60,10 +69,14 @@ export interface SearchResponse {
 
 export interface GetDocumentRequest {
   path: string;
+  /** セクションID（指定した場合は特定セクションのみ取得） */
+  sectionId?: string;
 }
 
 export interface GetDocumentResponse {
-  document: Document;
+  document: Document | null;
+  /** セクション（sectionId指定時のみ） */
+  section?: Section;
 }
 
 // ========================================

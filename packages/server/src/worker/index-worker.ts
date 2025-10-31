@@ -228,10 +228,8 @@ export class IndexWorker {
         request.documentHash
       );
 
-      // 7. 新しいindexを保存
-      for (const section of sections) {
-        await this.dbEngine.addSection(section);
-      }
+      // 7. 新しいindexを保存（一括追加）
+      await this.dbEngine.addSections(sections);
       console.log(`[IndexWorker] Created ${sections.length} sections for ${request.documentPath}`);
 
       // 8. 古いindexを削除

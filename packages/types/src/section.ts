@@ -36,4 +36,10 @@ export interface Section {
   summary?: string;
   /** 文書全体の要約（コンテキスト保持用） */
   documentSummary?: string;
+  /** セクション開始行（1-indexed） */
+  startLine: number;
+  /** セクション終了行（1-indexed） */
+  endLine: number;
+  /** 階層的なセクション番号（例: [1], [1, 2], [1, 2, 1]） */
+  sectionNumber: number[];
 }

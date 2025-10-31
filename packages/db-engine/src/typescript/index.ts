@@ -422,16 +422,36 @@ export class DBEngine extends EventEmitter {
       updated_at: section.updatedAt,
       summary: section.summary,
       document_summary: section.documentSummary,  // snake_case
+      start_line: section.startLine,              // snake_case
+      end_line: section.endLine,                  // snake_case
+      section_number: section.sectionNumber,      // snake_case
     };
   }
 
   /**
-   * セクションを追加
+   * Python形式 → TypeScript Sectionに変換
    */
-  async addSection(section: Omit<Section, 'vector'>): Promise<{ id: string }> {
-    const pythonSection = this.convertSectionToPythonFormat(section);
-    const result = await this.sendRequest('addSection', { section: pythonSection });
-    return result as { id: string };
+  private convertSectionFromPythonFormat(pythonSection: any): Section {
+    return {
+      id: pythonSection.id,
+      documentPath: pythonSection.document_path,
+      heading: pythonSection.heading,
+      depth: pythonSection.depth,
+      content: pythonSection.content,
+      tokenCount: pythonSection.token_count,
+      vector: pythonSection.vector ? new Float32Array(pythonSection.vector) : new Float32Array(0),
+      parentId: pythonSection.parent_id,
+      order: pythonSection.order,
+      isDirty: pythonSection.is_dirty,
+      documentHash: pythonSection.document_hash,
+      createdAt: new Date(pythonSection.created_at),
+      updatedAt: new Date(pythonSection.updated_at),
+      summary: pythonSection.summary,
+      documentSummary: pythonSection.document_summary,
+      startLine: pythonSection.start_line,
+      endLine: pythonSection.end_line,
+      sectionNumber: pythonSection.section_number,
+    };
   }
 
   /**
@@ -448,7 +468,17 @@ export class DBEngine extends EventEmitter {
    */
   async search(params: SearchParams): Promise<DBEngineSearchResponse> {
     const result = await this.sendRequest('search', params);
-    return result as DBEngineSearchResponse;
+    const response = result as any;
+
+    // Pythonから返されたセクションをTypeScript形式に変換
+    const convertedResults = response.results.map((section: any) =>
+      this.convertSectionFromPythonFormat(section)
+    );
+
+    return {
+      results: convertedResults,
+      total: response.total,
+    };
   }
 
   /**
@@ -456,7 +486,27 @@ export class DBEngine extends EventEmitter {
    */
   async getSectionsByPath(documentPath: string): Promise<{ sections: Section[] }> {
     const result = await this.sendRequest('getSectionsByPath', { documentPath });
-    return result as { sections: Section[] };
+    const response = result as any;
+
+    // Pythonから返されたセクションをTypeScript形式に変換
+    const convertedSections = response.sections.map((section: any) =>
+      this.convertSectionFromPythonFormat(section)
+    );
+
+    return { sections: convertedSections };
+  }
+
+  /**
+   * IDでセクションを取得
+   */
+  async getSectionById(sectionId: string): Promise<{ section: Section }> {
+    const result = await this.sendRequest('getSectionById', { sectionId });
+    const response = result as any;
+
+    // Pythonから返されたセクションをTypeScript形式に変換
+    const convertedSection = this.convertSectionFromPythonFormat(response.section);
+
+    return { section: convertedSection };
   }
 
   /**
@@ -475,8 +525,10 @@ export class DBEngine extends EventEmitter {
       documentPath,
       documentHash
     });
-    const response = result as { sections: Section[] };
-    return response.sections;
+    const response = result as any;
+
+    // Pythonから返されたセクションをTypeScript形式に変換
+    return response.sections.map((section: any) => this.convertSectionFromPythonFormat(section));
   }
 
   /**
@@ -503,7 +555,14 @@ export class DBEngine extends EventEmitter {
    */
   async getDirtySections(limit: number = 100): Promise<{ sections: Section[] }> {
     const result = await this.sendRequest('getDirtySections', { limit });
-    return result as { sections: Section[] };
+    const response = result as any;
+
+    // Pythonから返されたセクションをTypeScript形式に変換
+    const convertedSections = response.sections.map((section: any) =>
+      this.convertSectionFromPythonFormat(section)
+    );
+
+    return { sections: convertedSections };
   }
 
   /**

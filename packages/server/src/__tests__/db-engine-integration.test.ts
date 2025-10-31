@@ -49,9 +49,12 @@ describe('DBEngine統合テスト', () => {
       documentHash: 'test-hash',
       createdAt: new Date(),
       updatedAt: new Date(),
+      startLine: 1,
+      endLine: 1,
+      sectionNumber: [1],
     };
 
-    await dbEngine.addSection(section);
+    await dbEngine.addSections([section]);
 
     const results = await dbEngine.search({
       query: 'test content',

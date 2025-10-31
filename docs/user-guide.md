@@ -149,6 +149,42 @@ search-docs search "検索キーワード" --format json
 search-docs search "検索キーワード" --clean-only
 ```
 
+#### 検索結果の形式
+
+検索結果には以下の情報が含まれます：
+
+```json
+{
+  "id": "section-uuid",
+  "documentPath": "docs/architecture.md",
+  "documentHash": "abc123...",
+  "heading": "Vector検索エンジン",
+  "depth": 2,
+  "content": "セクションの本文...",
+  "score": 0.95,
+  "isDirty": false,
+  "tokenCount": 150,
+  "startLine": 42,
+  "endLine": 68,
+  "sectionNumber": [1, 2, 1]
+}
+```
+
+**主要フィールド**:
+- `documentPath`: 文書のパス
+- `heading`: セクションの見出し
+- `depth`: セクションの深度（0-3、0は文書全体）
+- `content`: セクションの本文
+- `score`: 検索スコア（高いほど関連性が高い）
+- `isDirty`: セクションが最新かどうか
+
+**文書内位置情報** (v1.0.4以降):
+- `startLine`: セクションの開始行番号
+- `endLine`: セクションの終了行番号
+- `sectionNumber`: セクション番号の配列（例: `[1, 2, 1]` は「第1章 > 第2節 > 第1項」）
+
+これらの情報を使って、検索結果から元の文書の該当箇所を正確に特定できます。
+
 ### 4. インデックスの管理
 
 ```bash
