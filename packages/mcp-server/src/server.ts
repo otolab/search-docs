@@ -7,6 +7,12 @@ import { SearchDocsClient } from '@search-docs/client';
 import { ConfigLoader } from '@search-docs/types';
 import * as path from 'path';
 import { ServerManager } from './server-manager.js';
+import { createRequire } from 'module';
+
+// package.jsonからバージョンを読み込む
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json');
+const VERSION = packageJson.version;
 
 /**
  * デバッグモードの判定
@@ -69,7 +75,7 @@ function parseArgs(): CLIOptions {
   program
     .name('search-docs-mcp')
     .description('MCP Server for search-docs - Claude Code integration')
-    .version('0.1.0')
+    .version(VERSION)
     .option('--project-dir <path>', 'Project directory path (optional, will auto-detect from config file if not specified)')
     .parse(process.argv);
 
@@ -154,7 +160,7 @@ async function main() {
   const server = new McpServer(
     {
       name: 'search-docs',
-      version: '0.1.0',
+      version: VERSION,
     },
     {
       capabilities: {
