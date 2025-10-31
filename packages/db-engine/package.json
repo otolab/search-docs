@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/db-engine",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "LanceDB Vector検索エンジン",
   "type": "module",
   "main": "dist/index.js",

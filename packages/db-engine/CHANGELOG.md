@@ -1,5 +1,29 @@
 # @search-docs/db-engine
 
+## 1.0.5
+
+### Patch Changes
+
+- 9b5820a: 検索結果に startLine/endLine/sectionNumber フィールドを追加
+
+  検索結果に文書内の位置情報を追加し、検索結果からソースファイルの該当箇所を特定できるようにしました。
+
+  **主な変更**:
+
+  - Section 型に 3 つの新フィールドを追加（startLine, endLine, sectionNumber）
+  - MarkdownSplitter で行番号とセクション番号を自動生成
+  - Python-TypeScript 変換層で新フィールドを変換
+  - CLI 出力に位置情報を表示
+  - MCP Server で新フィールドを提供
+  - Python 側でフィールドのバリデーションと型変換を追加（null 値を防止）
+
+  **影響範囲**:
+
+  - 既存のインデックスは再構築が必要です（`search-docs index rebuild`または`.search-docs/index`を削除してサーバ再起動）
+
+- Updated dependencies [9b5820a]
+  - @search-docs/types@1.0.5
+
 ## 1.0.1
 
 ### Patch Changes
