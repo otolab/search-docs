@@ -80,6 +80,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.17.0
         version: 1.20.2
+      '@search-docs/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
@@ -227,7 +230,6 @@ packages:
 
   '@coeiro-operator/mcp-debug@1.0.1':
     resolution: {integrity: sha512-McOp4EihGVQMP/JYWKWN9WE/vVEsePUoeX8SCqMPedYp6gyxX08AZThhVsVqmsX7SX0Vq4stoUSlqCyDxq8Qqg==}
-    cpu: [x64, arm64, ia32]
     os: [darwin, linux, win32]
     hasBin: true
 

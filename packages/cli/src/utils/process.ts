@@ -187,13 +187,20 @@ export async function isPortAvailable(port: number): Promise<boolean> {
  */
 export interface SpawnServerOptions {
   serverScript: string;
-  configPath: string;
+  configPath?: string | null;
   daemon: boolean;
   logPath?: string;
 }
 
 export function spawnServer(options: SpawnServerOptions): ChildProcess {
   const args = [options.serverScript];
+
+  const env = { ...process.env };
+
+  // configPathが指定されている場合のみ環境変数を設定
+  if (options.configPath) {
+    env.SEARCH_DOCS_CONFIG = options.configPath;
+  }
 
   const spawnOptions: {
     detached: boolean;
@@ -202,10 +209,7 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
   } = {
     detached: options.daemon,
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      SEARCH_DOCS_CONFIG: options.configPath,
-    },
+    env,
   };
 
   // デーモンモードの場合、stdioをログファイルまたはignoreに設定

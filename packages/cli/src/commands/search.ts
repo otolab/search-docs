@@ -8,6 +8,7 @@ import {
   formatSearchResultsAsJson,
   formatSearchResultsAsText,
 } from '../utils/output.js';
+import { resolveServerUrl } from '../utils/server-url.js';
 
 export interface SearchCommandOptions {
   limit?: string;
@@ -15,6 +16,7 @@ export interface SearchCommandOptions {
   format?: 'text' | 'json';
   cleanOnly?: boolean;
   server?: string;
+  config?: string;
 }
 
 /**
@@ -25,9 +27,15 @@ export async function executeSearch(
   options: SearchCommandOptions
 ): Promise<void> {
   try {
+    // サーバURLを解決
+    const baseUrl = await resolveServerUrl({
+      server: options.server,
+      config: options.config,
+    });
+
     // クライアント作成
     const client = new SearchDocsClient({
-      baseUrl: options.server || 'http://localhost:24280',
+      baseUrl,
     });
 
     // リクエスト構築

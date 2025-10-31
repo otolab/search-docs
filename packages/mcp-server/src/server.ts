@@ -4,49 +4,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { Command } from 'commander';
 import { SearchDocsClient } from '@search-docs/client';
-import * as fs from 'fs/promises';
+import { ConfigLoader } from '@search-docs/types';
 import * as path from 'path';
-
-/**
- * 設定ファイルの型
- */
-interface SearchDocsConfig {
-  server: {
-    host: string;
-    port: number;
-  };
-}
-
-/**
- * デフォルト設定
- */
-const DEFAULT_CONFIG: SearchDocsConfig = {
-  server: {
-    host: 'localhost',
-    port: 24280,
-  },
-};
-
-/**
- * 設定ファイルを読み込む
- */
-async function loadConfig(projectDir: string): Promise<SearchDocsConfig> {
-  const configPath = path.join(projectDir, '.search-docs.json');
-
-  try {
-    const content = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(content) as SearchDocsConfig;
-    return {
-      server: {
-        host: config.server?.host || DEFAULT_CONFIG.server.host,
-        port: config.server?.port || DEFAULT_CONFIG.server.port,
-      },
-    };
-  } catch (_error) {
-    console.error(`[mcp-server] Config file not found or invalid, using defaults: ${configPath}`);
-    return DEFAULT_CONFIG;
-  }
-}
+import { ServerManager } from './server-manager.js';
 
 /**
  * CLIオプション
@@ -84,22 +44,54 @@ async function main() {
   console.error(`[mcp-server] Project directory: ${projectDir}`);
 
   // 設定ファイルの読み込み
-  const config = await loadConfig(projectDir);
+  const { config, configPath } = await ConfigLoader.resolve({
+    cwd: projectDir,
+  });
   const serverUrl = `http://${config.server.host}:${config.server.port}`;
+  console.error(`[mcp-server] Config: ${configPath || 'default config'}`);
   console.error(`[mcp-server] Server URL: ${serverUrl}`);
 
   // SearchDocsClientの初期化
   const client = new SearchDocsClient({ baseUrl: serverUrl });
+
+  // ServerManager初期化
+  const serverManager = new ServerManager();
+
+  // プロセス終了時のクリーンアップ
+  process.on('SIGINT', () => {
+    console.error('[mcp-server] Received SIGINT, cleaning up...');
+    serverManager.cleanup();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    console.error('[mcp-server] Received SIGTERM, cleaning up...');
+    serverManager.cleanup();
+    process.exit(0);
+  });
 
   // 接続確認
   try {
     await client.healthCheck();
     console.error('[mcp-server] Connection to search-docs server established');
   } catch (error) {
-    console.error('[mcp-server] Failed to connect to search-docs server');
-    console.error('[mcp-server] Please ensure the server is running with:');
-    console.error(`[mcp-server]   node packages/cli/dist/index.js server start`);
-    throw error;
+    console.error('[mcp-server] Server is not running, attempting to start...');
+
+    try {
+      // サーバを自動起動
+      const configPath = path.join(projectDir, '.search-docs.json');
+      await serverManager.startServer(projectDir, config.server.port, configPath);
+
+      // 起動後、再度接続確認
+      await client.healthCheck();
+      console.error('[mcp-server] Successfully connected to auto-started server');
+    } catch (startError) {
+      console.error('[mcp-server] Failed to auto-start server');
+      console.error('[mcp-server] Error:', (startError as Error).message);
+      console.error('[mcp-server] Please ensure @search-docs/cli is installed:');
+      console.error('[mcp-server]   npm install -g @search-docs/cli');
+      throw startError;
+    }
   }
 
   // MCPサーバの初期化

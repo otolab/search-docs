@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP Server for search-docs - Claude Code integration",
   "type": "module",
   "main": "dist/server.js",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
+    "@search-docs/cli": "workspace:*",
     "@search-docs/client": "workspace:*",
     "@search-docs/types": "workspace:*",
     "commander": "^12.0.0",

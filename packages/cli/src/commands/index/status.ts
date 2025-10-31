@@ -3,12 +3,14 @@
  */
 
 import { SearchDocsClient } from '@search-docs/client';
+import { resolveServerUrl } from '../../utils/server-url.js';
 
 /**
  * index status コマンドのオプション
  */
 export interface IndexStatusOptions {
   server?: string;
+  config?: string;
   format?: 'text' | 'json';
 }
 
@@ -19,8 +21,13 @@ export async function executeIndexStatus(
   options: IndexStatusOptions
 ): Promise<void> {
   try {
-    const serverUrl = options.server || 'http://localhost:24280';
-    const client = new SearchDocsClient({ baseUrl: serverUrl });
+    // サーバURLを解決
+    const baseUrl = await resolveServerUrl({
+      server: options.server,
+      config: options.config,
+    });
+
+    const client = new SearchDocsClient({ baseUrl });
 
     const status = await client.getStatus();
 

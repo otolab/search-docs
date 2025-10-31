@@ -20,7 +20,7 @@ export interface PidFileContent {
   // サーバ設定
   host: string;
   port: number;
-  configPath: string;
+  configPath: string | null;
 
   // ログ情報（オプション）
   logPath?: string;

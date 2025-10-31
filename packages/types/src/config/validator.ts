@@ -1,4 +1,4 @@
-import type { SearchDocsConfig } from '@search-docs/types';
+import type { SearchDocsConfig } from '../config.js';
 
 /**
  * 設定オブジェクトをバリデーション

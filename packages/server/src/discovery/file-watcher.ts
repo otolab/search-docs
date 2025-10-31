@@ -66,9 +66,25 @@ export class FileWatcher extends EventEmitter {
         const relativePath = path.relative(this.rootDir, filePath);
 
         // ディレクトリは除外しない（サブディレクトリを監視するため）
-        // statsがない場合は拡張子がないものをディレクトリとみなす
+        // ただし、一般的な大量ファイルを含むディレクトリは最初から除外
         const isDirectory = stats?.isDirectory() || !path.extname(filePath);
         if (isDirectory) {
+          // node_modules, .git, dist, buildなどを除外
+          const dirName = path.basename(filePath);
+          const commonIgnores = [
+            'node_modules',
+            '.git',
+            '.venv',
+            'dist',
+            'build',
+            '.next',
+            '.turbo',
+            'coverage',
+            '.cache',
+          ];
+          if (commonIgnores.includes(dirName)) {
+            return true;
+          }
           return false;
         }
 
@@ -94,6 +110,9 @@ export class FileWatcher extends EventEmitter {
         stabilityThreshold: this.watcherConfig.awaitWriteFinishMs,
         pollInterval: 100,
       },
+      // ファイルディスクリプタ使用量を削減
+      usePolling: false, // ネイティブfsEventsを使用（Macの場合）
+      atomic: true, // アトミックな書き込みを処理
     });
 
     // イベントハンドラ登録（ready前に登録する）

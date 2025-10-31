@@ -22,6 +22,11 @@ export type {
   WatcherConfig,
 } from './config.js';
 export { DEFAULT_CONFIG } from './config.js';
+export {
+  ConfigLoader,
+  validateConfig,
+  type ResolveConfigOptions,
+} from './config/index.js';
 
 // API
 export type {

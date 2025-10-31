@@ -2,9 +2,9 @@
  * server stop コマンド
  */
 
+import { ConfigLoader } from '@search-docs/types';
 import { readPidFile, deletePidFile } from '../../utils/pid.js';
 import { isProcessAlive, killProcess } from '../../utils/process.js';
-import { findProjectRoot } from '../../utils/project.js';
 
 /**
  * server stop コマンドのオプション
@@ -19,7 +19,7 @@ export interface ServerStopOptions {
  */
 export async function stopServer(options: ServerStopOptions): Promise<void> {
   // 1. プロジェクトルート決定
-  const projectRoot = await findProjectRoot({
+  const { projectRoot } = await ConfigLoader.resolve({
     configPath: options.config,
   });
 

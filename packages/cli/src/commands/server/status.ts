@@ -2,10 +2,10 @@
  * server status コマンド
  */
 
+import { ConfigLoader } from '@search-docs/types';
 import { SearchDocsClient } from '@search-docs/client';
 import { readPidFile } from '../../utils/pid.js';
 import { isProcessAlive, checkServerHealth } from '../../utils/process.js';
-import { findProjectRoot } from '../../utils/project.js';
 
 /**
  * server status コマンドのオプション
@@ -22,7 +22,7 @@ export async function executeServerStatus(
 ): Promise<void> {
   try {
     // 1. プロジェクトルート決定
-    const projectRoot = await findProjectRoot({
+    const { projectRoot } = await ConfigLoader.resolve({
       configPath: options.config,
     });
 

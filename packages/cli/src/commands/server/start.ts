@@ -5,6 +5,7 @@
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
+import { ConfigLoader } from '@search-docs/types';
 import {
   readPidFile,
   writePidFile,
@@ -17,7 +18,6 @@ import {
   spawnServer,
   waitForServerStart,
 } from '../../utils/process.js';
-import { findProjectRoot, resolveConfigPath } from '../../utils/project.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,33 +40,13 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
     // デバッグ: optionsの内容を確認
     console.log('[DEBUG] executeServerStart options:', JSON.stringify(options, null, 2));
 
-    // 1. プロジェクトルート決定
-    const projectRoot = await findProjectRoot({
+    // 1. 設定読み込みとプロジェクトルート決定
+    const { config, configPath, projectRoot } = await ConfigLoader.resolve({
       configPath: options.config,
     });
 
     console.log(`Project root: ${projectRoot}`);
-
-    // 2. 設定ファイルパス解決
-    const configPath = await resolveConfigPath(projectRoot, options.config);
-
-    console.log(`Config: ${configPath}`);
-
-    // 3. 設定ファイル読み込み
-    let config: {
-      project: { name: string; root?: string };
-      server: { host: string; port: number };
-    };
-
-    try {
-      const configContent = readFileSync(configPath, 'utf-8');
-      config = JSON.parse(configContent) as typeof config;
-    } catch (_error) {
-      throw new Error(
-        `Failed to load config file: ${configPath}\n` +
-          `Run 'search-docs config init' to create a config file.`
-      );
-    }
+    console.log(`Config: ${configPath || 'default config'}`);
 
     // 4. 既存プロセスチェック
     const existingPid = await readPidFile(projectRoot);

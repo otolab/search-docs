@@ -7,19 +7,14 @@
 import * as path from 'path';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
-import { SearchDocsServer, JsonRpcServer, ConfigLoader } from '../index.js';
+import { ConfigLoader } from '@search-docs/types';
+import { SearchDocsServer, JsonRpcServer } from '../index.js';
 
 async function main() {
   try {
-    // 設定読み込み
-    const configPath = process.env.SEARCH_DOCS_CONFIG || path.join(process.cwd(), 'search-docs.json');
-    console.log(`Loading config from: ${configPath}`);
-    const config = await ConfigLoader.load(configPath);
-
-    // プロジェクトルートを絶対パスに解決
-    const projectRoot = path.isAbsolute(config.project.root)
-      ? config.project.root
-      : path.resolve(process.cwd(), config.project.root);
+    // 設定読み込みとプロジェクトルート決定
+    const { config, configPath, projectRoot } = await ConfigLoader.resolve();
+    console.log(`Loading config from: ${configPath || 'default config'}`);
 
     // ストレージ初期化
     const storage = new FileStorage({
@@ -56,7 +51,7 @@ async function main() {
     await jsonRpcServer.start();
     console.log(`Server started successfully`);
     console.log(`  - Project: ${config.project.name}`);
-    console.log(`  - Root: ${config.project.root}`);
+    console.log(`  - Root: ${projectRoot}`);
     console.log(`  - RPC endpoint: http://${config.server.host}:${config.server.port}/rpc`);
   } catch (error) {
     console.error('Failed to start server:', error);

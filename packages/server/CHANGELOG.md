@@ -1,5 +1,38 @@
 # @search-docs/server
 
+## 1.0.1
+
+### Patch Changes
+
+- ## Bug Fixes and Enhancements
+
+  ### CLI: Port Configuration Support
+
+  - Add `resolveServerUrl()` utility to read port configuration from `.search-docs.json`
+  - Fix all CLI commands (search, index rebuild, index status) to use configured port instead of hardcoded default
+  - Add `--config` option to all client commands for explicit config file path
+
+  ### MCP Server: Auto-start Server
+
+  - Add `ServerManager` class to automatically start search-docs server when not running
+  - Use `import.meta.resolve()` to locate `@search-docs/cli` package
+  - Add `@search-docs/cli` as dependency to enable auto-start functionality
+  - Implement graceful cleanup on process termination (SIGINT/SIGTERM)
+
+  ### Server: Fix EMFILE Error in File Watcher
+
+  - Add directory-level filtering to exclude common directories with many files (node_modules, .git, .venv, dist, build, etc.)
+  - Configure chokidar options for better file descriptor management
+  - Enable native fsEvents on macOS with `usePolling: false`
+
+  ## User Impact
+
+  **Before**: Users needed to install both `@search-docs/cli` and `@search-docs/mcp-server`, and manually start the server
+
+  **After**: Users only need to install `@search-docs/mcp-server`, which automatically starts the server when needed
+
+  **Port Configuration**: Multiple projects can now run servers on different ports as configured in `.search-docs.json`
+
 ## 1.0.0
 
 ### Major Changes

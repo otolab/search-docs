@@ -92,7 +92,8 @@ program
   .option('--depth <depths...>', '深度フィルタ')
   .option('--format <format>', '出力形式 (text, json)', 'text')
   .option('--clean-only', 'Dirtyセクションを除外')
-  .option('--server <url>', 'サーバURL', 'http://localhost:24280')
+  .option('--server <url>', 'サーバURL')
+  .option('--config <path>', '設定ファイルのパス')
   .action((query: string, options: SearchCommandOptions) => {
     void executeSearch(query, options);
   });
@@ -107,8 +108,9 @@ indexCmd
   .description('インデックスを再構築')
   .argument('[paths...]', '再構築するファイルのパス')
   .option('--force', '強制的に再インデックス')
-  .option('--server <url>', 'サーバURL', 'http://localhost:24280')
-  .action(async (paths: string[], options: { force?: boolean; server?: string }) => {
+  .option('--server <url>', 'サーバURL')
+  .option('--config <path>', '設定ファイルのパス')
+  .action(async (paths: string[], options: { force?: boolean; server?: string; config?: string }) => {
     const { executeIndexRebuild } = await import('./commands/index/rebuild.js');
     await executeIndexRebuild({ paths, ...options });
   });
@@ -116,9 +118,10 @@ indexCmd
 indexCmd
   .command('status')
   .description('インデックスのステータスを確認')
-  .option('--server <url>', 'サーバURL', 'http://localhost:24280')
+  .option('--server <url>', 'サーバURL')
+  .option('--config <path>', '設定ファイルのパス')
   .option('--format <format>', '出力形式 (text, json)', 'text')
-  .action(async (options: { server?: string; format?: 'text' | 'json' }) => {
+  .action(async (options: { server?: string; config?: string; format?: 'text' | 'json' }) => {
     const { executeIndexStatus } = await import('./commands/index/status.js');
     await executeIndexStatus(options);
   });
