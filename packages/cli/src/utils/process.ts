@@ -2,8 +2,9 @@
  * プロセス管理ユーティリティ
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, type ChildProcess, type StdioOptions } from 'child_process';
 import * as net from 'net';
+import { openSync, closeSync } from 'fs';
 
 /**
  * プロセスが生存しているか確認
@@ -202,11 +203,7 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
     env.SEARCH_DOCS_CONFIG = options.configPath;
   }
 
-  const spawnOptions: {
-    detached: boolean;
-    stdio: 'inherit' | ['ignore', import('fs').WriteStream | 'ignore', import('fs').WriteStream | 'ignore'];
-    env: NodeJS.ProcessEnv;
-  } = {
+  const spawnOptions: any = {
     detached: options.daemon,
     stdio: 'inherit',
     env,
@@ -215,12 +212,11 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
   // デーモンモードの場合、stdioをログファイルまたはignoreに設定
   if (options.daemon) {
     if (options.logPath) {
-      // ログファイルにリダイレクト
-      const fs = require('fs');
-      const logStream = fs.createWriteStream(options.logPath, { flags: 'a' });
+      // ログファイルにリダイレクト（ファイルディスクリプタを直接使用）
+      const logFd = openSync(options.logPath, 'a');
 
       // stdin: ignore, stdout/stderr: ログファイル
-      spawnOptions.stdio = ['ignore', logStream, logStream];
+      spawnOptions.stdio = ['ignore', logFd, logFd] as StdioOptions;
     } else {
       // ログファイルが指定されていない場合はignore
       spawnOptions.stdio = ['ignore', 'ignore', 'ignore'];
