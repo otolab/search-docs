@@ -74,7 +74,7 @@ async function main() {
   try {
     await client.healthCheck();
     console.error('[mcp-server] Connection to search-docs server established');
-  } catch (error) {
+  } catch (_error) {
     console.error('[mcp-server] Server is not running, attempting to start...');
 
     try {

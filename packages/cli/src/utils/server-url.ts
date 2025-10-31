@@ -40,7 +40,7 @@ export async function resolveServerUrl(
     const host = config.server.host || 'localhost';
     const port = config.server.port || 24280;
     return `http://${host}:${port}`;
-  } catch (error) {
+  } catch (_error) {
     // 設定ファイルが読み込めない場合はデフォルトにフォールバック
     // エラーは握りつぶす（設定ファイルがない場合もある）
   }

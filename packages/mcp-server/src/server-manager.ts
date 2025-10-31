@@ -26,7 +26,7 @@ export class ServerManager {
   private async resolveCliPath(): Promise<string> {
     try {
       // import.meta.resolve()でパスを解決
-      const cliPackage = await import.meta.resolve('@search-docs/cli');
+      const cliPackage = import.meta.resolve('@search-docs/cli');
 
       // file:// プロトコルを削除してファイルパスに変換
       const cliPackagePath = cliPackage.replace(/^file:\/\//, '');
@@ -84,12 +84,12 @@ export class ServerManager {
       });
 
       // 標準出力をログ
-      serverProcess.stdout?.on('data', (data) => {
+      serverProcess.stdout?.on('data', (data: Buffer) => {
         console.error(`[server] ${data.toString().trim()}`);
       });
 
       // 標準エラー出力をログ
-      serverProcess.stderr?.on('data', (data) => {
+      serverProcess.stderr?.on('data', (data: Buffer) => {
         console.error(`[server] ${data.toString().trim()}`);
       });
 
