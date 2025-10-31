@@ -59,12 +59,17 @@ describe('config init', () => {
     expect(config.project.root).toBe('.');
   });
 
-  it('既存ファイルがある場合はエラーを投げる', async () => {
+  it('既存ファイルがある場合は情報メッセージを表示して正常終了', async () => {
     // 最初に設定ファイルを作成
     await initConfig({ cwd: testDir });
 
-    // 2回目はエラーになる
-    await expect(initConfig({ cwd: testDir })).rejects.toThrow('Configuration file already exists');
+    // 2回目も正常終了する（エラーを投げない）
+    await expect(initConfig({ cwd: testDir })).resolves.not.toThrow();
+
+    // ファイルは変更されない
+    const content = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(content);
+    expect(config).toHaveProperty('version');
   });
 
   it('--forceオプションで既存ファイルを上書きできる', async () => {
