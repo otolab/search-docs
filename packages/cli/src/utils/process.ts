@@ -204,7 +204,7 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
 
   const spawnOptions: {
     detached: boolean;
-    stdio: 'inherit' | ['ignore', number | 'ignore', number | 'ignore'];
+    stdio: 'inherit' | ['ignore', import('fs').WriteStream | 'ignore', import('fs').WriteStream | 'ignore'];
     env: NodeJS.ProcessEnv;
   } = {
     detached: options.daemon,
@@ -214,9 +214,17 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
 
   // デーモンモードの場合、stdioをログファイルまたはignoreに設定
   if (options.daemon) {
-    // 将来的にlogPathを使ってログファイルに出力する
-    // 今は単純にignore
-    spawnOptions.stdio = ['ignore', 'ignore', 'ignore'];
+    if (options.logPath) {
+      // ログファイルにリダイレクト
+      const fs = require('fs');
+      const logStream = fs.createWriteStream(options.logPath, { flags: 'a' });
+
+      // stdin: ignore, stdout/stderr: ログファイル
+      spawnOptions.stdio = ['ignore', logStream, logStream];
+    } else {
+      // ログファイルが指定されていない場合はignore
+      spawnOptions.stdio = ['ignore', 'ignore', 'ignore'];
+    }
   }
 
   const serverProcess = spawn('node', args, spawnOptions);
