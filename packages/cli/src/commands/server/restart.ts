@@ -11,7 +11,7 @@ import { startServer } from './start.js';
 export interface ServerRestartOptions {
   config?: string;
   port?: string;
-  daemon?: boolean;
+  foreground?: boolean;
   log?: string;
 }
 
@@ -35,12 +35,9 @@ export async function executeServerRestart(
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // 3. サーバ起動
-    // restart時は常にデーモンモードで起動
+    // restart時はオプションをそのまま引き継ぐ（デフォルトはバックグラウンド）
     console.log('\nStarting server...');
-    await startServer({
-      ...options,
-      daemon: true,
-    });
+    await startServer(options);
   } catch (error) {
     console.error('Error:', (error as Error).message);
     process.exit(1);

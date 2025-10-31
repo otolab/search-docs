@@ -47,10 +47,10 @@ const serverCmd = program
 
 serverCmd
   .command('start')
-  .description('サーバを起動')
+  .description('サーバを起動（デフォルト: バックグラウンド）')
   .option('--config <path>', '設定ファイルのパス')
   .option('--port <port>', 'ポート番号')
-  .option('-d, --daemon', 'バックグラウンドで起動')
+  .option('-f, --foreground', 'フォアグラウンドで起動（開発時）')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerStartOptions) => {
     void executeServerStart(options);
@@ -74,10 +74,10 @@ serverCmd
 
 serverCmd
   .command('restart')
-  .description('サーバを再起動')
+  .description('サーバを再起動（デフォルト: バックグラウンド）')
   .option('--config <path>', '設定ファイルのパス')
   .option('--port <port>', 'ポート番号')
-  .option('-d, --daemon', 'バックグラウンドで起動')
+  .option('-f, --foreground', 'フォアグラウンドで起動（開発時）')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerRestartOptions) => {
     void executeServerRestart(options);

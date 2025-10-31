@@ -28,7 +28,7 @@ const __dirname = path.dirname(__filename);
 export interface ServerStartOptions {
   config?: string;
   port?: string;
-  daemon?: boolean;
+  foreground?: boolean;
   log?: string;
 }
 
@@ -90,12 +90,13 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
     const serverScript = path.join(serverDistDir, 'bin/server.js');
 
     // 8. サーバプロセス起動
-    console.log(`Starting server${options.daemon ? ' (daemon mode)' : ''}...`);
+    const isDaemon = !options.foreground;  // foreground が false ならデーモン
+    console.log(`Starting server${isDaemon ? ' (daemon mode)' : ' (foreground mode)'}...`);
 
     const serverProcess = spawnServer({
       serverScript,
       configPath,
-      daemon: options.daemon || false,
+      daemon: isDaemon,
       logPath: options.log,
     });
 
@@ -137,7 +138,7 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
     await writePidFile(pidFileContent);
 
     // 10. 起動確認
-    if (options.daemon) {
+    if (isDaemon) {
       // デーモンモードの場合はヘルスチェックで確認
       console.log('Waiting for server to start...');
 

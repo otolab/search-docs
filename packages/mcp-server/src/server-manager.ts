@@ -61,7 +61,7 @@ export class ServerManager {
       console.error(`[mcp-server] CLI path resolved: ${cliPath}`);
 
       // サーバ起動コマンドを構築
-      const args = ['server', 'start', '--port', port.toString()];
+      const args = ['server', 'start', '--foreground', '--port', port.toString()];
 
       if (configPath) {
         args.push('--config', configPath);
