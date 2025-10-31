@@ -25,6 +25,23 @@ describe('FileWatcher', () => {
 
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  /**
+   * イベントが来るまで待つ（最大タイムアウトあり）
+   * @param events イベント配列
+   * @param minCount 最小イベント数
+   * @param timeoutMs タイムアウト時間（デフォルト: 2000ms）
+   */
+  const waitForEvents = async (
+    events: FileChangeEvent[],
+    minCount: number = 1,
+    timeoutMs: number = 2000
+  ): Promise<void> => {
+    const startTime = Date.now();
+    while (events.length < minCount && Date.now() - startTime < timeoutMs) {
+      await wait(100);
+    }
+  };
+
   it('ファイル追加を検出できる', async () => {
     const events: FileChangeEvent[] = [];
 
@@ -50,7 +67,8 @@ describe('FileWatcher', () => {
     const testFile = path.join(tmpDir, 'test.md');
     await fs.writeFile(testFile, '# Test');
 
-    await wait(400); // デバウンス+処理待ち
+    // イベントが来るまで待つ（最大2秒）
+    await waitForEvents(events, 1);
 
     expect(events.length).toBeGreaterThanOrEqual(1);
     expect(events[0].type).toBe('add');
@@ -85,7 +103,8 @@ describe('FileWatcher', () => {
     // ファイル更新
     await fs.writeFile(testFile, '# Updated');
 
-    await wait(400);
+    // イベントが来るまで待つ（最大2秒）
+    await waitForEvents(events, 1);
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('change');
@@ -120,7 +139,8 @@ describe('FileWatcher', () => {
     // ファイル削除
     await fs.unlink(testFile);
 
-    await wait(400);
+    // イベントが来るまで待つ（最大2秒）
+    await waitForEvents(events, 1);
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('unlink');
@@ -223,7 +243,8 @@ describe('FileWatcher', () => {
     const testFile = path.join(subDir, 'test.md');
     await fs.writeFile(testFile, '# Test');
 
-    await wait(400);
+    // イベントが来るまで待つ（最大2秒）
+    await waitForEvents(events, 1);
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('add');
