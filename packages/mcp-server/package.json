@@ -13,14 +13,15 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build --force",
     "clean": "tsc --build --clean",
     "dev": "tsc --watch",
     "start": "node dist/server.js",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix --max-warnings 0"
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "build:fast": "tsc --build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",

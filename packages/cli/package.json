@@ -10,13 +10,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build --force",
     "clean": "tsc --build --clean",
     "dev": "tsx src/index.ts",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix --max-warnings 0"
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "build:fast": "tsc --build"
   },
   "dependencies": {
     "@search-docs/client": "workspace:*",

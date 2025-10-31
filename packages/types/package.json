@@ -9,11 +9,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build --force",
     "clean": "tsc --build --clean",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix --max-warnings 0"
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "build:fast": "tsc --build"
   },
   "keywords": [
     "typescript",
