@@ -1,5 +1,12 @@
 # @search-docs/client
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @search-docs/types@1.0.1
+
 ## 1.0.0
 
 ### Major Changes

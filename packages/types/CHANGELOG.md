@@ -1,5 +1,17 @@
 # @search-docs/types
 
+## 1.0.1
+
+### Patch Changes
+
+- 初期リリース後の不足機能追加と改善
+
+  - config init コマンドの追加（設定ファイル生成）
+  - グローバル--config オプションの実装
+  - サーバ起動デフォルトをバックグラウンドに変更
+  - 設定ファイル必須化（ポート衝突回避のため）
+  - ConfigLoader.resolve()に requireConfig パラメータを追加
+
 ## 1.0.0
 
 ### Major Changes
