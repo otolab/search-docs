@@ -1,5 +1,18 @@
 # @search-docs/cli
 
+## 1.0.3
+
+### Patch Changes
+
+- Bug fixes and improvements
+
+  - **cli**: ESM 互換性修正、config init 改善、depth 表示改善、ログ記録機能追加
+  - **server**: file-watcher テスト安定性向上
+  - **mcp-server**: --project-dir オプションをオプショナル化
+
+- Updated dependencies
+  - @search-docs/server@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
