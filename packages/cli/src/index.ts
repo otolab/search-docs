@@ -24,6 +24,10 @@ import {
   executeServerRestart,
   type ServerRestartOptions,
 } from './commands/server/restart.js';
+import {
+  initConfig,
+  type ConfigInitOptions,
+} from './commands/config/init.js';
 
 // package.jsonからバージョンを読み込む
 const __filename = fileURLToPath(import.meta.url);
@@ -140,10 +144,11 @@ const configCmd = program
 configCmd
   .command('init')
   .description('設定ファイルを初期化')
-  .option('--interactive, -i', '対話的に設定を作成')
-  .option('--force, -f', '既存ファイルを上書き')
-  .action(() => {
-    console.log('config init: 未実装');
+  .option('--port <port>', 'ポート番号（デフォルト: ランダム）', (value) => parseInt(value, 10))
+  .option('--project-root <path>', 'プロジェクトルート（デフォルト: カレントディレクトリ）')
+  .option('-f, --force', '既存ファイルを上書き')
+  .action((options: ConfigInitOptions) => {
+    void initConfig(options);
   });
 
 
