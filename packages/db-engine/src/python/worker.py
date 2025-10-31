@@ -13,6 +13,7 @@ from datetime import datetime
 import lancedb
 import pyarrow as pa
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 # 埋め込みモデルをインポート
@@ -131,6 +132,9 @@ class SearchDocsWorker:
             "updatedAt": updated_at.isoformat() if isinstance(updated_at, datetime) else updated_at,
             "summary": section.get("summary"),
             "documentSummary": section.get("document_summary"),
+            "startLine": section.get("start_line"),
+            "endLine": section.get("end_line"),
+            "sectionNumber": section.get("section_number"),
         }
 
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,14 +148,14 @@ class SearchDocsWorker:
                 result = self.ping()
             elif method == "initModel":
                 result = self.init_model()
-            elif method == "addSection":
-                result = self.add_section(params)
             elif method == "addSections":
                 result = self.add_sections(params)
             elif method == "search":
                 result = self.search(params)
             elif method == "getSectionsByPath":
                 result = self.get_sections_by_path(params)
+            elif method == "getSectionById":
+                result = self.get_section_by_id(params)
             elif method == "deleteSectionsByPath":
                 result = self.delete_sections_by_path(params)
             elif method == "findSectionsByPathAndHash":
@@ -221,31 +225,22 @@ class SearchDocsWorker:
             "dimension": self.vector_dimension
         }
 
-    def add_section(self, params: Dict[str, Any]) -> Dict[str, str]:
-        """セクションを追加"""
-        section = params.get("section")
-        if not section:
-            raise ValueError("section parameter is required")
-
-        # バリデーション
-        validate_section(section)
-
-        # ベクトル化が必要な場合
-        if "vector" not in section or not section["vector"]:
-            text = f"{section['heading']}\n{section['content']}"
-            if not self.embedding_model.is_loaded:
-                self.embedding_model.initialize()
-            section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
-
+    def _normalize_section_data(self, section: Dict[str, Any]) -> None:
+        """セクションデータの正規化（in-place）"""
         # タイムスタンプをPandas Timestampに変換
         section["created_at"] = pd.Timestamp(section["created_at"]).floor('ms')
         section["updated_at"] = pd.Timestamp(section["updated_at"]).floor('ms')
 
-        # テーブルに追加
-        table = self.db.open_table(SECTIONS_TABLE)
-        table.add([section])
+        # Task 14: 行番号フィールドをnp.int32に変換
+        if "start_line" in section and section["start_line"] is not None:
+            section["start_line"] = np.int32(section["start_line"])
+        if "end_line" in section and section["end_line"] is not None:
+            section["end_line"] = np.int32(section["end_line"])
 
-        return {"id": section["id"]}
+        # section_numberを明示的にnp.int32に変換（JavaScriptのnumberはPython int64として扱われるため）
+        if "section_number" in section and section["section_number"] is not None:
+            # np.int32のままにする（PyArrowがint32として認識できるように）
+            section["section_number"] = [np.int32(n) for n in section["section_number"]]
 
     def add_sections(self, params: Dict[str, Any]) -> Dict[str, int]:
         """複数のセクションを追加"""
@@ -266,9 +261,8 @@ class SearchDocsWorker:
                 text = f"{section['heading']}\n{section['content']}"
                 section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
 
-            # タイムスタンプ変換
-            section["created_at"] = pd.Timestamp(section["created_at"]).floor('ms')
-            section["updated_at"] = pd.Timestamp(section["updated_at"]).floor('ms')
+            # データ正規化
+            self._normalize_section_data(section)
 
         # 一括追加
         table = self.db.open_table(SECTIONS_TABLE)
@@ -333,7 +327,11 @@ class SearchDocsWorker:
                 "content": result["content"],
                 "score": float(result.get("_distance", 0)),
                 "isDirty": result["is_dirty"],
-                "tokenCount": result["token_count"]
+                "tokenCount": result["token_count"],
+                # Task 14 Phase 2: 新しいフィールドを追加
+                "startLine": result.get("start_line"),
+                "endLine": result.get("end_line"),
+                "sectionNumber": result.get("section_number"),
             })
 
         return {
@@ -354,6 +352,20 @@ class SearchDocsWorker:
         formatted_sections = [self.format_section(section) for section in results]
 
         return {"sections": formatted_sections}
+
+    def get_section_by_id(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """IDでセクションを取得"""
+        section_id = params.get("sectionId")
+        if not section_id:
+            raise ValueError("sectionId parameter is required")
+
+        table = self.db.open_table(SECTIONS_TABLE)
+        results = table.search().where(f"id = '{section_id}'").to_list()
+
+        if not results:
+            raise ValueError(f"Section not found: {section_id}")
+
+        return {"section": self.format_section(results[0])}
 
     def delete_sections_by_path(self, params: Dict[str, Any]) -> Dict[str, int]:
         """指定パスのセクションを削除"""

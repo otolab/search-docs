@@ -28,7 +28,10 @@ def get_sections_schema(vector_dimension: int = 256) -> pa.Schema:
         pa.field("is_dirty", pa.bool_()),
         pa.field("document_hash", pa.string()),
         pa.field("created_at", pa.timestamp('ms')),
-        pa.field("updated_at", pa.timestamp('ms'))
+        pa.field("updated_at", pa.timestamp('ms')),
+        pa.field("start_line", pa.int32()),
+        pa.field("end_line", pa.int32()),
+        pa.field("section_number", pa.list_(pa.int32()))
     ])
 
 
@@ -72,7 +75,8 @@ def validate_section(section_data: dict) -> None:
     # Note: vectorはPython側で生成されるため、受信時には不要
     required_fields = [
         'id', 'document_path', 'heading', 'depth', 'content',
-        'token_count', 'order', 'is_dirty', 'document_hash'
+        'token_count', 'order', 'is_dirty', 'document_hash',
+        'start_line', 'end_line', 'section_number'  # Task 14: 新フィールド
     ]
     missing_fields = [field for field in required_fields if field not in section_data]
 
