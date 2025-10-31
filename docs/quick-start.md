@@ -124,14 +124,16 @@ search-docsは以下の手順で使用します：
 ### 開発環境の場合
 
 ```bash
-node /path/to/search-docs/packages/cli/dist/index.js server start --daemon
+node /path/to/search-docs/packages/cli/dist/index.js server start
 ```
 
 ### グローバルインストールの場合
 
 ```bash
-search-docs server start --daemon
+search-docs server start
 ```
+
+**注意**: v1.0.1以降、サーバはデフォルトでバックグラウンドで起動します。
 
 ### 起動確認
 
@@ -299,7 +301,7 @@ search-docs server stop
 lsof -i :24280
 
 # 別のポートで起動
-search-docs server start --daemon --port 24281
+search-docs server start --port 24281
 ```
 
 ### 検索結果が0件
@@ -316,7 +318,7 @@ search-docs index rebuild --force
 
 ```bash
 # ログファイルを指定して起動
-search-docs server start --daemon --log search-docs.log
+search-docs server start --log search-docs.log
 
 # ログを確認
 tail -f search-docs.log
@@ -347,7 +349,7 @@ rm -rf search-docs-test
 ```bash
 cd /path/to/your/project
 # .search-docs.jsonを作成・編集
-search-docs server start --daemon
+search-docs server start
 search-docs index rebuild
 ```
 

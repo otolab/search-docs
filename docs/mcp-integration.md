@@ -32,7 +32,7 @@ Model Context Protocol (MCP)は、AI アシスタントが外部ツールやデ�
 
 1. **search-docsサーバが起動していること**
    ```bash
-   search-docs server start --daemon
+   search-docs server start
    ```
 
 2. **プロジェクトに設定ファイルがあること**
@@ -342,7 +342,7 @@ search-docsプロジェクト自身でMCP Serverを使用する例です。
 
 2. サーバを起動
    ```bash
-   search-docs server start --daemon
+   search-docs server start
    ```
 
 3. 設定ファイルのポート番号を確認
@@ -410,7 +410,7 @@ search-docsプロジェクト自身でMCP Serverを使用する例です。
 
 1. **サーバを常時起動**
    ```bash
-   search-docs server start --daemon
+   search-docs server start
    ```
 
 2. **不要なファイルを除外**

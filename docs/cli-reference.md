@@ -56,24 +56,24 @@ search-docs server start [options]
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--config <path>` | 設定ファイルのパス | `.search-docs.json` |
-| `--daemon, -d` | バックグラウンドで起動 | `false` |
 | `--port <port>` | ポート番号 | `24280` |
-| `--log <path>` | ログファイルのパス（daemonモード時） | なし |
+| `--foreground, -f` | フォアグラウンドで起動（開発時） | `false` |
+| `--log <path>` | ログファイルのパス | なし |
 
 #### 使用例
 
 ```bash
-# フォアグラウンドで起動
+# バックグラウンドで起動（デフォルト）
 search-docs server start
 
-# バックグラウンドで起動
-search-docs server start --daemon
+# フォアグラウンドで起動（開発時）
+search-docs server start --foreground
 
 # カスタムポートで起動
 search-docs server start --port 24281
 
-# ログファイルを指定してバックグラウンド起動
-search-docs server start --daemon --log .search-docs/server.log
+# ログファイルを指定して起動
+search-docs server start --log .search-docs/server.log
 
 # カスタム設定ファイルを使用
 search-docs server start --config ./custom-config.json
@@ -87,13 +87,13 @@ search-docs server start --config ./custom-config.json
 4. ファイルウォッチャーを起動
 5. IndexWorkerを起動
 6. JSON-RPCサーバを起動
-7. PIDファイルを作成
+7. PIDファイルを作成（バックグラウンドモード時）
 
 #### 注意事項
 
 - すでにサーバが起動している場合はエラーになります
-- `--daemon`モードでは標準出力は抑制されます
-- ログファイルは`--daemon`モード時のみ有効です
+- デフォルトでバックグラウンド起動します（v1.0.1以降）
+- フォアグラウンドモードは開発時に便利です
 
 ### server stop
 
@@ -197,7 +197,7 @@ search-docs server restart
 
 1. サーバを停止（`server stop`）
 2. 1秒待機
-3. サーバを起動（`server start --daemon`）
+3. サーバを起動（`server start`）
 
 #### 注意事項
 

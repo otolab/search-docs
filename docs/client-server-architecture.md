@@ -59,16 +59,19 @@ search-docs-server start
 # または設定ファイルを指定
 search-docs-server start --config ./search-docs.config.json
 
-# バックグラウンド起動
-search-docs-server start --daemon
+# バックグラウンド起動（デフォルト）
+search-docs-server start
+
+# フォアグラウンド起動（開発時）
+search-docs-server start --foreground
 
 # ポート指定
 search-docs-server start --port 24280
 ```
 
 **プロセス管理**:
-- デフォルト: フォアグラウンド実行
-- `--daemon`: バックグラウンド実行
+- デフォルト: バックグラウンド実行（v1.0.1以降）
+- `--foreground`: フォアグラウンド実行
 - プロセスIDファイル: `.search-docs/server.pid`
 - ログファイル: `.search-docs/server.log`
 
@@ -504,8 +507,8 @@ npm install -g search-docs
 cd /path/to/project
 search-docs config init
 
-# サーバ起動（デーモン）
-search-docs server start --daemon
+# サーバ起動（バックグラウンド）
+search-docs server start
 
 # Claude Code統合
 claude mcp add search-docs -- search-docs mcp-server

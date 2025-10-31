@@ -44,17 +44,23 @@ path: "docs/architecture.md"
 
 ## セットアップ
 
+### サーバ自動起動機能
+
+v1.0.1以降、MCP Serverは自動的にsearch-docsサーバを起動します。
+
+**動作**:
+1. MCP Server起動時にサーバへの接続を試みる
+2. サーバが起動していない場合、自動的にサーバを起動
+3. サーバが起動したら接続を確立
+
+これにより、手動でサーバを起動する必要がなくなりました。
+
 ### 前提条件
 
-1. search-docsサーバが起動していること
-   ```bash
-   node packages/cli/dist/index.js server start --daemon
-   ```
-
-2. ビルド済みであること
-   ```bash
-   pnpm build
-   ```
+ビルド済みであること
+```bash
+pnpm build
+```
 
 ### Claude Code統合
 
@@ -100,15 +106,17 @@ node dist/server.js --project-dir /path/to/your/project
 
 **エラー**: `Failed to connect to search-docs server`
 
-**解決方法**:
+**通常は不要**: MCP Serverはサーバを自動起動します。
+
+**手動で確認する場合**:
 1. サーバが起動しているか確認
    ```bash
    node packages/cli/dist/index.js server status
    ```
 
-2. サーバを起動
+2. 必要に応じてサーバを起動
    ```bash
-   node packages/cli/dist/index.js server start --daemon
+   node packages/cli/dist/index.js server start
    ```
 
 ### 設定ファイルが見つからない

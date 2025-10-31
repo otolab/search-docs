@@ -107,10 +107,10 @@ cd /path/to/your/project
 search-docs server start
 
 # バックグラウンド（デーモン）で起動
-search-docs server start --daemon
+search-docs server start
 
 # ログファイルを指定
-search-docs server start --daemon --log .search-docs/server.log
+search-docs server start --log .search-docs/server.log
 ```
 
 ### 2. サーバの状態確認
