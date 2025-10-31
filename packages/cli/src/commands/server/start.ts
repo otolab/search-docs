@@ -43,6 +43,7 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
     // 1. 設定読み込みとプロジェクトルート決定
     const { config, configPath, projectRoot } = await ConfigLoader.resolve({
       configPath: options.config,
+      requireConfig: true,
     });
 
     console.log(`Project root: ${projectRoot}`);

@@ -19,8 +19,7 @@ export interface ResolveServerUrlOptions {
  *
  * 優先順位:
  * 1. --server オプション（明示的指定）
- * 2. 設定ファイルの server.host + server.port
- * 3. デフォルト: http://localhost:24280
+ * 2. 設定ファイルの server.host + server.port（必須）
  */
 export async function resolveServerUrl(
   options: ResolveServerUrlOptions = {}
@@ -30,21 +29,14 @@ export async function resolveServerUrl(
     return options.server;
   }
 
-  try {
-    // 2. 設定ファイルからポート番号を取得
-    const { config } = await ConfigLoader.resolve({
-      configPath: options.config,
-    });
+  // 2. 設定ファイルからポート番号を取得（必須）
+  const { config } = await ConfigLoader.resolve({
+    configPath: options.config,
+    requireConfig: true,
+  });
 
-    // server設定からURLを構築
-    const host = config.server.host || 'localhost';
-    const port = config.server.port || 24280;
-    return `http://${host}:${port}`;
-  } catch (_error) {
-    // 設定ファイルが読み込めない場合はデフォルトにフォールバック
-    // エラーは握りつぶす（設定ファイルがない場合もある）
-  }
-
-  // 3. デフォルト
-  return 'http://localhost:24280';
+  // server設定からURLを構築
+  const host = config.server.host || 'localhost';
+  const port = config.server.port || 24280;
+  return `http://${host}:${port}`;
 }

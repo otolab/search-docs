@@ -46,6 +46,7 @@ async function main() {
   // 設定ファイルの読み込み
   const { config, configPath } = await ConfigLoader.resolve({
     cwd: projectDir,
+    requireConfig: true,
   });
   const serverUrl = `http://${config.server.host}:${config.server.port}`;
   console.error(`[mcp-server] Config: ${configPath || 'default config'}`);

@@ -15,6 +15,8 @@ export interface ResolveConfigOptions {
   traverseUp?: boolean;
   /** カレントワーキングディレクトリ（デフォルト: process.cwd()） */
   cwd?: string;
+  /** 設定ファイルが必須かどうか（デフォルト: false）。trueの場合、見つからなければエラー */
+  requireConfig?: boolean;
 }
 
 /**
@@ -65,10 +67,18 @@ export class ConfigLoader {
     configPath: string | null;
     projectRoot: string;
   }> {
-    const { configPath: explicitPath, traverseUp = true, cwd = process.cwd() } = options;
+    const { configPath: explicitPath, traverseUp = true, cwd = process.cwd(), requireConfig = false } = options;
 
     // 1. 設定ファイルパスを解決
     const configPath = await this.resolveConfigPath(explicitPath, cwd, traverseUp);
+
+    // 設定ファイルが必須なのに見つからない場合はエラー
+    if (!configPath && requireConfig) {
+      throw new Error(
+        'Configuration file not found. Please create a configuration file.\n' +
+        'Run: search-docs config init'
+      );
+    }
 
     // 2. プロジェクトルートを決定
     let projectRoot: string;
