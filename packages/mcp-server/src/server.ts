@@ -265,30 +265,46 @@ async function main() {
   server.registerTool(
     'get_document',
     {
-      description: '文書の内容を取得します。パス指定で文書全体またはセクションを取得できます。',
+      description: '文書の内容を取得します。パス指定で文書全体、またはセクションIDで特定セクションを取得できます。',
       inputSchema: {
         path: z.string().describe('文書パス'),
+        sectionId: z.string().optional().describe('セクションID（検索結果から取得）'),
       },
     },
-    async (args: { path: string }) => {
-      const { path: documentPath } = args;
+    async (args: { path: string; sectionId?: string }) => {
+      const { path: documentPath, sectionId } = args;
 
       try {
-        const response = await client.getDocument({ path: documentPath });
+        const response = await client.getDocument({ path: documentPath, sectionId });
 
         if (!response.document) {
           throw new Error(`Document not found: ${documentPath}`);
         }
 
-        let resultText = `文書: ${response.document.path}\n`;
-        if (response.document.metadata.title) {
-          resultText += `タイトル: ${response.document.metadata.title}\n`;
+        let resultText = '';
+
+        // セクション取得の場合
+        if (sectionId && response.section) {
+          resultText += `セクション: ${response.section.heading || '(no heading)'}\n`;
+          resultText += `文書: ${response.section.documentPath}\n`;
+          const depthLabel = getDepthLabel(response.section.depth);
+          const sectionPath = response.section.sectionNumber.join('-');
+          resultText += `Level: ${depthLabel} | Section: ${sectionPath} | Line: ${response.section.startLine}-${response.section.endLine}\n\n`;
+          resultText += `内容:\n${'='.repeat(60)}\n`;
+          resultText += response.section.content;
+          resultText += `\n${'='.repeat(60)}`;
+        } else {
+          // 文書全体取得の場合
+          resultText += `文書: ${response.document.path}\n`;
+          if (response.document.metadata.title) {
+            resultText += `タイトル: ${response.document.metadata.title}\n`;
+          }
+          resultText += `作成日: ${new Date(response.document.metadata.createdAt).toLocaleString()}\n`;
+          resultText += `更新日: ${new Date(response.document.metadata.updatedAt).toLocaleString()}\n\n`;
+          resultText += `内容:\n${'='.repeat(60)}\n`;
+          resultText += response.document.content;
+          resultText += `\n${'='.repeat(60)}`;
         }
-        resultText += `作成日: ${new Date(response.document.metadata.createdAt).toLocaleString()}\n`;
-        resultText += `更新日: ${new Date(response.document.metadata.updatedAt).toLocaleString()}\n\n`;
-        resultText += `内容:\n${'='.repeat(60)}\n`;
-        resultText += response.document.content;
-        resultText += `\n${'='.repeat(60)}`;
 
         return {
           content: [

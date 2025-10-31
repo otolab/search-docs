@@ -1,5 +1,17 @@
 # @search-docs/mcp-server
 
+## 1.0.9
+
+### Patch Changes
+
+- get_document ツールに sectionId パラメータを追加しました。
+
+  変更内容:
+
+  - inputSchema に sectionId（オプショナル）パラメータを追加
+  - 検索結果に表示されるセクション ID を使って、特定のセクションのみを取得できるように
+  - セクション取得時の出力フォーマットを追加（Level, Section, Line などのメタデータを表示）
+
 ## 1.0.8
 
 ### Patch Changes
