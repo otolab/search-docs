@@ -160,8 +160,8 @@ Vector検索機能をテストします。
     }
   });
 
-  it('server start --daemon でサーバを起動できる', async () => {
-    const result = await runCliCommand(['server', 'start', '--daemon'], {
+  it('server start でサーバを起動できる（バックグラウンド）', async () => {
+    const result = await runCliCommand(['server', 'start'], {
       timeout: 60000,
     });
 
