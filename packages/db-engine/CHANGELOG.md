@@ -1,5 +1,18 @@
 # @search-docs/db-engine
 
+## 1.0.7
+
+### Patch Changes
+
+- JSON-RPC 通信で UTF-8 エンコーディングを明示的に指定しました。
+
+  変更内容:
+
+  - Python 側: stdin/stdout を UTF-8 でラップ
+  - Python 側: json.dumps に ensure_ascii=False を指定
+  - TypeScript 側: Buffer.toString()で UTF-8 を明示的に指定
+  - マルチバイト文字（日本語）が確実に正しく扱われるようになりました
+
 ## 1.0.6
 
 ### Patch Changes

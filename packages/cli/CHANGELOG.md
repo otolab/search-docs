@@ -1,5 +1,11 @@
 # @search-docs/cli
 
+## 1.0.7
+
+### Patch Changes
+
+- @search-docs/server@1.0.7
+
 ## 1.0.6
 
 ### Patch Changes

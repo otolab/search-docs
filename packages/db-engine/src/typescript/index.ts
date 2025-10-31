@@ -206,8 +206,8 @@ export class DBEngine extends EventEmitter {
     });
 
     this.worker.stdout?.on('data', (data: Buffer) => {
-      // バッファに追加
-      this.buffer += data.toString();
+      // バッファに追加（UTF-8を明示的に指定）
+      this.buffer += data.toString('utf-8');
 
       // 改行で分割して処理
       const lines = this.buffer.split('\n');
@@ -241,7 +241,7 @@ export class DBEngine extends EventEmitter {
     let stderrBuffer = '';
 
     this.worker.stderr?.on('data', (data: Buffer) => {
-      const output = data.toString();
+      const output = data.toString('utf-8');
       stderrBuffer += output;
       console.error('Python stderr:', output);
     });

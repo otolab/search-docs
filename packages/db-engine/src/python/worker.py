@@ -5,6 +5,7 @@ search-docs LanceDB JSON-RPC Worker
 """
 
 import sys
+import io
 import json
 import traceback
 import uuid
@@ -676,6 +677,10 @@ class SearchDocsWorker:
 
 def main():
     """メインループ"""
+    # 標準入出力をUTF-8で明示的にラップ
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
+
     db_path = SearchDocsWorker._get_db_path()
     worker = SearchDocsWorker(db_path=db_path)
 
@@ -684,7 +689,7 @@ def main():
         try:
             request = json.loads(line)
             response = worker.handle_request(request)
-            print(json.dumps(response), flush=True)
+            print(json.dumps(response, ensure_ascii=False), flush=True)
         except json.JSONDecodeError as e:
             sys.stderr.write(f"Invalid JSON: {e}\n")
             sys.stderr.flush()
