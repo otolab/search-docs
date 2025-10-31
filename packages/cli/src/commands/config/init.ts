@@ -101,22 +101,28 @@ export async function initConfig(options: ConfigInitOptions = {}): Promise<void>
   console.log('Initializing search-docs configuration...\n');
 
   // 既存ファイルチェック
+  let fileExists = false;
   try {
     await fs.access(configPath);
-
-    if (!options.force) {
-      throw new Error(
-        `Configuration file already exists: ${configPath}\n` +
-        'Use --force to overwrite the existing file.'
-      );
-    }
-
-    console.log('⚠️  Overwriting existing configuration file...\n');
+    fileExists = true;
   } catch (error) {
     // ファイルが存在しない場合は正常（続行）
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error;
     }
+  }
+
+  if (fileExists) {
+    if (!options.force) {
+      // 既存ファイルがある場合は情報メッセージを表示して正常終了
+      console.log(`Configuration file already exists: ${configPath}\n`);
+      console.log('✅ No action needed. Your project is already configured.\n');
+      console.log('To overwrite the existing file, use:');
+      console.log('  search-docs config init --force\n');
+      return; // 正常終了（エラーではない）
+    }
+
+    console.log('⚠️  Overwriting existing configuration file...\n');
   }
 
   // 設定オブジェクト生成
