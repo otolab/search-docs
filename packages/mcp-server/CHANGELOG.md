@@ -1,5 +1,18 @@
 # @search-docs/mcp-server
 
+## 1.0.8
+
+### Patch Changes
+
+- 検索結果の出力フォーマットを 1 行形式に改善し、可読性を向上しました。
+
+  変更内容:
+
+  - メタデータ表示を複数行から 1 行形式に変更（Level, Section, Line, Score を`|`区切りで表示）
+  - sectionNumber、startLine、endLine などの新しいフィールドに対応
+  - indexStatus は'updating'または'outdated'の場合のみ表示
+  - コンテンツを Markdown コードブロックで明確に表示
+
 ## 1.0.7
 
 ### Patch Changes
