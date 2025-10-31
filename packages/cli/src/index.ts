@@ -3,7 +3,7 @@
  * search-docs CLI
  */
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -33,12 +33,25 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as {
   version: string;
 };
 
+/**
+ * グローバル設定（preSubcommandフックで設定）
+ */
+let globalConfigPath: string | undefined;
+
 const program = new Command();
 
 program
   .name('search-docs')
   .description('search-docs コマンドラインツール')
-  .version(packageJson.version);
+  .version(packageJson.version)
+  .addOption(
+    new Option('-c, --config <path>', '設定ファイルのパス')
+      .env('SEARCH_DOCS_CONFIG')
+  )
+  .hook('preSubcommand', (thisCommand) => {
+    const opts = thisCommand.opts<{ config?: string }>();
+    globalConfigPath = opts.config;
+  });
 
 // server コマンド
 const serverCmd = program
@@ -48,39 +61,35 @@ const serverCmd = program
 serverCmd
   .command('start')
   .description('サーバを起動（デフォルト: バックグラウンド）')
-  .option('--config <path>', '設定ファイルのパス')
   .option('--port <port>', 'ポート番号')
   .option('-f, --foreground', 'フォアグラウンドで起動（開発時）')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerStartOptions) => {
-    void executeServerStart(options);
+    void executeServerStart({ ...options, config: globalConfigPath });
   });
 
 serverCmd
   .command('stop')
   .description('サーバを停止')
-  .option('--config <path>', '設定ファイルのパス')
   .action((options: ServerStopOptions) => {
-    void executeServerStop(options);
+    void executeServerStop({ ...options, config: globalConfigPath });
   });
 
 serverCmd
   .command('status')
   .description('サーバのステータスを確認')
-  .option('--config <path>', '設定ファイルのパス')
   .action((options: ServerStatusOptions) => {
-    void executeServerStatus(options);
+    void executeServerStatus({ ...options, config: globalConfigPath });
   });
 
 serverCmd
   .command('restart')
   .description('サーバを再起動（デフォルト: バックグラウンド）')
-  .option('--config <path>', '設定ファイルのパス')
   .option('--port <port>', 'ポート番号')
   .option('-f, --foreground', 'フォアグラウンドで起動（開発時）')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerRestartOptions) => {
-    void executeServerRestart(options);
+    void executeServerRestart({ ...options, config: globalConfigPath });
   });
 
 // search コマンド
@@ -93,9 +102,8 @@ program
   .option('--format <format>', '出力形式 (text, json)', 'text')
   .option('--clean-only', 'Dirtyセクションを除外')
   .option('--server <url>', 'サーバURL')
-  .option('--config <path>', '設定ファイルのパス')
   .action((query: string, options: SearchCommandOptions) => {
-    void executeSearch(query, options);
+    void executeSearch(query, { ...options, config: globalConfigPath });
   });
 
 // index コマンド
@@ -109,21 +117,19 @@ indexCmd
   .argument('[paths...]', '再構築するファイルのパス')
   .option('--force', '強制的に再インデックス')
   .option('--server <url>', 'サーバURL')
-  .option('--config <path>', '設定ファイルのパス')
-  .action(async (paths: string[], options: { force?: boolean; server?: string; config?: string }) => {
+  .action(async (paths: string[], options: { force?: boolean; server?: string }) => {
     const { executeIndexRebuild } = await import('./commands/index/rebuild.js');
-    await executeIndexRebuild({ paths, ...options });
+    await executeIndexRebuild({ paths, ...options, config: globalConfigPath });
   });
 
 indexCmd
   .command('status')
   .description('インデックスのステータスを確認')
   .option('--server <url>', 'サーバURL')
-  .option('--config <path>', '設定ファイルのパス')
   .option('--format <format>', '出力形式 (text, json)', 'text')
-  .action(async (options: { server?: string; config?: string; format?: 'text' | 'json' }) => {
+  .action(async (options: { server?: string; format?: 'text' | 'json' }) => {
     const { executeIndexStatus } = await import('./commands/index/status.js');
-    await executeIndexStatus(options);
+    await executeIndexStatus({ ...options, config: globalConfigPath });
   });
 
 // config コマンド
