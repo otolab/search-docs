@@ -12,7 +12,7 @@ import { resolveServerUrl } from '../utils/server-url.js';
 
 export interface SearchCommandOptions {
   limit?: string;
-  depth?: string[];
+  depth?: string;
   format?: 'text' | 'json';
   cleanOnly?: boolean;
   server?: string;
@@ -43,7 +43,7 @@ export async function executeSearch(
       query,
       options: {
         limit: options.limit ? parseInt(options.limit, 10) : 10,
-        depth: options.depth?.map((d) => parseInt(d, 10)),
+        depth: options.depth ? parseInt(options.depth, 10) : undefined,
         includeCleanOnly: options.cleanOnly || false,
       },
     };

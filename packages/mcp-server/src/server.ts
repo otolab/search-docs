@@ -173,24 +173,24 @@ async function main() {
   server.registerTool(
     'search',
     {
-      description: '文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。',
+      description: '文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。検索結果には行番号(startLine-endLine)とセクションIDが含まれるため、Readツールで該当箇所を直接参照したり、get_documentでセクション全体を取得できます。',
       inputSchema: {
         query: z.string().describe('検索クエリ'),
         depth: z
-          .union([z.number(), z.array(z.number())])
+          .number()
           .optional()
-          .describe('検索深度（0-3）。配列で複数指定可能'),
+          .describe('検索深度（0-3）。0=文書全体、1=H1(章)、2=H2(節)、3=H3(項)。省略時は全階層を検索'),
         limit: z.number().optional().describe('結果数制限（デフォルト: 10）'),
         includeCleanOnly: z
           .boolean()
           .optional()
-          .describe('Clean状態のセクションのみを検索対象とする（デフォルト: false）'),
+          .describe('最新の文書内容のみを検索対象とする。falseの場合、文書が更新されていても古いインデックスも含めて検索します（デフォルト: false）'),
         previewLines: z.number().optional().describe('プレビュー行数（デフォルト: 5）'),
       },
     },
     async (args: {
       query: string;
-      depth?: number | number[];
+      depth?: number;
       limit?: number;
       includeCleanOnly?: boolean;
       previewLines?: number;

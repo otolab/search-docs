@@ -102,7 +102,7 @@ program
   .description('ドキュメントを検索')
   .argument('<query>', '検索クエリ')
   .option('--limit <n>', '最大結果数', '10')
-  .option('--depth <depths...>', '深度フィルタ')
+  .option('--depth <depth>', '深度フィルタ (0=文書全体、1=H1(章)、2=H2(節)、3=H3(項))')
   .option('--format <format>', '出力形式 (text, json)', 'text')
   .option('--clean-only', 'Dirtyセクションを除外')
   .option('--server <url>', 'サーバURL')

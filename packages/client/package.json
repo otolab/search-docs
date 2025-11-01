@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/client",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "search-docs JSON-RPCクライアントライブラリ",
   "type": "module",
   "main": "dist/index.js",

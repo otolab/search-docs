@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/storage",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "文書ストレージ実装",
   "type": "module",
   "main": "dist/index.js",

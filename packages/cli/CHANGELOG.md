@@ -1,5 +1,26 @@
 # @search-docs/cli
 
+## 1.0.8
+
+### Patch Changes
+
+- depth 配列指定機能を削除し、単一の数値のみを受け付けるように変更しました。
+
+  変更内容:
+
+  - SearchOptions.depth の型を `number | number[]` から `number` に変更
+  - Python 側の depth 配列処理を削除
+  - CLI 引数を `--depth <depths...>` から `--depth <depth>` に変更
+  - MCP ツールの description を改善し、depth（0-3）と includeCleanOnly の意味を明確化
+    - depth: 0=文書全体、1=H1(章)、2=H2(節)、3=H3(項)
+    - includeCleanOnly: 最新の文書内容のみを検索対象とする
+  - 検索結果に含まれる行番号とセクション ID の用途を説明に追加
+
+- Updated dependencies
+  - @search-docs/types@1.0.7
+  - @search-docs/client@1.0.7
+  - @search-docs/server@1.0.8
+
 ## 1.0.7
 
 ### Patch Changes

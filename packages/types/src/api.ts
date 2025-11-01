@@ -15,8 +15,8 @@ export interface SearchRequest {
 }
 
 export interface SearchOptions {
-  /** 深度指定（単一または配列） */
-  depth?: number | number[];
+  /** 深度指定（0-3: 0=文書全体、1=H1(章)、2=H2(節)、3=H3(項)） */
+  depth?: number;
   /** 結果数 */
   limit?: number;
   /** オフセット */
