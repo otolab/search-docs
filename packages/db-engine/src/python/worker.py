@@ -296,7 +296,7 @@ class SearchDocsWorker:
         # フィルタ適用
         filters = []
         if depth is not None:
-            filters.append(f"depth = {depth}")
+            filters.append(f"depth <= {depth}")
 
         if include_clean_only:
             filters.append("is_dirty = false")

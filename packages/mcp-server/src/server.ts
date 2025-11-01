@@ -179,7 +179,7 @@ async function main() {
         depth: z
           .number()
           .optional()
-          .describe('検索深度（0-3）。0=文書全体、1=H1(章)、2=H2(節)、3=H3(項)。省略時は全階層を検索'),
+          .describe('最大深度（0-3）。この深度まで検索します。0=文書全体のみ、1=章まで、2=節まで、3=項まで。省略時は全階層を検索'),
         limit: z.number().optional().describe('結果数制限（デフォルト: 10）'),
         includeCleanOnly: z
           .boolean()

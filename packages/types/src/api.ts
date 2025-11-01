@@ -15,7 +15,7 @@ export interface SearchRequest {
 }
 
 export interface SearchOptions {
-  /** 深度指定（0-3: 0=文書全体、1=H1(章)、2=H2(節)、3=H3(項)） */
+  /** 最大深度（0-3: この深度まで検索。0=文書全体のみ、1=章まで、2=節まで、3=項まで） */
   depth?: number;
   /** 結果数 */
   limit?: number;

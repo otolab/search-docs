@@ -1,5 +1,24 @@
 # @search-docs/db-engine
 
+## 1.0.9
+
+### Patch Changes
+
+- depth パラメータを maxDepth（最大深度）として正しく実装しました。
+
+  変更内容:
+
+  - Python 検索条件を `depth = X` から `depth <= X` に変更
+  - depth の意味を「この深度まで検索」に明確化
+    - 0=文書全体のみ
+    - 1=文書全体+章まで（H1 まで）
+    - 2=文書全体+章+節まで（H1, H2 まで）
+    - 3=すべて（H1, H2, H3 まで）
+  - 「枝葉まで検索しない」という用途に対応
+
+- Updated dependencies
+  - @search-docs/types@1.0.8
+
 ## 1.0.8
 
 ### Patch Changes
