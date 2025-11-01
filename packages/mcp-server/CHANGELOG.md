@@ -1,5 +1,18 @@
 # @search-docs/mcp-server
 
+## 1.0.14
+
+### Patch Changes
+
+- 設定ファイルが見つからない場合のエラーメッセージを改善しました。
+
+  変更内容:
+
+  - 設定ファイル不在時のエラーメッセージをより詳しく、分かりやすく改善
+  - CLI コマンドでの初期化方法（npx @search-docs/cli config init）を案内
+  - 手動作成する場合の最小限の設定例を表示
+  - MCP Server 経由で使用している場合でも対応方法が明確に
+
 ## 1.0.13
 
 ### Patch Changes

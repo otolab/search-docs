@@ -104,10 +104,37 @@ async function main() {
   }
 
   // 設定ファイルの読み込み
-  const { config, configPath, projectRoot } = await ConfigLoader.resolve({
-    cwd,
-    requireConfig: true,
-  });
+  let config, configPath, projectRoot;
+  try {
+    const result = await ConfigLoader.resolve({
+      cwd,
+      requireConfig: true,
+    });
+    config = result.config;
+    configPath = result.configPath;
+    projectRoot = result.projectRoot;
+  } catch (error) {
+    // 設定ファイルが見つからない場合のエラーメッセージを改善
+    if ((error as Error).message.includes('Configuration file not found')) {
+      console.error('[mcp-server] Configuration file not found.');
+      console.error('[mcp-server] ');
+      console.error('[mcp-server] Please create a .search-docs.json file in your project root.');
+      console.error('[mcp-server] You can initialize it by running:');
+      console.error('[mcp-server]   npx @search-docs/cli config init');
+      console.error('[mcp-server] ');
+      console.error('[mcp-server] Or manually create .search-docs.json with:');
+      console.error('[mcp-server] {');
+      console.error('[mcp-server]   "version": "1.0",');
+      console.error('[mcp-server]   "files": {');
+      console.error('[mcp-server]     "include": ["**/*.md"],');
+      console.error('[mcp-server]     "exclude": ["**/node_modules/**"]');
+      console.error('[mcp-server]   }');
+      console.error('[mcp-server] }');
+      process.exit(1);
+    }
+    throw error;
+  }
+
   const serverUrl = `http://${config.server.host}:${config.server.port}`;
   debugLog(`Project root: ${projectRoot}`);
   debugLog(`Config: ${configPath || 'default config'}`);
