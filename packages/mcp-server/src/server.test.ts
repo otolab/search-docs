@@ -45,7 +45,20 @@ describe('search-docs MCP Server E2E Tests', () => {
 
     // サーバーが準備完了するまで待機
     await tester.waitUntilReady();
-  });
+
+    // search-docsサーバが起動していない場合は起動
+    // (CONFIGURED_SERVER_DOWN状態でインデックスが存在しない場合)
+    const statusResult = await tester.callTool('get_system_status', {});
+    if (statusResult.success) {
+      const content = (statusResult.result as MCPToolResult)?.content?.[0]?.text || '';
+      if (content.includes('サーバ停止中') || content.includes('サーバを起動してください')) {
+        // サーバを起動
+        await tester.callTool('server_start', {});
+        // 起動完了を待機
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    }
+  }, 30000); // タイムアウトを30秒に延長
 
   afterEach(async () => {
     // テスト環境をクリーンアップ
@@ -218,6 +231,31 @@ describe('search-docs MCP Server E2E Tests', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
+    });
+  });
+
+  describe('get_system_status ツール', () => {
+    test('システム状態を取得できる', async () => {
+      const result = await tester.callTool('get_system_status', {});
+
+      expect(result.success).toBe(true);
+      expect(result.result).toBeDefined();
+
+      const content = (result.result as MCPToolResult)?.content?.[0]?.text;
+      expect(content).toContain('search-docs システム状態');
+      expect(content).toContain('状態:');
+    });
+
+    test('稼働中状態の詳細情報を含む', async () => {
+      const result = await tester.callTool('get_system_status', {});
+
+      expect(result.success).toBe(true);
+      const content = (result.result as MCPToolResult)?.content?.[0]?.text;
+
+      // RUNNING状態の場合の情報
+      expect(content).toContain('サーバURL:');
+      expect(content).toContain('総文書数:');
+      expect(content).toContain('総セクション数:');
     });
   });
 });
