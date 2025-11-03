@@ -40,6 +40,16 @@ function debugLog(message: string): void {
   if (isDebugMode) {
     console.error(`[mcp-server] ${message}`);
   }
+
+  // Always write to debug file for troubleshooting
+  try {
+    const debugFile = '/tmp/mcp-server-debug.log';
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] [mcp-server] ${message}\n`;
+    require('fs').appendFileSync(debugFile, logMessage);
+  } catch {
+    // Ignore file write errors
+  }
 }
 
 /**
@@ -85,22 +95,32 @@ async function main() {
 
   // システム状態を判定
   let systemState = await detectSystemState(cwd);
-  debugLog(`System state: ${systemState.state}`);
+  debugLog('='.repeat(60));
+  debugLog(`System state detected: ${systemState.state}`);
+  debugLog(`Project root: ${systemState.projectRoot}`);
+  debugLog(`Config exists: ${systemState.config ? 'YES' : 'NO'}`);
+  debugLog(`Config path: ${systemState.configPath || '(none)'}`);
 
   // CONFIGURED_SERVER_DOWNかつインデックスが存在する場合、サーバを自動起動
+  debugLog(`Checking auto-start condition: state === CONFIGURED_SERVER_DOWN && config exists`);
+  debugLog(`  - state === CONFIGURED_SERVER_DOWN: ${systemState.state === 'CONFIGURED_SERVER_DOWN'}`);
+  debugLog(`  - config exists: ${!!systemState.config}`);
+
   if (systemState.state === 'CONFIGURED_SERVER_DOWN' && systemState.config) {
     const indexPath = path.join(
       systemState.projectRoot,
       systemState.config.storage.indexPath
     );
+    debugLog(`Index path to check: ${indexPath}`);
 
     try {
       await fs.access(indexPath);
       // インデックスディレクトリが存在する → 自動起動を試みる
-      debugLog('Index directory exists, attempting auto-start...');
+      debugLog('✓ Index directory exists, attempting auto-start...');
 
       const serverManager = new ServerManager();
       try {
+        debugLog(`Auto-start params: projectRoot=${systemState.projectRoot}, port=${systemState.config.server.port}, configPath=${systemState.configPath}`);
         await serverManager.startServer(
           systemState.projectRoot,
           systemState.config.server.port,
@@ -114,11 +134,14 @@ async function main() {
         // 自動起動失敗は致命的ではない、手動起動を促す
         debugLog(`Auto-start failed: ${(startError as Error).message}`);
       }
-    } catch {
+    } catch (error) {
       // インデックスディレクトリが存在しない → 自動起動しない
-      debugLog('Index directory does not exist, skipping auto-start');
+      debugLog(`✗ Index directory does not exist, skipping auto-start: ${(error as Error).message}`);
     }
+  } else {
+    debugLog('✗ Auto-start condition not met, skipping auto-start');
   }
+  debugLog('='.repeat(60));
 
   // MCPサーバの初期化
   const server = new McpServer(
@@ -133,8 +156,16 @@ async function main() {
     }
   );
 
+  // システム状態を再検出する関数
+  const refreshSystemState = async () => {
+    const newState = await detectSystemState(cwd);
+    // systemStateオブジェクトのプロパティを更新
+    Object.assign(systemState, newState);
+    debugLog(`System state refreshed: ${systemState.state}`);
+  };
+
   // ツール登録コンテキスト
-  const context = { server, systemState };
+  const context = { server, systemState, refreshSystemState };
 
   // 状態に応じてツールを登録
   switch (systemState.state) {

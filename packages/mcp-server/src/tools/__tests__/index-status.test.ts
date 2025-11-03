@@ -57,6 +57,7 @@ describe('index_status tool', () => {
     const context: ToolRegistrationContext = {
       server: mockServer,
       systemState,
+      refreshSystemState: async () => {},
     };
 
     // ツール登録
@@ -91,6 +92,7 @@ describe('index_status tool', () => {
     const context: ToolRegistrationContext = {
       server: mockServer,
       systemState,
+      refreshSystemState: async () => {},
     };
 
     // ツール登録
@@ -112,6 +114,7 @@ describe('index_status tool', () => {
     const context: ToolRegistrationContext = {
       server: mockServer,
       systemState,
+      refreshSystemState: async () => {},
     };
 
     // ツール登録
@@ -138,6 +141,7 @@ describe('index_status tool', () => {
     const context: ToolRegistrationContext = {
       server: mockServer,
       systemState,
+      refreshSystemState: async () => {},
     };
 
     // ツール登録

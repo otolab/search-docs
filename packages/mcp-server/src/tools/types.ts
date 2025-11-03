@@ -13,4 +13,6 @@ export interface ToolRegistrationContext {
   server: McpServer;
   /** システム状態情報 */
   systemState: SystemStateInfo;
+  /** システム状態を再検出する関数 */
+  refreshSystemState: () => Promise<void>;
 }

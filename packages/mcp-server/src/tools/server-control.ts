@@ -13,7 +13,7 @@ import type { ToolRegistrationContext } from './types.js';
  * server_start ツールを登録
  */
 export function registerServerStartTool(context: ToolRegistrationContext): void {
-  const { server, systemState } = context;
+  const { server, systemState, refreshSystemState } = context;
 
   server.registerTool(
     'server_start',
@@ -48,10 +48,14 @@ export function registerServerStartTool(context: ToolRegistrationContext): void 
 
       try {
         // CLIのstartServer関数を呼び出し
+        // startServer()内でヘルスチェックを行い、起動完了を待機する
         await startServer({
           config: systemState.configPath,
           foreground,
         });
+
+        // システム状態を再検出
+        await refreshSystemState();
 
         let resultText = '✅ サーバを起動しました。\n\n';
 
@@ -86,7 +90,7 @@ export function registerServerStartTool(context: ToolRegistrationContext): void 
  * server_stop ツールを登録
  */
 export function registerServerStopTool(context: ToolRegistrationContext): void {
-  const { server, systemState } = context;
+  const { server, systemState, refreshSystemState } = context;
 
   server.registerTool(
     'server_stop',
@@ -113,9 +117,17 @@ export function registerServerStopTool(context: ToolRegistrationContext): void {
 
       try {
         // CLIのstopServer関数を呼び出し
+        // systemState.projectRootをcwdとして明示的に渡す
+        const configToUse = systemState.configPath ||
+          (systemState.projectRoot ? `${systemState.projectRoot}/.search-docs.json` : undefined);
+
         await stopServer({
-          config: systemState.configPath,
+          config: configToUse,
+          cwd: systemState.projectRoot,
         });
+
+        // システム状態を再検出
+        await refreshSystemState();
 
         return {
           content: [
