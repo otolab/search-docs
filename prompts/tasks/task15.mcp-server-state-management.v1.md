@@ -797,6 +797,38 @@ packages/mcp-server/src/
 - 他の既存ツール（search, get_document）を分離
 - 新規ツールの実装
 
+### 2025-11-03 - セッション4: 既存ツールの完全分離
+
+**実施内容**：
+- [x] 残りの既存ツール（search, get_document）をtools/ディレクトリに分離
+  - `tools/search.ts`: searchツールの実装（状態チェック統合）
+  - `tools/get-document.ts`: get_documentツールの実装（状態チェック統合）
+- [x] `src/utils.ts`を作成
+  - `getDepthLabel(depth: number)`: depth値を分かりやすいラベルに変換
+  - `getPreviewContent(content: string, maxLines: number)`: コンテンツのプレビュー取得
+- [x] `tools/index.ts`を作成
+  - すべてのツール登録関数をエクスポート
+  - `ToolRegistrationContext`型をエクスポート
+
+**成果物**：
+- `packages/mcp-server/src/tools/search.ts` (117行)
+- `packages/mcp-server/src/tools/get-document.ts` (86行)
+- `packages/mcp-server/src/utils.ts` (42行)
+- `packages/mcp-server/src/tools/index.ts` (8行)
+
+**設計上の改善**：
+- すべての既存ツールに状態チェックを統合
+  - RUNNING状態でない場合は適切なエラーメッセージを表示
+  - `getStateErrorMessage()`関数を使用して一貫したメッセージを提供
+- ツール登録は`ToolRegistrationContext`パターンで統一
+- ヘルパー関数を`utils.ts`に分離して再利用性を向上
+
+**次のステップ**：
+- ✅ 既存ツールの分離を完了
+- 新規ツールの実装（init, server_start, server_stop, server_restart, get_system_status）
+- server.tsの統合（分離したツールを使用するように変更）
+- 統合テストの作成
+
 ## 参考情報
 
 ### 関連ファイル
