@@ -763,8 +763,38 @@ packages/mcp-server/src/
 ```
 
 **次のステップ**：
-- 状態管理モジュールをコミット
+- ✅ 状態管理モジュールをコミット（commit 265700d）
 - ツールをtools/ディレクトリに分離
+- 新規ツールの実装
+
+### 2025-11-03 - セッション3: ツール分離の開始
+
+**実施内容**：
+- [x] tools/ディレクトリ構造を設計
+  - `tools/types.ts`: 共通型定義（ToolRegistrationContext）
+  - `tools/index-status.ts`: index_statusツール
+  - `tools/__tests__/index-status.test.ts`: 単体テスト
+- [x] index_statusツールを分離（最もシンプルなツールから開始）
+  - 状態チェック機能を組み込み（RUNNING状態のみ実行可能）
+  - 4つのテストケース、すべて通過
+
+**成果物**：
+- `packages/mcp-server/src/tools/types.ts` (16行)
+- `packages/mcp-server/src/tools/index-status.ts` (61行)
+- `packages/mcp-server/src/tools/__tests__/index-status.test.ts` (141行)
+
+**テスト結果**：
+```
+✓ src/tools/__tests__/index-status.test.ts (4 tests) 3ms
+  ✓ RUNNING状態の場合、正常に動作する
+  ✓ NOT_CONFIGURED状態の場合、エラーを返す
+  ✓ CONFIGURED_SERVER_DOWN状態の場合、エラーを返す
+  ✓ client.getStatus()がエラーの場合、エラーを返す
+```
+
+**次のステップ**：
+- ツール分離をコミット
+- 他の既存ツール（search, get_document）を分離
 - 新規ツールの実装
 
 ## 参考情報
