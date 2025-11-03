@@ -9,8 +9,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Command } from 'commander';
 import { createRequire } from 'module';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 
 import { detectSystemState } from './state.js';
+import { ServerManager } from './server-manager.js';
 import {
   registerInitTool,
   registerServerStartTool,
@@ -82,8 +84,41 @@ async function main() {
   debugLog(`Working directory: ${cwd}`);
 
   // システム状態を判定
-  const systemState = await detectSystemState(cwd);
+  let systemState = await detectSystemState(cwd);
   debugLog(`System state: ${systemState.state}`);
+
+  // CONFIGURED_SERVER_DOWNかつインデックスが存在する場合、サーバを自動起動
+  if (systemState.state === 'CONFIGURED_SERVER_DOWN' && systemState.config) {
+    const indexPath = path.join(
+      systemState.projectRoot,
+      systemState.config.storage.indexPath
+    );
+
+    try {
+      await fs.access(indexPath);
+      // インデックスディレクトリが存在する → 自動起動を試みる
+      debugLog('Index directory exists, attempting auto-start...');
+
+      const serverManager = new ServerManager();
+      try {
+        await serverManager.startServer(
+          systemState.projectRoot,
+          systemState.config.server.port,
+          systemState.configPath
+        );
+
+        // 自動起動成功、状態を再判定
+        systemState = await detectSystemState(cwd);
+        debugLog(`System state after auto-start: ${systemState.state}`);
+      } catch (startError) {
+        // 自動起動失敗は致命的ではない、手動起動を促す
+        debugLog(`Auto-start failed: ${(startError as Error).message}`);
+      }
+    } catch {
+      // インデックスディレクトリが存在しない → 自動起動しない
+      debugLog('Index directory does not exist, skipping auto-start');
+    }
+  }
 
   // MCPサーバの初期化
   const server = new McpServer(

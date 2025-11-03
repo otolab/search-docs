@@ -46,10 +46,26 @@ export function registerInitTool(context: ToolRegistrationContext): void {
           resultText += '既存の設定ファイルを上書きしました。\n\n';
         }
 
+        resultText += '📝 設定ファイルの重要な項目:\n\n';
+        resultText += '**files.include**: インデックス対象ファイルのパターン\n';
+        resultText += '  - デフォルト: ["**/*.md", "docs/**/*.txt"]\n';
+        resultText += '  - プロジェクトに応じてパターンを調整してください\n\n';
+        resultText += '**files.exclude**: 除外するファイルパターン\n';
+        resultText += '  - デフォルト: node_modules, .git, dist, buildを除外\n';
+        resultText += '  - 必要に応じて追加してください\n\n';
+        resultText += '**indexing.maxDepth**: セクション分割の最大深度（0-3）\n';
+        resultText += '  - 0: 文書全体のみ\n';
+        resultText += '  - 1: 章レベルまで分割\n';
+        resultText += '  - 2: 節レベルまで分割\n';
+        resultText += '  - 3: 項レベルまで分割（デフォルト）\n\n';
+        resultText += '**indexing.maxTokensPerSection**: セクションの最大トークン数\n';
+        resultText += '  - デフォルト: 2000トークン\n';
+        resultText += '  - 大きくすると粗い分割、小さくすると細かい分割になります\n\n';
         resultText += '次のステップ:\n';
-        resultText += '  1. サーバを起動: server_start\n';
-        resultText += '  2. システム状態を確認: get_system_status\n';
-        resultText += '  3. 文書を検索: search\n';
+        resultText += '  1. 設定を調整（必要に応じて）: .search-docs.jsonを編集\n';
+        resultText += '  2. サーバを起動: server_start\n';
+        resultText += '  3. システム状態を確認: get_system_status\n';
+        resultText += '  4. 文書を検索: search\n';
 
         return {
           content: [
