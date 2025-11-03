@@ -6,6 +6,12 @@
   "bin": {
     "search-docs": "./dist/index.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./commands/config/init": "./dist/commands/config/init.js",
+    "./commands/server/start": "./dist/commands/server/start.js",
+    "./commands/server/stop": "./dist/commands/server/stop.js"
+  },
   "files": [
     "dist"
   ],

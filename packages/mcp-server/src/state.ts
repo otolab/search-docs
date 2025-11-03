@@ -55,7 +55,7 @@ export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
     }
 
     config = result.config;
-    configPath = result.configPath;
+    configPath = result.configPath ?? undefined;
     projectRoot = result.projectRoot;
   } catch (_error) {
     // 設定ファイル読み込みエラー

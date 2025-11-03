@@ -829,6 +829,48 @@ packages/mcp-server/src/
 - server.tsの統合（分離したツールを使用するように変更）
 - 統合テストの作成
 
+### 2025-11-03 - セッション5: 新規ツールの実装とserver.ts統合
+
+**実施内容**：
+- [x] 新規ツール（4つ）の実装
+  - `tools/init.ts`: 設定ファイルの初期化ツール
+  - `tools/server-control.ts`: サーバ起動・停止ツール（server_start, server_stop）
+  - `tools/system-status.ts`: システム状態取得ツール（get_system_status）
+  - **注**: server_restartは不要として実装を省略
+- [x] `tools/index.ts`の更新（新規ツールのエクスポート追加）
+- [x] `server.ts`の全面書き換え
+  - 431行から145行に大幅削減
+  - detectSystemState()による状態判定
+  - 状態に応じたツール登録（NOT_CONFIGURED / CONFIGURED_SERVER_DOWN / RUNNING）
+  - サーバ自動起動ロジックを削除（手動起動に変更）
+- [x] 型エラーの修正
+  - `packages/cli/package.json`にexportsフィールドを追加
+  - `state.ts`でconfigPathのnull→undefined変換
+  - `state.test.ts`のモック修正
+
+**成果物**：
+- `packages/mcp-server/src/tools/init.ts` (68行)
+- `packages/mcp-server/src/tools/server-control.ts` (126行)
+- `packages/mcp-server/src/tools/system-status.ts` (76行)
+- `packages/mcp-server/src/server.ts` (145行、431行から大幅削減)
+- `packages/cli/package.json` (exportsフィールド追加)
+
+**設計上の改善**：
+- MCPサーバは状態を判定してから起動
+- 未設定状態（NOT_CONFIGURED）でも起動可能
+- ユーザーに状態と次のアクションを明示的に案内
+- サーバ自動起動を廃止し、手動起動（server_start）に変更
+
+**ビルド結果**：
+- 全パッケージのビルド成功
+- 型エラーなし
+
+**次のステップ**：
+- ✅ 新規ツールの実装完了
+- ✅ server.tsの統合完了
+- テストの作成（既存のstate.testは動作確認済み）
+- 実際の動作確認（手動テスト）
+
 ## 参考情報
 
 ### 関連ファイル

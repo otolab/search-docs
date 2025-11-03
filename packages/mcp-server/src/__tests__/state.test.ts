@@ -21,8 +21,8 @@ describe('state', () => {
     it('設定ファイルがない場合、NOT_CONFIGUREDを返す', async () => {
       // ConfigLoader.resolve が設定なしを返す
       vi.mocked(ConfigLoader.resolve).mockResolvedValue({
-        config: undefined,
-        configPath: undefined,
+        config: null as any,
+        configPath: null,
         projectRoot: '/test/project',
       });
 
