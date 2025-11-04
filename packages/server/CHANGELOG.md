@@ -1,5 +1,16 @@
 # @search-docs/server
 
+## 1.1.3
+
+### Patch Changes
+
+- 5d5cbda: fix(db-engine): テーブルハンドルをキャッシュしてメモリリークを修正
+
+  open_table()を繰り返し呼ぶと各インスタンスが独自の index/metadata キャッシュを持ち、メモリを消費する問題を修正。LanceDB のベストプラクティスに従い、テーブルハンドルを一度だけ開いて再利用するよう変更。
+
+- Updated dependencies [5d5cbda]
+  - @search-docs/db-engine@1.0.12
+
 ## 1.1.2
 
 ### Patch Changes
