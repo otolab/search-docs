@@ -42,6 +42,12 @@ class SearchDocsWorker:
         self.vector_dimension = self.embedding_model.dimension if hasattr(self.embedding_model, 'dimension') else 256
         self.init_tables()
 
+        # テーブルハンドルのキャッシュ（メモリリーク対策）
+        # 参考: https://lancedb.github.io/lancedb/python/python/
+        # "table = db.open_table() should be called once and used for all subsequent table operations"
+        self._sections_table = None
+        self._index_requests_table = None
+
     def _get_model_name(self):
         """モデル名を取得
 
@@ -104,6 +110,31 @@ class SearchDocsWorker:
             sys.stderr.write(f"Traceback: {traceback.format_exc()}\n")
             sys.stderr.flush()
             raise
+
+    def _get_sections_table(self):
+        """SECTIONSテーブルを取得（キャッシュ付き）
+
+        メモリリーク対策: open_table()を毎回呼ぶと、各インスタンスが
+        独自のindex/metadataキャッシュを持ち、メモリを消費する。
+        一度開いたテーブルを再利用することで、キャッシュを共有し、
+        メモリ使用量を削減する。
+
+        Returns:
+            SECTIONSテーブルのハンドル
+        """
+        if self._sections_table is None:
+            self._sections_table = self.db.open_table(SECTIONS_TABLE)
+        return self._sections_table
+
+    def _get_index_requests_table(self):
+        """INDEX_REQUESTSテーブルを取得（キャッシュ付き）
+
+        Returns:
+            INDEX_REQUESTSテーブルのハンドル
+        """
+        if self._index_requests_table is None:
+            self._index_requests_table = self.db.open_table(INDEX_REQUESTS_TABLE)
+        return self._index_requests_table
 
     def format_section(self, section: Dict[str, Any]) -> Dict[str, Any]:
         """LanceDBのセクションデータをJSON-serializable形式に変換
@@ -266,7 +297,7 @@ class SearchDocsWorker:
             self._normalize_section_data(section)
 
         # 一括追加
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         table.add(sections)
 
         return {"count": len(sections)}
@@ -290,7 +321,7 @@ class SearchDocsWorker:
         query_vector = self.embedding_model.encode(query, self.vector_dimension)
 
         # 検索
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         search_query = table.search(query_vector).limit(limit)
 
         # フィルタ適用
@@ -342,7 +373,7 @@ class SearchDocsWorker:
         if not document_path:
             raise ValueError("documentPath parameter is required")
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         results = table.search().where(f"document_path = '{document_path}'").to_list()
 
         # 結果をフォーマット
@@ -356,7 +387,7 @@ class SearchDocsWorker:
         if not section_id:
             raise ValueError("sectionId parameter is required")
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         results = table.search().where(f"id = '{section_id}'").to_list()
 
         if not results:
@@ -370,7 +401,7 @@ class SearchDocsWorker:
         if not document_path:
             raise ValueError("documentPath parameter is required")
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         table.delete(f"document_path = '{document_path}'")
 
         return {"deleted": True}
@@ -385,7 +416,7 @@ class SearchDocsWorker:
         if not document_hash:
             raise ValueError("documentHash parameter is required")
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         results = table.search()\
             .where(f"document_path = '{document_path}' AND document_hash = '{document_hash}'")\
             .to_list()
@@ -405,7 +436,7 @@ class SearchDocsWorker:
         if not document_hash:
             raise ValueError("documentHash parameter is required")
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
 
         # 指定したhash以外を削除
         table.delete(f"document_path = '{document_path}' AND document_hash != '{document_hash}'")
@@ -418,7 +449,7 @@ class SearchDocsWorker:
         if not document_path:
             raise ValueError("documentPath parameter is required")
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         # LanceDBの更新操作
         table.update(
             where=f"document_path = '{document_path}'",
@@ -431,7 +462,7 @@ class SearchDocsWorker:
         """Dirtyなセクションを取得"""
         limit = params.get("limit", 100)
 
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
         results = table.search()\
             .where("is_dirty = true")\
             .limit(limit)\
@@ -444,7 +475,7 @@ class SearchDocsWorker:
 
     def get_stats(self) -> Dict[str, Any]:
         """統計情報を取得"""
-        table = self.db.open_table(SECTIONS_TABLE)
+        table = self._get_sections_table()
 
         # 全件数
         total = table.count_rows()
@@ -482,7 +513,7 @@ class SearchDocsWorker:
         # バリデーション（作成時用）
         validate_index_request(params, for_creation=True)
 
-        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+        table = self._get_index_requests_table()
 
         # IDを生成
         request_id = str(uuid.uuid4())
@@ -517,7 +548,7 @@ class SearchDocsWorker:
 
     def find_index_requests(self, params: Dict[str, Any]) -> Dict[str, List]:
         """IndexRequestを検索"""
-        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+        table = self._get_index_requests_table()
 
         # limit指定（デフォルト1000、大規模プロジェクトでのメモリ保護）
         limit = params.get("limit", 1000)
@@ -587,7 +618,7 @@ class SearchDocsWorker:
         if not updates:
             raise ValueError("Missing required field: updates")
 
-        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+        table = self._get_index_requests_table()
 
         # タイムスタンプの変換（ミリ秒精度）
         if "started_at" in updates and updates["started_at"]:
@@ -626,7 +657,7 @@ class SearchDocsWorker:
         if not updates:
             raise ValueError("Missing required field: updates")
 
-        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+        table = self._get_index_requests_table()
 
         # フィルタ条件の構築
         where_clauses = []
@@ -672,7 +703,7 @@ class SearchDocsWorker:
         if not statuses:
             raise ValueError("Missing required field: statuses")
 
-        table = self.db.open_table(INDEX_REQUESTS_TABLE)
+        table = self._get_index_requests_table()
 
         # statusフィルタの構築
         status_clauses = [f"status = '{s}'" for s in statuses]
