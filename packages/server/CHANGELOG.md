@@ -1,5 +1,28 @@
 # @search-docs/server
 
+## 1.1.0
+
+### Minor Changes
+
+- 25aa7dd: @parcel/watcher への移行でファイル監視を改善
+
+  chokidar から@parcel/watcher へ完全移行し、大規模プロジェクトでの EMFILE 問題を根本的に解決しました。
+
+  **主な変更:**
+
+  - ネイティブ C++実装によるイベントスロットリング
+  - Watchman 連携（オプション）による高速化
+  - 大規模プロジェクト（10 万ファイル規模）でも効率的に動作
+
+  **破壊的変更:**
+
+  - WatcherConfig から usePolling/pollingInterval を削除（@parcel/watcher はネイティブ実装のため不要）
+
+  **実績:**
+
+  - Parcel, Nuxt.js, Vite で採用実績あり
+  - 全 69 テストがパス
+
 ## 1.0.10
 
 ### Patch Changes
