@@ -61,6 +61,9 @@ describe('DBEngine', () => {
       documentHash: 'test-hash',
       createdAt: new Date(),
       updatedAt: new Date(),
+      startLine: 1,
+      endLine: 5,
+      sectionNumber: [1],
     };
 
     it('セクションを追加できる', async () => {
@@ -136,6 +139,9 @@ describe('DBEngine', () => {
           documentHash: 'test-hash-2',
           createdAt: new Date(),
           updatedAt: new Date(),
+          startLine: 1,
+          endLine: 10,
+          sectionNumber: [1],
         },
         {
           id: 'test-section-3',
@@ -150,6 +156,9 @@ describe('DBEngine', () => {
           documentHash: 'test-hash-2',
           createdAt: new Date(),
           updatedAt: new Date(),
+          startLine: 11,
+          endLine: 15,
+          sectionNumber: [1, 1],
         },
       ];
 
@@ -288,6 +297,9 @@ describe('DBEngine', () => {
         documentHash: hashV1,
         createdAt: new Date(),
         updatedAt: new Date(),
+        startLine: 1,
+        endLine: 5,
+        sectionNumber: [1],
       }]);
 
       // v2ハッシュのセクションを追加
@@ -304,6 +316,9 @@ describe('DBEngine', () => {
         documentHash: hashV2,
         createdAt: new Date(),
         updatedAt: new Date(),
+        startLine: 6,
+        endLine: 10,
+        sectionNumber: [2],
       }]);
     });
 

@@ -470,10 +470,22 @@ export class DBEngine extends EventEmitter {
     const result = await this.sendRequest('search', params);
     const response = result as any;
 
-    // Pythonから返されたセクションをTypeScript形式に変換
-    const convertedResults = response.results.map((section: any) =>
-      this.convertSectionFromPythonFormat(section)
-    );
+    // Pythonから返された検索結果をTypeScript形式に変換
+    const convertedResults = response.results.map((result: any): SearchResult => ({
+      id: result.id,
+      documentPath: result.document_path,
+      documentHash: result.document_hash,
+      heading: result.heading,
+      depth: result.depth,
+      content: result.content,
+      score: result.score,
+      isDirty: result.is_dirty,
+      tokenCount: result.token_count,
+      // Task 14フィールド
+      startLine: result.start_line,
+      endLine: result.end_line,
+      sectionNumber: result.section_number,
+    }));
 
     return {
       results: convertedResults,

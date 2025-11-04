@@ -85,7 +85,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
     // Serverを初期化
     server = new SearchDocsServer(config, storage, dbEngine);
     await server.start();
-  });
+  }, 20000); // 全体テスト実行時のPython worker起動競合を考慮して20秒に設定
 
   afterAll(async () => {
     if (server) {

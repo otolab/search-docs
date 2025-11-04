@@ -2,7 +2,8 @@ import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import { DBEngine } from '@search-docs/db-engine';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { MarkdownSplitter } from '../splitter/markdown-splitter';
+import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
+import type { Section } from '@search-docs/types';
 
 /**
  * ユーザー報告の問題を再現するテスト
@@ -28,7 +29,7 @@ describe('null fields reproduction test', () => {
     // DBエンジンを接続
     dbEngine = new DBEngine({
       dbPath: testDbPath,
-      modelName: 'cl-nagoya/ruri-v3-30m'
+      embeddingModel: 'cl-nagoya/ruri-v3-30m'
     });
     await dbEngine.connect();
   });
@@ -50,13 +51,15 @@ describe('null fields reproduction test', () => {
     const splitter = new MarkdownSplitter({
       maxTokensPerSection: 2000,
       minTokensForSplit: 100,
-      maxDepth: 3
+      maxDepth: 3,
+      vectorDimension: 256,
+      embeddingModel: 'cl-nagoya/ruri-v3-30m'
     });
 
-    const sections = await splitter.split(markdownContent, documentPath);
+    const sections = splitter.split(markdownContent, documentPath, documentHash);
 
     // "**1.3 表の活用**"セクションを探す
-    const targetSection = sections.find(s => s.heading === '**1.3 表の活用**');
+    const targetSection = sections.find((s: Omit<Section, 'vector'>) => s.heading === '**1.3 表の活用**');
 
     expect(targetSection).toBeDefined();
     expect(targetSection?.depth).toBe(2);

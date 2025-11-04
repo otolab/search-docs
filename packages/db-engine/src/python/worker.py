@@ -112,7 +112,7 @@ class SearchDocsWorker:
             section: LanceDBから取得した生のセクションデータ
 
         Returns:
-            JSON-serializable形式のセクションデータ（camelCase）
+            JSON-serializable形式のセクションデータ（snake_case - TypeScript側で変換される）
         """
         # datetimeをISO文字列に変換
         created_at = section.get("created_at")
@@ -120,22 +120,22 @@ class SearchDocsWorker:
 
         return {
             "id": section["id"],
-            "documentPath": section["document_path"],
+            "document_path": section["document_path"],
             "heading": section["heading"],
             "depth": section["depth"],
             "content": section["content"],
-            "tokenCount": section["token_count"],
-            "parentId": section.get("parent_id"),
+            "token_count": section["token_count"],
+            "parent_id": section.get("parent_id"),
             "order": section["order"],
-            "isDirty": section["is_dirty"],
-            "documentHash": section["document_hash"],
-            "createdAt": created_at.isoformat() if isinstance(created_at, datetime) else created_at,
-            "updatedAt": updated_at.isoformat() if isinstance(updated_at, datetime) else updated_at,
+            "is_dirty": section["is_dirty"],
+            "document_hash": section["document_hash"],
+            "created_at": created_at.isoformat() if isinstance(created_at, datetime) else created_at,
+            "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else updated_at,
             "summary": section.get("summary"),
-            "documentSummary": section.get("document_summary"),
-            "startLine": section.get("start_line"),
-            "endLine": section.get("end_line"),
-            "sectionNumber": section.get("section_number"),
+            "document_summary": section.get("document_summary"),
+            "start_line": section.get("start_line"),
+            "end_line": section.get("end_line"),
+            "section_number": section.get("section_number"),
         }
 
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -312,23 +312,23 @@ class SearchDocsWorker:
 
         results = search_query.to_list()
 
-        # 結果を整形
+        # 結果を整形（snake_case形式で返す - TypeScript側で変換される）
         formatted_results = []
         for result in results:
             formatted_results.append({
                 "id": result["id"],
-                "documentPath": result["document_path"],
-                "documentHash": result["document_hash"],
+                "document_path": result["document_path"],
+                "document_hash": result["document_hash"],
                 "heading": result["heading"],
                 "depth": result["depth"],
                 "content": result["content"],
                 "score": float(result.get("_distance", 0)),
-                "isDirty": result["is_dirty"],
-                "tokenCount": result["token_count"],
+                "is_dirty": result["is_dirty"],
+                "token_count": result["token_count"],
                 # Task 14 Phase 2: 新しいフィールドを追加
-                "startLine": result.get("start_line"),
-                "endLine": result.get("end_line"),
-                "sectionNumber": result.get("section_number"),
+                "start_line": result.get("start_line"),
+                "end_line": result.get("end_line"),
+                "section_number": result.get("section_number"),
             })
 
         return {
