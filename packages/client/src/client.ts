@@ -114,6 +114,30 @@ export class SearchDocsClient {
   }
 
   /**
+   * サーバをgraceful shutdownで停止
+   */
+  async shutdown(): Promise<void> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/shutdown`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Shutdown failed: ${response.status} ${response.statusText}`);
+      }
+
+      // レスポンスボディを読み捨てる
+      await response.json();
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
    * JSON-RPCメソッド呼び出し
    */
   private async call<T>(method: string, params?: unknown): Promise<T> {

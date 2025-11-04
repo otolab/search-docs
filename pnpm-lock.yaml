@@ -11,6 +11,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.29.7
         version: 2.29.7(@types/node@22.18.12)
+      '@coeiro-operator/mcp-debug':
+        specifier: 1.1.0
+        version: 1.1.0
       '@eslint/js':
         specifier: ^9.0.0
         version: 9.38.0
@@ -98,7 +101,7 @@ importers:
     devDependencies:
       '@coeiro-operator/mcp-debug':
         specifier: ^1.0.0
-        version: 1.0.1
+        version: 1.1.0
       '@types/node':
         specifier: ^22.0.0
         version: 22.18.12
@@ -228,8 +231,9 @@ packages:
   '@changesets/write@0.4.0':
     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
 
-  '@coeiro-operator/mcp-debug@1.0.1':
-    resolution: {integrity: sha512-McOp4EihGVQMP/JYWKWN9WE/vVEsePUoeX8SCqMPedYp6gyxX08AZThhVsVqmsX7SX0Vq4stoUSlqCyDxq8Qqg==}
+  '@coeiro-operator/mcp-debug@1.1.0':
+    resolution: {integrity: sha512-foeP/Kl9Q0ByM004c+Zpxv3vXMmYk05S8hYAOTLPqL4EhkBkBV/21KWz8MvFAVgsNqEXpS7KcwN1jJdym+ADeQ==}
+    cpu: [x64, arm64, ia32]
     os: [darwin, linux, win32]
     hasBin: true
 
@@ -2186,7 +2190,7 @@ snapshots:
       human-id: 4.1.2
       prettier: 2.8.8
 
-  '@coeiro-operator/mcp-debug@1.0.1':
+  '@coeiro-operator/mcp-debug@1.1.0':
     dependencies:
       '@modelcontextprotocol/sdk': 1.20.2
       zod: 3.25.76

@@ -106,6 +106,18 @@ export class JsonRpcServer {
       res.json({ status: 'ok' });
     });
 
+    // Graceful shutdown
+    this.app.post('/shutdown', async (_req, res) => {
+      res.json({ status: 'shutting down' });
+
+      // レスポンスを送信後、少し待ってからサーバを停止
+      setTimeout(async () => {
+        console.log('Shutdown requested via /shutdown endpoint');
+        await this.stop();
+        process.exit(0);
+      }, 100);
+    });
+
     // 404ハンドラ
     this.app.use((_req, res) => {
       res.status(404).json({ error: 'Not Found' });

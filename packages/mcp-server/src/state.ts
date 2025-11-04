@@ -44,9 +44,13 @@ export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
     const result = await ConfigLoader.resolve({
       cwd,
       requireConfig: false, // エラーで終了しない
+      traverseUp: false, // 上位ディレクトリを遡らない（テスト時の意図しない設定読み込みを防ぐ）
     });
 
-    if (!result.config) {
+    // 設定ファイルが見つからない場合（configPath === null）は未設定状態
+    // ConfigLoader.resolve()はデフォルト設定を返すが、設定ファイルが存在しない場合は
+    // NOT_CONFIGURED状態として扱う
+    if (!result.config || result.configPath === null) {
       // 設定ファイルなし
       return {
         state: 'NOT_CONFIGURED',
