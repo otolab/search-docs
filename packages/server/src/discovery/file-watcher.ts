@@ -1,18 +1,8 @@
-import chokidar, { type FSWatcher } from 'chokidar';
+import * as watcher from '@parcel/watcher';
 import { EventEmitter } from 'events';
-import { readFile } from 'fs/promises';
-import type { Stats } from 'fs';
 import * as path from 'path';
+import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
-
-// ignoreパッケージの型定義
-interface Ignore {
-  add(pattern: string | string[]): this;
-  ignores(pathname: string): boolean;
-}
-
-// ignoreパッケージのファクトリ関数をdynamic importで使用
-let ignoreFactory: (() => Ignore) | null = null;
 
 export interface FileWatcherOptions {
   /** プロジェクトルート */
@@ -31,11 +21,10 @@ export interface FileChangeEvent {
 
 /**
  * ファイル監視クラス
- * chokidarを使用してMarkdownファイルの変更を監視
+ * @parcel/watcherを使用してMarkdownファイルの変更を監視
  */
 export class FileWatcher extends EventEmitter {
-  private watcher: FSWatcher | null = null;
-  private ignoreFilter: Ignore | null = null;
+  private subscription: watcher.AsyncSubscription | null = null;
   private debounceTimers = new Map<string, NodeJS.Timeout>();
   private rootDir: string;
   private filesConfig: FilesConfig;
@@ -52,83 +41,35 @@ export class FileWatcher extends EventEmitter {
    * 監視を開始
    */
   async start(): Promise<void> {
-    // .gitignoreの読み込み
-    if (this.filesConfig.ignoreGitignore) {
-      await this.loadGitignore();
-    }
+    // ignoreパターンの構築
+    const ignorePatterns = this.buildIgnorePatterns();
 
-    // chokidarの設定
-    // 注意: chokidar 4.x では Globパターン（例: '**/*.md'）を直接watchに渡すと
-    // ファイルイベントが発火しない問題があるため、rootDirを監視して
-    // ignored callbackでフィルタリングする方式を採用
-    this.watcher = chokidar.watch(this.rootDir, {
-      ignored: (filePath: string, stats?: Stats) => {
-        const relativePath = path.relative(this.rootDir, filePath);
+    this.subscription = await watcher.subscribe(
+      this.rootDir,
+      (err, events) => {
+        if (err) {
+          this.emit('error', err);
+          return;
+        }
 
-        // ディレクトリは除外しない（サブディレクトリを監視するため）
-        // ただし、一般的な大量ファイルを含むディレクトリは最初から除外
-        const isDirectory = stats?.isDirectory() || !path.extname(filePath);
-        if (isDirectory) {
-          // node_modules, .git, dist, buildなどを除外
-          const dirName = path.basename(filePath);
-          const commonIgnores = [
-            'node_modules',
-            '.git',
-            '.venv',
-            'dist',
-            'build',
-            '.next',
-            '.turbo',
-            'coverage',
-            '.cache',
-          ];
-          if (commonIgnores.includes(dirName)) {
-            return true;
+        for (const event of events) {
+          // イベントタイプの変換
+          const eventType = this.convertEventType(event.type);
+
+          // 追加のフィルタリング（.md拡張子チェック）
+          if (!this.shouldProcessFile(event.path)) {
+            continue;
           }
-          return false;
-        }
 
-        // 除外パターンチェック
-        for (const pattern of this.filesConfig.exclude) {
-          const cleanPattern = pattern.replace(/\*\*/g, '').replace(/\//g, '');
-          if (relativePath.includes(cleanPattern)) {
-            return true;
-          }
+          this.handleFileEvent(eventType, event.path);
         }
-
-        // 拡張子チェック（.mdファイル以外を除外）
-        if (relativePath && !relativePath.endsWith('.md')) {
-          return true;
-        }
-
-        return false;
       },
-      persistent: true,
-      ignoreInitial: true, // 既存ファイルは無視（初回インデックスは別途実行）
-      depth: 99, // サブディレクトリも監視
-      awaitWriteFinish: {
-        stabilityThreshold: this.watcherConfig.awaitWriteFinishMs,
-        pollInterval: 100,
-      },
-      // ファイルディスクリプタ使用量を削減
-      usePolling: false, // ネイティブfsEventsを使用（Macの場合）
-      atomic: true, // アトミックな書き込みを処理
-    });
+      {
+        ignore: ignorePatterns,
+      }
+    );
 
-    // イベントハンドラ登録（ready前に登録する）
-    this.watcher
-      .on('add', (filePath) => this.handleFileEvent('add', filePath))
-      .on('change', (filePath) => this.handleFileEvent('change', filePath))
-      .on('unlink', (filePath) => this.handleFileEvent('unlink', filePath))
-      .on('error', (error) => this.emit('error', error));
-
-    // readyイベントを待つ
-    await new Promise<void>((resolve) => {
-      this.watcher!.on('ready', () => {
-        this.emit('ready');
-        resolve();
-      });
-    });
+    this.emit('ready');
   }
 
   /**
@@ -141,10 +82,87 @@ export class FileWatcher extends EventEmitter {
     }
     this.debounceTimers.clear();
 
-    // watcherを停止
-    if (this.watcher) {
-      await this.watcher.close();
-      this.watcher = null;
+    // subscriptionを停止
+    if (this.subscription) {
+      await this.subscription.unsubscribe();
+      this.subscription = null;
+    }
+  }
+
+  /**
+   * ignoreパターンを構築
+   */
+  private buildIgnorePatterns(): string[] {
+    const patterns: string[] = [];
+
+    // 一般的な除外ディレクトリ（最優先）
+    const commonIgnores = [
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/.venv/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.next/**',
+      '**/.turbo/**',
+      '**/coverage/**',
+      '**/.cache/**',
+      '**/.search-docs/**',  // search-docs自身のディレクトリ
+    ];
+    patterns.push(...commonIgnores);
+
+    // ユーザー設定のexcludeパターン
+    patterns.push(...this.filesConfig.exclude);
+
+    // .md以外のファイルを除外
+    // 注意: @parcel/watcherのignoreはGlobパターンなので、
+    // "すべてのファイルのうち.md以外"を表現する必要がある
+    // ディレクトリは除外しない（サブディレクトリを監視するため）
+    patterns.push('**/*.!(md)');
+    patterns.push('**/!(*.md)');  // 拡張子なしファイルも除外
+
+    return patterns;
+  }
+
+  /**
+   * ファイルを処理すべきか判定
+   */
+  private shouldProcessFile(filePath: string): boolean {
+    // .mdファイルのみ処理
+    if (!filePath.endsWith('.md')) {
+      return false;
+    }
+
+    // includeパターンのチェック（オプション）
+    // @parcel/watcherのignoreで大半はフィルタされているが、
+    // より厳密にチェックする場合はここで追加チェック
+    const relativePath = path.relative(this.rootDir, filePath);
+
+    // filesConfig.includeが設定されている場合、それに一致するかチェック
+    if (this.filesConfig.include && this.filesConfig.include.length > 0) {
+      const matches = this.filesConfig.include.some((pattern) =>
+        minimatch(relativePath, pattern)
+      );
+      if (!matches) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * @parcel/watcherのイベントタイプを変換
+   */
+  private convertEventType(type: string): 'add' | 'change' | 'unlink' {
+    switch (type) {
+      case 'create':
+        return 'add';
+      case 'update':
+        return 'change';
+      case 'delete':
+        return 'unlink';
+      default:
+        return 'change';
     }
   }
 
@@ -172,50 +190,5 @@ export class FileWatcher extends EventEmitter {
     }, this.watcherConfig.debounceMs);
 
     this.debounceTimers.set(filePath, timer);
-  }
-
-  /**
-   * .gitignoreを読み込む
-   */
-  private async loadGitignore(): Promise<void> {
-    try {
-      // ignoreパッケージを動的にロード
-      if (!ignoreFactory) {
-        const ignoreModule = await import('ignore');
-        ignoreFactory = ignoreModule.default as unknown as () => Ignore;
-      }
-
-      const gitignorePath = path.join(this.rootDir, '.gitignore');
-      const content = await readFile(gitignorePath, 'utf-8');
-      this.ignoreFilter = ignoreFactory().add(content);
-    } catch (error) {
-      // .gitignoreが存在しない場合は無視
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * パスを除外すべきか判定
-   */
-  private shouldIgnore(filePath: string): boolean {
-    // 絶対パスから相対パスに変換
-    const relativePath = filePath.replace(this.rootDir + '/', '');
-
-    // 除外パターンチェック
-    for (const pattern of this.filesConfig.exclude) {
-      // 簡易的なglobマッチング（node_modules, .gitなど）
-      if (relativePath.includes(pattern.replace(/\*\*/g, ''))) {
-        return true;
-      }
-    }
-
-    // .gitignoreチェック
-    if (this.ignoreFilter) {
-      return this.ignoreFilter.ignores(relativePath);
-    }
-
-    return false;
   }
 }

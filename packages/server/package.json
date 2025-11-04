@@ -18,10 +18,10 @@
     "build:fast": "tsc --build"
   },
   "dependencies": {
+    "@parcel/watcher": "^2.5.1",
     "@search-docs/db-engine": "workspace:*",
     "@search-docs/storage": "workspace:*",
     "@search-docs/types": "workspace:*",
-    "chokidar": "^4.0.3",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "fast-glob": "^3.3.2",

@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
+import * as path from 'path';
 import type {
   SearchRequest,
   SearchResponse,
@@ -133,8 +134,9 @@ export class SearchDocsServer {
     switch (event.type) {
       case 'add':
       case 'change': {
-        // 1. ファイルを読み込み
-        const content = await fs.readFile(event.path, 'utf-8');
+        // 1. ファイルを読み込み（event.pathは相対パスなので絶対パスに変換）
+        const absolutePath = path.join(this.config.project.root, event.path);
+        const content = await fs.readFile(absolutePath, 'utf-8');
 
         // 2. ハッシュ計算
         const hash = createHash('sha256').update(content).digest('hex');
