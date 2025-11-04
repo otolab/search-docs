@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/server",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "search-docs サーバ実装",
   "type": "module",
   "main": "dist/index.js",

@@ -1,5 +1,20 @@
 # @search-docs/server
 
+## 1.0.10
+
+### Patch Changes
+
+- 54b20e9: Fix test failures and improve test stability
+
+  - **db-engine**: Fix Python-TypeScript snake_case/camelCase conversion in search results. Task14 fields (startLine, endLine, sectionNumber) are now correctly converted.
+  - **server**: Fix test timeout issues and type errors in test files. Increase beforeAll timeout to handle concurrent Python worker initialization.
+  - **storage**: Add dist/ exclusion to vitest config to prevent duplicate test execution.
+  - **db-engine**: Enable 2 previously skipped tests (findSectionsByPathAndHash, deleteSectionsByPathExceptHash).
+
+- Updated dependencies [54b20e9]
+  - @search-docs/db-engine@1.0.10
+  - @search-docs/storage@1.0.6
+
 ## 1.0.9
 
 ### Patch Changes
