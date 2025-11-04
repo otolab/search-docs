@@ -9,6 +9,7 @@ import io
 import json
 import traceback
 import uuid
+import gc
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 import lancedb
@@ -300,7 +301,12 @@ class SearchDocsWorker:
         table = self._get_sections_table()
         table.add(sections)
 
-        return {"count": len(sections)}
+        # メモリリーク対策: GCを明示的に実行
+        # LanceDB内部の一時オブジェクトを解放
+        count = len(sections)
+        gc.collect()
+
+        return {"count": count}
 
     def search(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """セクションを検索"""
