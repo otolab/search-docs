@@ -37,7 +37,6 @@ export class SearchDocsServer {
     indexDocument: 0,
     rebuildIndex: 0,
   };
-
   constructor(
     private config: SearchDocsConfig,
     private storage: FileStorage,
@@ -338,6 +337,7 @@ export class SearchDocsServer {
    * ステータス取得API
    */
   async getStatus(): Promise<GetStatusResponse> {
+    // DBから統計情報を取得（.select()で最適化済み）
     const stats = await this.dbEngine.getStats();
 
     // IndexWorkerの状態を取得

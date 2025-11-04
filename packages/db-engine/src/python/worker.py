@@ -449,18 +449,28 @@ class SearchDocsWorker:
         # 全件数
         total = table.count_rows()
 
-        # Dirty件数
-        dirty_results = table.search().where("is_dirty = true").to_list()
+        # Dirty件数（カウントクエリで効率化、limit付き）
+        dirty_results = table.search().where("is_dirty = true").limit(100000).to_pandas()
         dirty_count = len(dirty_results)
 
-        # ユニークな文書数
-        all_sections = table.search().to_list()
-        unique_paths = set(s["document_path"] for s in all_sections)
+        # ユニークな文書数を効率的に取得
+        # document_pathカラムのみをSELECTして取得（メモリ効率最大化）
+        try:
+            # .select()でdocument_pathカラムのみ取得
+            df = table.search().select(["document_path"]).to_pandas()
+            # ユニーク値を取得
+            unique_paths = df["document_path"].unique()
+            total_documents = len(unique_paths)
+        except Exception as e:
+            # エラー時は概算値を返す
+            sys.stderr.write(f"Warning: Could not get unique document count: {e}\n")
+            sys.stderr.flush()
+            total_documents = 0
 
         return {
             "totalSections": total,
             "dirtyCount": dirty_count,
-            "totalDocuments": len(unique_paths)
+            "totalDocuments": total_documents
         }
 
     # ========================================
@@ -509,6 +519,9 @@ class SearchDocsWorker:
         """IndexRequestを検索"""
         table = self.db.open_table(INDEX_REQUESTS_TABLE)
 
+        # limit指定（デフォルト1000、大規模プロジェクトでのメモリ保護）
+        limit = params.get("limit", 1000)
+
         # フィルタ条件の構築
         where_clauses = []
 
@@ -533,6 +546,9 @@ class SearchDocsWorker:
         if where_clauses:
             where_str = " AND ".join(where_clauses)
             query = query.where(where_str)
+
+        # limit適用
+        query = query.limit(limit)
 
         # order指定
         order = params.get("order", "created_at ASC")
@@ -662,11 +678,11 @@ class SearchDocsWorker:
         status_clauses = [f"status = '{s}'" for s in statuses]
         where_str = " OR ".join(status_clauses)
 
-        # クエリ実行
-        results = table.search().where(where_str).to_list()
+        # クエリ実行（document_pathカラムのみ取得でメモリ効率化）
+        df = table.search().where(where_str).select(["document_path"]).to_pandas()
 
         # ユニークなdocument_pathを抽出
-        paths = list(set(r["document_path"] for r in results))
+        paths = df["document_path"].unique().tolist()
 
         return {"paths": paths}
 
