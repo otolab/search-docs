@@ -1,5 +1,13 @@
 # @search-docs/server
 
+## 1.1.1
+
+### Patch Changes
+
+- ビルド成果物の更新
+
+  @parcel/watcher への移行後、dist ファイルが古いままだったため再ビルドしました。
+
 ## 1.1.0
 
 ### Minor Changes
