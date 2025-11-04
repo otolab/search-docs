@@ -1,5 +1,26 @@
 # @search-docs/db-engine
 
+## 1.0.11
+
+### Patch Changes
+
+- fix(db-engine): メモリリーク修正 - .select()による効率的なカラム取得
+
+  大規模プロジェクト（10 万ファイル）でのメモリ消費を大幅に削減。
+
+  ## 修正内容
+
+  ### worker.py
+
+  1. **get_stats()** - `.select(["document_path"])` でメモリ効率化（約 99%削減）
+  2. **find_index_requests()** - デフォルト `limit=1000` を追加
+  3. **get_paths_with_status()** - `.select()` によるカラム限定
+
+  ## テスト結果
+
+  - db-engine: 23/23 passed
+  - server: 69/69 passed
+
 ## 1.0.10
 
 ### Patch Changes
