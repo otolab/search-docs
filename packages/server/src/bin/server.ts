@@ -25,6 +25,8 @@ async function main() {
     const dbEngine = new DBEngine({
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
       embeddingModel: config.indexing.embeddingModel,
+      pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
+      memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
     });
 
     // SearchDocsサーバ初期化

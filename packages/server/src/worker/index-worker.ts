@@ -232,6 +232,9 @@ export class IndexWorker {
       await this.dbEngine.addSections(sections);
       console.log(`[IndexWorker] Created ${sections.length} sections for ${request.documentPath}`);
 
+      // LanceDBの書き込み完了を待つ（100ms）
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // 8. 古いindexを削除
       await this.dbEngine.deleteSectionsByPathExceptHash(
         request.documentPath,

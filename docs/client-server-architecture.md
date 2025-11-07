@@ -128,7 +128,9 @@ search-docs-server start --port 24280
   "worker": {
     "enabled": true,
     "interval": 5000,
-    "maxConcurrent": 3
+    "maxConcurrent": 3,
+    "pythonMaxMemoryMB": 8192,
+    "memoryCheckIntervalMs": 30000
   }
 }
 ```
@@ -172,9 +174,26 @@ interface SearchDocsConfig {
     enabled: boolean;
     interval: number;        // ms
     maxConcurrent: number;
+    pythonMaxMemoryMB?: number;        // Pythonワーカーの最大メモリ使用量（MB、デフォルト: 8192）
+    memoryCheckIntervalMs?: number;    // メモリ監視の間隔（ms、デフォルト: 30000）
   };
 }
 ```
+
+**メモリ監視機能**:
+
+search-docsは、Pythonワーカーのメモリ使用量を監視し、上限を超えた場合に自動的に再起動する機能を提供します。
+
+- **pythonMaxMemoryMB**: Pythonワーカーの最大メモリ使用量（MB）
+  - デフォルト: 8192MB（8GB）
+  - メモリ不足でエラーが発生する場合は、この値を増やしてください
+  - 例: 大規模プロジェクトでは16384（16GB）に設定
+
+- **memoryCheckIntervalMs**: メモリチェックの間隔（ミリ秒）
+  - デフォルト: 30000ms（30秒）
+  - より頻繁にチェックする場合は値を小さくしてください
+
+メモリ上限を超えた場合、Pythonワーカーは自動的に再起動され、メモリリークを防ぎます。
 
 #### 3. Document Manager
 

@@ -4,12 +4,16 @@ search-docs LanceDB JSON-RPC Worker
 標準入出力を介してTypeScriptと通信するPythonワーカー
 """
 
+import os
 import sys
 import io
 import json
 import traceback
 import uuid
 import gc
+import time
+import threading
+import copy
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 import lancedb
@@ -17,6 +21,29 @@ import pyarrow as pa
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+# パフォーマンス監視用
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    sys.stderr.write("[WARNING] psutil not available, performance logging disabled\n")
+
+# スレッド数を制限（メモリ使用量削減）
+# PyTorch/Transformers/NumPyのスレッドプールを制限
+os.environ['OMP_NUM_THREADS'] = '4'
+os.environ['MKL_NUM_THREADS'] = '4'
+os.environ['NUMEXPR_NUM_THREADS'] = '4'
+os.environ['OPENBLAS_NUM_THREADS'] = '4'
+
+# TOKENIZERS_PARALLELISMの設定を確認（メモリリーク対策）
+tokenizers_parallelism = os.getenv('TOKENIZERS_PARALLELISM', 'not set')
+sys.stderr.write(f"[DBEngine] TOKENIZERS_PARALLELISM={tokenizers_parallelism}\n")
+
+# PyArrowメモリプールを system (malloc) に変更
+# mimalloc/jemallocはoverallocationでメモリを多く保持する傾向がある
+pa.set_memory_pool(pa.system_memory_pool())
 
 # 埋め込みモデルをインポート
 from embedding import create_embedding_model
@@ -29,6 +56,102 @@ from schemas import (
     validate_section,
     validate_index_request
 )
+
+
+class PerformanceLogger:
+    """パフォーマンスログを定期的に出力するクラス"""
+
+    def __init__(self, interval: float = 1.0):
+        """
+        Args:
+            interval: ログ出力間隔（秒）
+        """
+        self.interval = interval
+        self.start_time = time.time()
+        self.running = False
+        self.thread = None
+        self.process = psutil.Process() if PSUTIL_AVAILABLE else None
+
+        # メソッド呼び出しカウンタ
+        self.method_calls = {
+            'add_sections': 0,
+            'search': 0,
+            'get_stats': 0,
+            'find_index_requests': 0,
+            'create_index_request': 0,
+            'update_index_request': 0,
+        }
+
+        # リクエスト状態（外部から更新される）
+        self.requests_completed = 0
+        self.requests_processing = 0
+        self.requests_pending = 0
+
+    def increment_call(self, method_name: str):
+        """メソッド呼び出しをカウント"""
+        if method_name in self.method_calls:
+            self.method_calls[method_name] += 1
+
+    def start(self):
+        """ロギングを開始"""
+        if not PSUTIL_AVAILABLE:
+            return
+
+        self.running = True
+        self.thread = threading.Thread(target=self._log_loop, daemon=True)
+        self.thread.start()
+        sys.stderr.write("[PerformanceLogger] Started\n")
+        sys.stderr.flush()
+
+    def stop(self):
+        """ロギングを停止"""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=2.0)
+
+    def _log_loop(self):
+        """ログ出力ループ"""
+        while self.running:
+            try:
+                self._output_log()
+            except Exception as e:
+                sys.stderr.write(f"[PerformanceLogger] Error: {e}\n")
+                sys.stderr.flush()
+            time.sleep(self.interval)
+
+    def _output_log(self):
+        """パフォーマンスログを出力"""
+        if not self.process:
+            return
+
+        try:
+            mem_info = self.process.memory_info()
+            thread_count = self.process.num_threads()
+            elapsed = time.time() - self.start_time
+
+            log_data = {
+                'type': 'performance',
+                'timestamp': time.time(),
+                'elapsed': round(elapsed, 2),
+                'threads': thread_count,
+                'rss_mb': round(mem_info.rss / 1024 / 1024, 2),
+                'vms_mb': round(mem_info.vms / 1024 / 1024, 2),
+                'method_calls': self.method_calls.copy(),
+                'requests': {
+                    'completed': self.requests_completed,
+                    'processing': self.requests_processing,
+                    'pending': self.requests_pending,
+                }
+            }
+
+            # stderrにJSON形式で出力
+            json_str = json.dumps(log_data)
+            sys.stderr.write(f"{json_str}\n")
+            sys.stderr.flush()
+
+        except Exception as e:
+            sys.stderr.write(f"[PerformanceLogger] Failed to output log: {e}\n")
+            sys.stderr.flush()
 
 
 class SearchDocsWorker:
@@ -48,6 +171,34 @@ class SearchDocsWorker:
         # "table = db.open_table() should be called once and used for all subsequent table operations"
         self._sections_table = None
         self._index_requests_table = None
+
+        # メモリ管理用カウンタ
+        self._add_count = 0  # add_sections()の呼び出し回数
+
+        # パフォーマンスロガー
+        self.perf_logger = PerformanceLogger(interval=1.0)
+        self.perf_logger.start()
+
+    def log_thread_info(self, label: str):
+        """スレッド情報をログ出力（デバッグ用）"""
+        threads = threading.enumerate()
+        sys.stderr.write(f"[ThreadDump] {label}\n")
+        sys.stderr.write(f"  Active threads: {len(threads)}\n")
+
+        # スレッド名でグループ化してカウント
+        thread_types = {}
+        for t in threads:
+            # スレッド名のプレフィックスを取得（数字の前まで）
+            name_prefix = ''.join(c for c in t.name if not c.isdigit()).rstrip('-_')
+            if not name_prefix:
+                name_prefix = t.name
+            thread_types[name_prefix] = thread_types.get(name_prefix, 0) + 1
+
+        # グループ化されたスレッド数を出力
+        for name, count in sorted(thread_types.items()):
+            sys.stderr.write(f"    {name}: {count}\n")
+
+        sys.stderr.flush()
 
     def _get_model_name(self):
         """モデル名を取得
@@ -177,6 +328,18 @@ class SearchDocsWorker:
         request_id = request.get("id")
 
         try:
+            # メソッド呼び出しをカウント（主要メソッドのみ）
+            method_map = {
+                'addSections': 'add_sections',
+                'search': 'search',
+                'getStats': 'get_stats',
+                'findIndexRequests': 'find_index_requests',
+                'createIndexRequest': 'create_index_request',
+                'updateIndexRequest': 'update_index_request',
+            }
+            if method in method_map:
+                self.perf_logger.increment_call(method_map[method])
+
             if method == "ping":
                 result = self.ping()
             elif method == "initModel":
@@ -281,30 +444,83 @@ class SearchDocsWorker:
         if not sections:
             raise ValueError("sections parameter is required")
 
+        # スレッド情報（処理前）
+        self.log_thread_info(f"BEFORE add_sections (call #{self._add_count + 1})")
+
         # モデル初期化
         if not self.embedding_model.is_loaded:
             self.embedding_model.initialize()
+
+        # 実験モード取得
+        test_mode = os.environ.get('THREAD_TEST_MODE', '')
 
         # 各セクションを処理
         for section in sections:
             validate_section(section)
 
             # ベクトル化
-            if "vector" not in section or not section["vector"]:
-                text = f"{section['heading']}\n{section['content']}"
-                section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
+            if test_mode == 'skip_encode':
+                # skip_encodeモード: ダミーのvectorを設定
+                if "vector" not in section or not section["vector"]:
+                    section["vector"] = [0.0] * self.vector_dimension
+                    sys.stderr.write("[EXPERIMENT] skip_encode: using zero vector\n")
+                    sys.stderr.flush()
+            elif test_mode == 'no_store_vector':
+                # 【実験】vectorを生成するが格納しない（即座に破棄）
+                if "vector" not in section or not section["vector"]:
+                    text = f"{section['heading']}\n{section['content']}"
+                    _ = self.embedding_model.encode(text, self.vector_dimension)  # 結果を破棄
+                    section["vector"] = [0.0] * self.vector_dimension  # table.addのためダミーを設定
+                    sys.stderr.write("[EXPERIMENT] no_store_vector: vector generated but not stored\n")
+                    sys.stderr.flush()
+            else:
+                # 通常モード
+                if "vector" not in section or not section["vector"]:
+                    text = f"{section['heading']}\n{section['content']}"
+                    section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
 
             # データ正規化
             self._normalize_section_data(section)
 
-        # 一括追加
-        table = self._get_sections_table()
-        table.add(sections)
+        # スレッド情報（table.add前）
+        self.log_thread_info("BEFORE table.add()")
+
+        # table.add実行（skip_addモードではスキップ）
+        if test_mode != 'skip_add':
+            table = self._get_sections_table()
+            table.add(sections)
+            sys.stderr.write(f"[EXPERIMENT] table.add completed for {len(sections)} sections\n")
+            sys.stderr.flush()
+        else:
+            sys.stderr.write(f"[EXPERIMENT] skip_add: table.add skipped for {len(sections)} sections\n")
+            sys.stderr.flush()
+
+        # スレッド情報（table.add後）
+        self.log_thread_info("AFTER table.add()")
 
         # メモリリーク対策: GCを明示的に実行
         # LanceDB内部の一時オブジェクトを解放
         count = len(sections)
         gc.collect()
+
+        # 呼び出し回数をカウント
+        self._add_count += 1
+
+        # 100回ごとにcompact実行（断片化防止）
+        if self._add_count % 100 == 0:
+            try:
+                sys.stderr.write(f"Compacting table (add_count={self._add_count})...\n")
+                sys.stderr.flush()
+                table.optimize.compact_files()
+                gc.collect()  # compact後もGC
+                sys.stderr.write(f"Compaction completed\n")
+                sys.stderr.flush()
+            except Exception as e:
+                sys.stderr.write(f"Warning: Compaction failed: {e}\n")
+                sys.stderr.flush()
+
+        # スレッド情報（処理後）
+        self.log_thread_info(f"AFTER add_sections (call #{self._add_count})")
 
         return {"count": count}
 

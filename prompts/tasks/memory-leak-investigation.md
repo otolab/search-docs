@@ -236,3 +236,96 @@ karte-io-systemsで観測された 2.3GB → 5.8GB の急激な増加は、以�
 1. **Pythonの参照カウント**: `del` は変数への参照を削除し、参照カウントが0になるとGCが即座にメモリ解放
 2. **LanceDBの動作**: `table.add()` はデータをコピーするため、元のリストは不要
 3. **テスト手法**: オブジェクト数の比較（1回 vs 10回 vs 100-1000回）でリークを検出
+
+## PyArrowメモリプール調査
+
+### Phase 5: PyArrowメモリプールの影響
+
+#### 背景
+- karte-io-systemsで観測: systemメモリプール使用時も 0s: 24MB → 478s: 6.5GB と増加
+- スレッド数も増加: 131 → 173スレッド
+- 非線形な増加パターン: 段階的に増え、時々急激に増加
+
+#### PyArrowメモリプールバックエンド
+
+```python
+import pyarrow as pa
+
+# 利用可能なバックエンド
+pa.default_memory_pool()  # デフォルト (通常mimalloc)
+pa.system_memory_pool()   # system (標準malloc)
+pa.jemalloc_memory_pool() # jemalloc
+pa.mimalloc_memory_pool() # mimalloc
+```
+
+**特性**:
+- **mimalloc/jemalloc**: Overallocationでメモリを多く保持する傾向
+  - LanceDBドキュメント例: mimalloc 722MB vs jemalloc 657MB
+  - OSへのメモリ返却を遅らせてパフォーマンス向上
+- **system (malloc)**: 標準allocator、overallocation少ない
+
+#### 実験結果 (karte-io-systems, 102,893ファイル)
+
+**mimalloc (デフォルト)**:
+- 60秒時点: 5.36 GB
+- 急激な増加パターン
+
+**system malloc**:
+```python
+pa.set_memory_pool(pa.system_memory_pool())
+```
+- 60秒時点: 2.5 GB (**約50%改善**)
+- 478秒時点: 6.5 GB (継続的に増加)
+- スレッド数: 173スレッド
+
+**改善**: 初期段階のメモリ使用量は改善したが、最終的には同程度まで増加
+
+### Phase 6: LanceDB書き込み完了待機の調査
+
+#### 調査内容
+- LanceDBに明示的なflush/sync APIが存在するか
+- 書き込みQueueが溜まっている可能性
+
+#### 調査結果
+
+**LanceDB APIの制限**:
+- 明示的な`flush()`、`sync()`メソッドは**存在しない**
+- `table.add()`は即座にreturnするが、内部で非同期処理の可能性
+- バージョン管理: 各`add()`で新バージョン作成、完了タイミング不明
+
+**既知の問題**:
+- Issue #2426 (v0.23.0で修正): 繰り返しの`add()`でコミット競合
+- 現在使用: lancedb 0.25.2 → 修正済み
+
+**推奨される使い方**:
+- 1行ずつではなく**バッチ挿入**を使用
+- Fragment数を100以下に保つ
+- 定期的に`optimize.compact_files()`実行
+
+**利用可能な機能**:
+```python
+# データ最適化（断片化解消）
+table.optimize.compact_files()
+
+# 古いバージョンのクリーンアップ
+# (明示的APIなし、自動クリーンアップのみ)
+```
+
+### 次に試す対策
+
+#### 1. バッチサイズの最適化
+現在: セクション単位でバッチ追加
+改善案: より大きなバッチにまとめる
+
+#### 2. 定期的なGC実行
+現在: `add_sections()`後のみ
+改善案: 複数回のadd後に定期的にGC
+
+#### 3. LanceDB最適化の実行
+追加: 定期的に`compact_files()`実行
+
+#### 4. スレッド数の制御
+観測: スレッド数増加と相関
+調査: PyTorch/Transformersのスレッドプール設定
+
+これらの対策を組み合わせて試す。

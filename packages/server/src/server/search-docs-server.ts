@@ -87,6 +87,22 @@ export class SearchDocsServer {
     this.startTime = Date.now();
     await this.dbEngine.connect();
 
+    // パフォーマンスログを開始（環境変数で制御）
+    console.log('[SearchDocsServer] ENABLE_PERFORMANCE_LOG:', process.env.ENABLE_PERFORMANCE_LOG);
+    console.log('[SearchDocsServer] PERFORMANCE_LOG_PATH:', process.env.PERFORMANCE_LOG_PATH);
+    if (process.env.ENABLE_PERFORMANCE_LOG === '1') {
+      const logPath = process.env.PERFORMANCE_LOG_PATH;
+      this.dbEngine.startPerformanceLogging(logPath);
+      console.log('[SearchDocsServer] Performance logging enabled');
+      if (logPath) {
+        console.log('[SearchDocsServer] Performance log path (specified):', logPath);
+      } else {
+        console.log('[SearchDocsServer] Performance log path will be auto-generated in .search-docs/');
+      }
+    } else {
+      console.log('[SearchDocsServer] Performance logging disabled');
+    }
+
     // 起動時にインデックスを同期（変更されたファイルのみ）
     console.log('Syncing index on startup...');
     try {
@@ -260,8 +276,14 @@ export class SearchDocsServer {
     // 3. 既存文書をチェック
     const existingDoc = await this.storage.get(path);
     if (existingDoc && existingDoc.metadata.fileHash === hash && !force) {
-      // 変更なし
-      return { success: true, sectionsCreated: 0 };
+      // 文書ハッシュが同じ場合、インデックスが存在するか確認
+      const { sections: existingSections } = await this.dbEngine.getSectionsByPath(path);
+      if (existingSections.length > 0) {
+        // インデックスも存在するので、変更なし
+        return { success: true, sectionsCreated: 0 };
+      }
+      // インデックスが存在しない場合は、IndexRequestを作成する必要がある
+      console.log(`Document ${path} exists but has no index sections - creating IndexRequest`);
     }
 
     // 4. 文書をストレージに保存

@@ -54,6 +54,18 @@ export interface DBEngineOptions {
    * @default './.search-docs/index'
    */
   dbPath?: string;
+
+  /**
+   * Pythonワーカーの最大メモリ使用量（MB）
+   * 超過時に自動再起動
+   */
+  pythonMaxMemoryMB?: number;
+
+  /**
+   * メモリ監視の間隔（ミリ秒）
+   * @default 30000
+   */
+  memoryCheckIntervalMs?: number;
 }
 
 export interface DBEngineStatus {
@@ -117,13 +129,40 @@ export interface UpdateManyIndexRequestsParams {
   updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash'>>;
 }
 
+interface PerformanceLog {
+  type: 'performance';
+  timestamp: number;
+  elapsed: number;
+  threads: number;
+  rss_mb: number;
+  vms_mb: number;
+  method_calls: {
+    add_sections: number;
+    search: number;
+    get_stats: number;
+    find_index_requests: number;
+    create_index_request: number;
+    update_index_request: number;
+  };
+  requests: {
+    completed: number;
+    processing: number;
+    pending: number;
+  };
+}
+
 export class DBEngine extends EventEmitter {
   private worker: ChildProcess | null = null;
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Required<DBEngineOptions>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingModel' | 'dbPath'>;
+  private performanceCsvPath: string | null = null;
+  private performanceCsvStream: fs.WriteStream | null = null;
+  private memoryCheckInterval: NodeJS.Timeout | null = null;
+  private pythonMaxMemoryMB: number | null = null;
+  private memoryCheckIntervalMs: number = 30000;
 
   constructor(options: DBEngineOptions = {}) {
     super();
@@ -131,6 +170,8 @@ export class DBEngine extends EventEmitter {
       embeddingModel: options.embeddingModel || 'cl-nagoya/ruri-v3-30m',
       dbPath: options.dbPath || './.search-docs/index',
     };
+    this.pythonMaxMemoryMB = options.pythonMaxMemoryMB ?? null;
+    this.memoryCheckIntervalMs = options.memoryCheckIntervalMs ?? 30000;
   }
 
   /**
@@ -202,6 +243,7 @@ export class DBEngine extends EventEmitter {
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1', // Pythonの出力をバッファリングしない
+        TOKENIZERS_PARALLELISM: 'false', // HuggingFace tokenizers メモリリーク対策
       },
     });
 
@@ -239,11 +281,33 @@ export class DBEngine extends EventEmitter {
 
     // stderrの内容を蓄積
     let stderrBuffer = '';
+    let stderrLineBuffer = '';
 
     this.worker.stderr?.on('data', (data: Buffer) => {
       const output = data.toString('utf-8');
       stderrBuffer += output;
-      console.error('Python stderr:', output);
+      stderrLineBuffer += output;
+
+      // 行単位で処理
+      const lines = stderrLineBuffer.split('\n');
+      stderrLineBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        // パフォーマンスログのJSONをパース
+        try {
+          const parsed = JSON.parse(line) as PerformanceLog;
+          if (parsed.type === 'performance') {
+            this.handlePerformanceLog(parsed);
+            continue; // パフォーマンスログは標準エラー出力しない
+          }
+        } catch {
+          // JSONでない行は通常のstderr出力として扱う
+        }
+
+        console.error('Python stderr:', line);
+      }
     });
 
     // ワーカープロセスのエラーや異常終了を追跡
@@ -302,6 +366,9 @@ export class DBEngine extends EventEmitter {
       );
     }
     console.log(`[DBEngine.connect] Embedding model initialized: ${initResult.model_name} (${initResult.dimension}d)`);
+
+    // メモリ監視を開始
+    this.startMemoryMonitoring();
   }
 
   /**
@@ -391,15 +458,176 @@ export class DBEngine extends EventEmitter {
   }
 
   /**
+   * パフォーマンスログの記録を開始
+   */
+  startPerformanceLogging(outputPath?: string): void {
+    if (this.performanceCsvStream) {
+      console.warn('Performance logging already started');
+      return;
+    }
+
+    // 出力パスの決定
+    if (!outputPath) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const dbDir = path.dirname(this.options.dbPath);
+      outputPath = path.join(dbDir, `performance-${timestamp}.csv`);
+    }
+
+    this.performanceCsvPath = outputPath;
+
+    // ディレクトリ作成
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    // CSVファイルを作成してヘッダーを書き込む
+    this.performanceCsvStream = fs.createWriteStream(outputPath, { flags: 'w' });
+    const header = 'Time(s),Threads,RSS(MB),VMS(MB),AddSections,Search,GetStats,FindRequests,CreateRequest,UpdateRequest,ReqCompleted,ReqProcessing,ReqPending\n';
+    this.performanceCsvStream.write(header);
+
+    console.log(`[DBEngine] Performance logging started: ${outputPath}`);
+  }
+
+  /**
+   * パフォーマンスログの記録を停止
+   */
+  stopPerformanceLogging(): void {
+    if (this.performanceCsvStream) {
+      this.performanceCsvStream.end();
+      this.performanceCsvStream = null;
+      console.log(`[DBEngine] Performance logging stopped: ${this.performanceCsvPath}`);
+      this.performanceCsvPath = null;
+    }
+  }
+
+  /**
+   * パフォーマンスログを処理
+   */
+  private handlePerformanceLog(log: PerformanceLog): void {
+    if (!this.performanceCsvStream) {
+      return; // 記録が開始されていない
+    }
+
+    // CSVの行を構築
+    const row = [
+      log.elapsed.toFixed(2),
+      log.threads.toString(),
+      log.rss_mb.toFixed(2),
+      log.vms_mb.toFixed(2),
+      log.method_calls.add_sections.toString(),
+      log.method_calls.search.toString(),
+      log.method_calls.get_stats.toString(),
+      log.method_calls.find_index_requests.toString(),
+      log.method_calls.create_index_request.toString(),
+      log.method_calls.update_index_request.toString(),
+      log.requests.completed.toString(),
+      log.requests.processing.toString(),
+      log.requests.pending.toString(),
+    ].join(',') + '\n';
+
+    this.performanceCsvStream.write(row);
+  }
+
+  /**
    * データベースとの接続を切断
    */
   disconnect(): void {
+    // メモリ監視を停止
+    this.stopMemoryMonitoring();
+
+    // パフォーマンスログを停止
+    this.stopPerformanceLogging();
+
     if (this.worker) {
       this.worker.kill();
       this.worker = null;
       this.isReady = false;
       this.buffer = ''; // バッファをクリア
     }
+  }
+
+  /**
+   * メモリ監視を開始
+   */
+  private startMemoryMonitoring(): void {
+    // 既に監視中の場合は何もしない
+    if (this.memoryCheckInterval) {
+      return;
+    }
+
+    // pythonMaxMemoryMBが設定されていない場合は監視しない
+    if (!this.pythonMaxMemoryMB) {
+      console.log('[DBEngine] Memory monitoring disabled (pythonMaxMemoryMB not set)');
+      return;
+    }
+
+    console.log(`[DBEngine] Memory monitoring started: limit=${this.pythonMaxMemoryMB}MB, interval=${this.memoryCheckIntervalMs}ms`);
+
+    this.memoryCheckInterval = setInterval(async () => {
+      await this.checkMemoryUsage();
+    }, this.memoryCheckIntervalMs);
+  }
+
+  /**
+   * メモリ監視を停止
+   */
+  private stopMemoryMonitoring(): void {
+    if (this.memoryCheckInterval) {
+      clearInterval(this.memoryCheckInterval);
+      this.memoryCheckInterval = null;
+    }
+  }
+
+  /**
+   * メモリ使用量をチェックし、必要に応じて再起動
+   */
+  private async checkMemoryUsage(): Promise<void> {
+    if (!this.worker || !this.pythonMaxMemoryMB) {
+      return;
+    }
+
+    try {
+      const pid = this.worker.pid;
+      if (!pid) {
+        return;
+      }
+
+      // psコマンドでメモリ使用量を取得（RSS: 常駐メモリ、KB単位）
+      const { execSync } = await import('child_process');
+      const output = execSync(`ps -o rss= -p ${pid}`, { encoding: 'utf-8' });
+      const rssKB = parseInt(output.trim(), 10);
+      const rssMB = rssKB / 1024;
+
+      if (rssMB > this.pythonMaxMemoryMB) {
+        console.warn(`[DBEngine] Python worker memory exceeded limit: ${rssMB.toFixed(0)}MB > ${this.pythonMaxMemoryMB}MB`);
+        console.warn('[DBEngine] Restarting Python worker...');
+
+        // ワーカーを再起動
+        await this.restartWorker();
+      }
+    } catch (error) {
+      // メモリチェックのエラーは警告レベルでログ（監視処理は継続）
+      console.warn('[DBEngine] Failed to check memory usage:', error);
+    }
+  }
+
+  /**
+   * Pythonワーカーを再起動
+   */
+  private async restartWorker(): Promise<void> {
+    console.log('[DBEngine] Restarting Python worker due to memory limit...');
+
+    // 既存の接続を切断
+    this.disconnect();
+
+    // 少し待ってから再接続
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 再接続
+    await this.connect();
+
+    console.log('[DBEngine] Python worker restarted successfully');
   }
 
   /**
@@ -607,7 +835,7 @@ export class DBEngine extends EventEmitter {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error('Request timeout'));
-      }, 30000); // 30秒のタイムアウト（CI環境での初期化を考慮）
+      }, 300000); // 300秒のタイムアウト（プロセス分離モード考慮）
 
       this.worker!.stdin?.write(JSON.stringify(request) + '\n');
 

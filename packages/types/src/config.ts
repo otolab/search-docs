@@ -77,6 +77,10 @@ export interface WorkerConfig {
   interval: number;
   /** 最大並行処理数 */
   maxConcurrent: number;
+  /** Pythonワーカーの最大メモリ使用量（MB）。超過時に自動再起動 */
+  pythonMaxMemoryMB?: number;
+  /** メモリ監視の間隔（ミリ秒） */
+  memoryCheckIntervalMs?: number;
 }
 
 export interface WatcherConfig {
@@ -126,6 +130,8 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     enabled: true,
     interval: 5000,
     maxConcurrent: 3,
+    pythonMaxMemoryMB: 8192, // 8GB
+    memoryCheckIntervalMs: 30000, // 30秒
   },
   watcher: {
     enabled: true,

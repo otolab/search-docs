@@ -12,6 +12,7 @@ dependencies = [
     "protobuf>=4.0.0",
     "sentencepiece>=0.1.99",
     "pytest>=7.0.0",
+    "psutil>=5.9.0",
 ]
 
 [build-system]
