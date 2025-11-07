@@ -261,6 +261,47 @@ class SearchDocsWorker:
                     sys.stderr.write(f"Warning: Table {INDEX_REQUESTS_TABLE} already exists, skipping creation\n")
                     sys.stderr.flush()
 
+            # IndexRequestsテーブルのstatusカラムにBITMAPインデックスを作成
+            # statusは4値（pending, processing, completed, failed）のlow-cardinalityカラム
+            try:
+                index_requests_table = self.db.open_table(INDEX_REQUESTS_TABLE)
+
+                # 既存のインデックスを確認
+                existing_indices = index_requests_table.list_indices()
+                sys.stderr.write(f"[IndexCheck] Existing indices on {INDEX_REQUESTS_TABLE}: {existing_indices}\n")
+                sys.stderr.flush()
+
+                # statusカラムにインデックスが存在するかチェック
+                has_status_index = any(
+                    hasattr(idx, 'columns') and idx.columns == ['status']
+                    for idx in existing_indices
+                )
+
+                if not has_status_index:
+                    sys.stderr.write(f"[IndexCheck] Creating BITMAP index on status column...\n")
+                    sys.stderr.flush()
+                    try:
+                        index_requests_table.create_scalar_index("status", index_type="BITMAP")
+                        sys.stderr.write(f"[IndexCheck] Index creation initiated\n")
+                        sys.stderr.flush()
+
+                        # インデックス構築完了を待つ（タイムアウト: 60秒）
+                        sys.stderr.write(f"[IndexCheck] Waiting for index to build...\n")
+                        sys.stderr.flush()
+                        index_requests_table.wait_for_index(timeout=60)
+                        sys.stderr.write(f"[IndexCheck] BITMAP index on status created and ready\n")
+                        sys.stderr.flush()
+                    except Exception as idx_error:
+                        sys.stderr.write(f"[IndexCheck] Error creating index: {idx_error}\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[IndexCheck] Status index already exists\n")
+                    sys.stderr.flush()
+
+            except Exception as e:
+                sys.stderr.write(f"[IndexCheck] Warning: Error while managing index: {e}\n")
+                sys.stderr.flush()
+
         except Exception as e:
             sys.stderr.write(f"Error initializing tables: {str(e)}\n")
             sys.stderr.write(f"Traceback: {traceback.format_exc()}\n")
@@ -684,9 +725,8 @@ class SearchDocsWorker:
         # 全件数
         total = table.count_rows()
 
-        # Dirty件数（カウントクエリで効率化、limit付き）
-        dirty_results = table.search().where("is_dirty = true").limit(100000).to_pandas()
-        dirty_count = len(dirty_results)
+        # Dirty件数（count_rows()で効率的にカウント）
+        dirty_count = table.count_rows(filter="is_dirty = true")
 
         # ユニークな文書数を効率的に取得
         # document_pathカラムのみをSELECTして取得（メモリ効率最大化）
@@ -834,7 +874,7 @@ class SearchDocsWorker:
             else:
                 where_clauses.append(f"status = '{status}'")
 
-        # count_rows()を使用（WHERE句でフィルタリング可能）
+        # count_rows()を使用（インデックスが利用される）
         if where_clauses:
             where_str = " AND ".join(where_clauses)
             count = table.count_rows(filter=where_str)
@@ -921,8 +961,7 @@ class SearchDocsWorker:
 
         # 更新前の件数を取得
         where_str = " AND ".join(where_clauses)
-        count_df = table.search().where(where_str).to_pandas()
-        count = len(count_df)
+        count = table.count_rows(filter=where_str)
 
         # 更新実行
         table.update(

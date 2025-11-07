@@ -1,5 +1,33 @@
 # @search-docs/db-engine
 
+## 1.0.19
+
+### Patch Changes
+
+- perf(db-engine): count_rows()と BITMAP インデックスによる劇的な高速化
+
+  件数取得を`to_pandas()` + `len()`から`count_rows(filter=...)`に変更し、status カラムに BITMAP インデックスを作成。
+
+  **主な変更**:
+
+  - `count_index_requests()`: `count_rows(filter=...)`を使用
+  - `get_stats()`の dirty_count: `count_rows(filter="is_dirty = true")`を使用
+  - `update_many_index_requests()`の count: `count_rows(filter=...)`を使用
+  - IndexRequests テーブルの status カラムに BITMAP インデックスを作成
+  - インデックス状態の確認ロジックを追加（`list_indices()`使用）
+
+  **パフォーマンス改善**:
+
+  - 修正前: 30 秒タイムアウト（7478 件の pending キュー）
+  - 修正後: 0.741 秒（7452 件の pending キュー）
+  - **約 40 倍以上の高速化**
+
+  **技術的詳細**:
+
+  - status は 4 値（pending, processing, completed, failed）の low-cardinality カラムのため、BITMAP インデックスが最適
+  - `count_rows()`はインデックスを自動的に利用
+  - データ本体を取得せずに件数のみを効率的にカウント
+
 ## 1.0.18
 
 ### Patch Changes
