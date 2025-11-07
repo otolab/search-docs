@@ -1,5 +1,12 @@
 # @search-docs/client
 
+## 1.0.13
+
+### Patch Changes
+
+- Updated dependencies [691fccb]
+  - @search-docs/types@1.1.0
+
 ## 1.0.12
 
 ### Patch Changes
