@@ -164,6 +164,11 @@ export class DBEngine extends EventEmitter {
   private pythonMaxMemoryMB: number | null = null;
   private memoryCheckIntervalMs: number = 30000;
 
+  // openPromiseパターン: 接続完了を外部から待機可能にする
+  private connectedPromise: Promise<void>;
+  private resolveConnected!: () => void;
+  private rejectConnected!: (error: Error) => void;
+
   constructor(options: DBEngineOptions = {}) {
     super();
     this.options = {
@@ -172,6 +177,12 @@ export class DBEngine extends EventEmitter {
     };
     this.pythonMaxMemoryMB = options.pythonMaxMemoryMB ?? null;
     this.memoryCheckIntervalMs = options.memoryCheckIntervalMs ?? 30000;
+
+    // 接続完了を待機できるPromiseを作成
+    this.connectedPromise = new Promise((resolve, reject) => {
+      this.resolveConnected = resolve;
+      this.rejectConnected = reject;
+    });
   }
 
   /**
@@ -183,6 +194,7 @@ export class DBEngine extends EventEmitter {
     if (this.worker && this.isReady) {
       // 既に接続済みかつ準備完了の場合は何もしない（冪等性）
       console.log('DBEngine: Already connected and ready, skipping reconnection');
+      // 既に解決済みのPromiseが返される
       return;
     }
 
@@ -190,6 +202,7 @@ export class DBEngine extends EventEmitter {
       // ワーカーは存在するが準備未完了の場合は待機
       console.log('DBEngine: Worker exists but not ready, waiting for ready state...');
       await this.waitForReady(null, () => false);
+      // waitForReady内でresolveConnected()が呼ばれる
       return;
     }
 
@@ -395,6 +408,8 @@ export class DBEngine extends EventEmitter {
         if (status.status === 'ok') {
           this.isReady = true;
           console.log('DB is ready:', status);
+          // 接続完了を通知
+          this.resolveConnected();
           return;
         }
       } catch (_e) {
@@ -406,7 +421,18 @@ export class DBEngine extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, retryInterval));
     }
 
-    throw new Error('Timeout waiting for DB to be ready');
+    const error = new Error('Timeout waiting for DB to be ready');
+    this.rejectConnected(error);
+    throw error;
+  }
+
+  /**
+   * 接続完了を待機
+   * DB接続が完了するまで待機するPromiseを返す
+   * 何度呼んでも同じPromiseが返される（冪等性）
+   */
+  waitForConnection(): Promise<void> {
+    return this.connectedPromise;
   }
 
   /**

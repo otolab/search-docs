@@ -1,5 +1,18 @@
 # @search-docs/db-engine
 
+## 1.0.17
+
+### Patch Changes
+
+- fix(server): DB 接続の非ブロック化とワーカー起動タイミングの修正
+
+  openPromise パターンを実装し、DB 接続完了を待機可能にすることで、サーバー起動時の DB 接続エラーを解消しました。
+
+  - DB 接続を非ブロッキングで開始し、HTTP サーバーは即座に起動
+  - DB 依存のワーカー（IndexWorker、StartupSyncWorker）は DB 接続完了後に起動
+  - `waitForConnection()` メソッドで DB 接続完了を待機可能
+  - 冪等な接続処理により複数回の`connect()`呼び出しに対応
+
 ## 1.0.16
 
 ### Patch Changes

@@ -90,37 +90,47 @@ export class SearchDocsServer {
    */
   async start(): Promise<void> {
     this.startTime = Date.now();
-    await this.dbEngine.connect();
 
-    // パフォーマンスログを開始（環境変数で制御）
-    console.log('[SearchDocsServer] ENABLE_PERFORMANCE_LOG:', process.env.ENABLE_PERFORMANCE_LOG);
-    console.log('[SearchDocsServer] PERFORMANCE_LOG_PATH:', process.env.PERFORMANCE_LOG_PATH);
-    if (process.env.ENABLE_PERFORMANCE_LOG === '1') {
-      const logPath = process.env.PERFORMANCE_LOG_PATH;
-      this.dbEngine.startPerformanceLogging(logPath);
-      console.log('[SearchDocsServer] Performance logging enabled');
-      if (logPath) {
-        console.log('[SearchDocsServer] Performance log path (specified):', logPath);
+    // DB接続をバックグラウンドで開始（サーバ起動をブロックしない）
+    this.dbEngine.connect().catch((error) => {
+      console.error('[SearchDocsServer] DB connection failed:', error);
+    });
+
+    // DB接続完了後にDB依存のワーカーを起動
+    this.dbEngine.waitForConnection().then(() => {
+
+      // パフォーマンスログを開始（環境変数で制御）
+      console.log('[SearchDocsServer] ENABLE_PERFORMANCE_LOG:', process.env.ENABLE_PERFORMANCE_LOG);
+      console.log('[SearchDocsServer] PERFORMANCE_LOG_PATH:', process.env.PERFORMANCE_LOG_PATH);
+      if (process.env.ENABLE_PERFORMANCE_LOG === '1') {
+        const logPath = process.env.PERFORMANCE_LOG_PATH;
+        this.dbEngine.startPerformanceLogging(logPath);
+        console.log('[SearchDocsServer] Performance logging enabled');
+        if (logPath) {
+          console.log('[SearchDocsServer] Performance log path (specified):', logPath);
+        } else {
+          console.log('[SearchDocsServer] Performance log path will be auto-generated in .search-docs/');
+        }
       } else {
-        console.log('[SearchDocsServer] Performance log path will be auto-generated in .search-docs/');
+        console.log('[SearchDocsServer] Performance logging disabled');
       }
-    } else {
-      console.log('[SearchDocsServer] Performance logging disabled');
-    }
 
-    // 起動時にインデックスを同期（バックグラウンドで非同期実行）
-    if (this.startupSyncWorker) {
-      this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
-    }
+      // 起動時にインデックスを同期（バックグラウンドで非同期実行）
+      if (this.startupSyncWorker) {
+        this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
+      }
 
-    // FileWatcher開始
+      // IndexWorker開始
+      if (this.indexWorker) {
+        this.indexWorker.start();
+      }
+    }).catch((error) => {
+      console.error('[SearchDocsServer] Failed to start DB-dependent workers:', error);
+    });
+
+    // FileWatcher開始（DB非依存）
     if (this.watcher) {
       await this.watcher.start();
-    }
-
-    // IndexWorker開始
-    if (this.indexWorker) {
-      this.indexWorker.start();
     }
   }
 
