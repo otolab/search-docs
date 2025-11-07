@@ -103,6 +103,8 @@ export interface GetStatusResponse {
     version: string;
     uptime: number; // ms
     pid: number;
+    /** 初期インデックス同期中かどうか */
+    syncing: boolean;
     requests: {
       total: number;
       search: number;

@@ -20,6 +20,7 @@ import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
 import { FileDiscovery } from '../discovery/file-discovery.js';
 import { FileWatcher, type FileChangeEvent } from '../discovery/file-watcher.js';
 import { IndexWorker } from '../worker/index.js';
+import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
 
 /**
  * SearchDocsサーバのメインクラス
@@ -29,6 +30,7 @@ export class SearchDocsServer {
   private discovery: FileDiscovery;
   private watcher: FileWatcher | null = null;
   private indexWorker: IndexWorker | null = null;
+  private startupSyncWorker: StartupSyncWorker | null = null;
   private startTime: number = 0;
   private requestStats = {
     total: 0,
@@ -78,6 +80,9 @@ export class SearchDocsServer {
         maxConcurrent: config.worker.maxConcurrent,
       });
     }
+
+    // StartupSyncWorker初期化（常に有効）
+    this.startupSyncWorker = new StartupSyncWorker();
   }
 
   /**
@@ -103,13 +108,9 @@ export class SearchDocsServer {
       console.log('[SearchDocsServer] Performance logging disabled');
     }
 
-    // 起動時にインデックスを同期（変更されたファイルのみ）
-    console.log('Syncing index on startup...');
-    try {
-      const result = await this.rebuildIndex({ force: false });
-      console.log(`Index sync completed: ${result.documentsProcessed} documents processed`);
-    } catch (error) {
-      console.error('Failed to sync index on startup:', error);
+    // 起動時にインデックスを同期（バックグラウンドで非同期実行）
+    if (this.startupSyncWorker) {
+      this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
     }
 
     // FileWatcher開始
@@ -373,6 +374,7 @@ export class SearchDocsServer {
         version: '0.1.0',
         uptime: Date.now() - this.startTime,
         pid: process.pid,
+        syncing: this.startupSyncWorker?.isSyncInProgress() ?? false,
         requests: {
           total: this.requestStats.total,
           search: this.requestStats.search,
