@@ -29,6 +29,14 @@ export function registerSearchTool(context: ToolRegistrationContext): void {
           .boolean()
           .optional()
           .describe('最新の文書内容のみを検索対象とする。falseの場合、文書が更新されていても古いインデックスも含めて検索します（デフォルト: false）'),
+        includePaths: z
+          .array(z.string())
+          .optional()
+          .describe('包含するドキュメントパス（前方一致）。例: ["docs/", "README.md"]'),
+        excludePaths: z
+          .array(z.string())
+          .optional()
+          .describe('除外するドキュメントパス（前方一致）。例: ["docs/internal/", "temp/"]'),
         previewLines: z.number().optional().describe('プレビュー行数（デフォルト: 5）'),
       },
     },
@@ -37,6 +45,8 @@ export function registerSearchTool(context: ToolRegistrationContext): void {
       depth?: number;
       limit?: number;
       includeCleanOnly?: boolean;
+      includePaths?: string[];
+      excludePaths?: string[];
       previewLines?: number;
     }) => {
       // 状態チェック
@@ -44,7 +54,7 @@ export function registerSearchTool(context: ToolRegistrationContext): void {
         throw new Error(getStateErrorMessage(systemState.state, '文書の検索'));
       }
 
-      const { query, depth, limit, includeCleanOnly, previewLines = 5 } = args;
+      const { query, depth, limit, includeCleanOnly, includePaths, excludePaths, previewLines = 5 } = args;
       const client = systemState.client!;
 
       try {
@@ -54,6 +64,8 @@ export function registerSearchTool(context: ToolRegistrationContext): void {
             depth,
             limit,
             includeCleanOnly,
+            includePaths,
+            excludePaths,
           },
         });
 

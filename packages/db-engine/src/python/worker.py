@@ -15,7 +15,7 @@ import time
 import threading
 import copy
 from typing import Any, Dict, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import lancedb
 import pyarrow as pa
 import pandas as pd
@@ -261,8 +261,7 @@ class SearchDocsWorker:
                     sys.stderr.write(f"Warning: Table {INDEX_REQUESTS_TABLE} already exists, skipping creation\n")
                     sys.stderr.flush()
 
-            # IndexRequestsテーブルのstatusカラムにBITMAPインデックスを作成
-            # statusは4値（pending, processing, completed, failed）のlow-cardinalityカラム
+            # IndexRequestsテーブルのインデックスを作成
             try:
                 index_requests_table = self.db.open_table(INDEX_REQUESTS_TABLE)
 
@@ -271,7 +270,7 @@ class SearchDocsWorker:
                 sys.stderr.write(f"[IndexCheck] Existing indices on {INDEX_REQUESTS_TABLE}: {existing_indices}\n")
                 sys.stderr.flush()
 
-                # statusカラムにインデックスが存在するかチェック
+                # Phase 1推奨インデックス: status (BITMAP)
                 has_status_index = any(
                     hasattr(idx, 'columns') and idx.columns == ['status']
                     for idx in existing_indices
@@ -282,24 +281,115 @@ class SearchDocsWorker:
                     sys.stderr.flush()
                     try:
                         index_requests_table.create_scalar_index("status", index_type="BITMAP")
-                        sys.stderr.write(f"[IndexCheck] Index creation initiated\n")
-                        sys.stderr.flush()
-
-                        # インデックス構築完了を待つ（タイムアウト: 60秒）
-                        sys.stderr.write(f"[IndexCheck] Waiting for index to build...\n")
-                        sys.stderr.flush()
-                        index_requests_table.wait_for_index(timeout=60)
+                        index_requests_table.wait_for_index(["status_idx"], timeout=timedelta(seconds=60))
                         sys.stderr.write(f"[IndexCheck] BITMAP index on status created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
-                        sys.stderr.write(f"[IndexCheck] Error creating index: {idx_error}\n")
+                        sys.stderr.write(f"[IndexCheck] Error creating status index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
                     sys.stderr.write(f"[IndexCheck] Status index already exists\n")
                     sys.stderr.flush()
 
+                # Phase 1推奨インデックス: document_path (BTREE)
+                has_document_path_index = any(
+                    hasattr(idx, 'columns') and idx.columns == ['document_path']
+                    for idx in existing_indices
+                )
+
+                if not has_document_path_index:
+                    sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_path column...\n")
+                    sys.stderr.flush()
+                    try:
+                        index_requests_table.create_scalar_index("document_path", index_type="BTREE")
+                        index_requests_table.wait_for_index(["document_path_idx"], timeout=timedelta(seconds=60))
+                        sys.stderr.write(f"[IndexCheck] BTREE index on document_path created and ready\n")
+                        sys.stderr.flush()
+                    except Exception as idx_error:
+                        sys.stderr.write(f"[IndexCheck] Error creating document_path index: {idx_error}\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[IndexCheck] document_path index already exists\n")
+                    sys.stderr.flush()
+
+                # Phase 1推奨インデックス: document_hash (BTREE)
+                has_document_hash_index = any(
+                    hasattr(idx, 'columns') and idx.columns == ['document_hash']
+                    for idx in existing_indices
+                )
+
+                if not has_document_hash_index:
+                    sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_hash column...\n")
+                    sys.stderr.flush()
+                    try:
+                        index_requests_table.create_scalar_index("document_hash", index_type="BTREE")
+                        index_requests_table.wait_for_index(["document_hash_idx"], timeout=timedelta(seconds=60))
+                        sys.stderr.write(f"[IndexCheck] BTREE index on document_hash created and ready\n")
+                        sys.stderr.flush()
+                    except Exception as idx_error:
+                        sys.stderr.write(f"[IndexCheck] Error creating document_hash index: {idx_error}\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[IndexCheck] document_hash index already exists\n")
+                    sys.stderr.flush()
+
             except Exception as e:
-                sys.stderr.write(f"[IndexCheck] Warning: Error while managing index: {e}\n")
+                sys.stderr.write(f"[IndexCheck] Warning: Error while managing index_requests indices: {e}\n")
+                sys.stderr.flush()
+
+            # Sectionsテーブルのインデックスを作成
+            try:
+                sections_table = self.db.open_table(SECTIONS_TABLE)
+
+                # 既存のインデックスを確認
+                existing_indices = sections_table.list_indices()
+                sys.stderr.write(f"[IndexCheck] Existing indices on {SECTIONS_TABLE}: {existing_indices}\n")
+                sys.stderr.flush()
+
+                # Phase 1推奨インデックス: document_path (BTREE)
+                has_document_path_index = any(
+                    hasattr(idx, 'columns') and idx.columns == ['document_path']
+                    for idx in existing_indices
+                )
+
+                if not has_document_path_index:
+                    sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_path column...\n")
+                    sys.stderr.flush()
+                    try:
+                        sections_table.create_scalar_index("document_path", index_type="BTREE")
+                        sections_table.wait_for_index(["document_path_idx"], timeout=timedelta(seconds=60))
+                        sys.stderr.write(f"[IndexCheck] BTREE index on document_path created and ready\n")
+                        sys.stderr.flush()
+                    except Exception as idx_error:
+                        sys.stderr.write(f"[IndexCheck] Error creating document_path index: {idx_error}\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[IndexCheck] document_path index already exists\n")
+                    sys.stderr.flush()
+
+                # Phase 1推奨インデックス: is_dirty (BITMAP)
+                has_is_dirty_index = any(
+                    hasattr(idx, 'columns') and idx.columns == ['is_dirty']
+                    for idx in existing_indices
+                )
+
+                if not has_is_dirty_index:
+                    sys.stderr.write(f"[IndexCheck] Creating BITMAP index on is_dirty column...\n")
+                    sys.stderr.flush()
+                    try:
+                        sections_table.create_scalar_index("is_dirty", index_type="BITMAP")
+                        sections_table.wait_for_index(["is_dirty_idx"], timeout=timedelta(seconds=60))
+                        sys.stderr.write(f"[IndexCheck] BITMAP index on is_dirty created and ready\n")
+                        sys.stderr.flush()
+                    except Exception as idx_error:
+                        sys.stderr.write(f"[IndexCheck] Error creating is_dirty index: {idx_error}\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[IndexCheck] is_dirty index already exists\n")
+                    sys.stderr.flush()
+
+            except Exception as e:
+                sys.stderr.write(f"[IndexCheck] Warning: Error while managing sections indices: {e}\n")
                 sys.stderr.flush()
 
         except Exception as e:
@@ -553,6 +643,7 @@ class SearchDocsWorker:
         limit = params.get("limit", 10)
         depth = params.get("depth")
         include_clean_only = params.get("includeCleanOnly", False)
+        include_paths = params.get("includePaths", [])
         exclude_paths = params.get("excludePaths", [])
 
         if not query:
@@ -577,11 +668,17 @@ class SearchDocsWorker:
         if include_clean_only:
             filters.append("is_dirty = false")
 
+        if include_paths:
+            # パス包含フィルタ（前方一致、OR形式）
+            # 例: document_path LIKE 'docs/%' OR document_path LIKE 'README.md%'
+            path_conditions = [f"document_path LIKE '{path}%'" for path in include_paths]
+            filters.append(f"({' OR '.join(path_conditions)})")
+
         if exclude_paths:
-            # パス除外フィルタ（NOT IN形式）
-            # LanceDBのSQL構文でNOT INを使用
-            escaped_paths = [f"'{path}'" for path in exclude_paths]
-            filters.append(f"document_path NOT IN ({', '.join(escaped_paths)})")
+            # パス除外フィルタ（前方一致、AND形式）
+            # 例: document_path NOT LIKE 'docs/internal/%' AND document_path NOT LIKE 'temp/%'
+            for path in exclude_paths:
+                filters.append(f"document_path NOT LIKE '{path}%'")
 
         if filters:
             search_query = search_query.where(" AND ".join(filters))

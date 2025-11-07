@@ -27,7 +27,9 @@ export interface SearchOptions {
   sortBy?: 'score' | 'depth' | 'path';
   /** インデックス状態フィルタ */
   indexStatus?: 'all' | 'latest_only' | 'completed_only';
-  /** 除外するドキュメントパス（内部使用） */
+  /** 包含するドキュメントパス（前方一致）例: ['docs/', 'README.md'] */
+  includePaths?: string[];
+  /** 除外するドキュメントパス（前方一致）例: ['docs/internal/', 'temp/'] */
   excludePaths?: string[];
   /** プレビュー行数（デフォルト: 5） */
   previewLines?: number;

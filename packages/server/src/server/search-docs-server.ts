@@ -207,19 +207,25 @@ export class SearchDocsServer {
     const startTime = Date.now();
 
     // indexStatusによるフィルタ処理
-    let excludePaths: string[] | undefined;
+    let autoExcludePaths: string[] | undefined;
     if (
       request.options?.indexStatus === 'latest_only' ||
       request.options?.indexStatus === 'completed_only'
     ) {
       // pending/processingのリクエストがあるdocument_pathを除外
-      excludePaths = await this.dbEngine.getPathsWithStatus(['pending', 'processing']);
+      autoExcludePaths = await this.dbEngine.getPathsWithStatus(['pending', 'processing']);
     }
+
+    // ユーザー指定のexcludePathsと自動除外パスをマージ
+    const mergedExcludePaths = [
+      ...(request.options?.excludePaths || []),
+      ...(autoExcludePaths || []),
+    ];
 
     const response = await this.dbEngine.search({
       query: request.query,
       ...request.options,
-      excludePaths,
+      excludePaths: mergedExcludePaths.length > 0 ? mergedExcludePaths : undefined,
     });
 
     // 各結果にindex状態情報を付与
