@@ -1,5 +1,22 @@
 # @search-docs/server
 
+## 1.1.4
+
+### Patch Changes
+
+- 1402dc7: メモリリーク解決とコードクリーンアップ
+
+  - TOKENIZERS_PARALLELISM=false 自動設定でメモリリーク 98.5%削減
+  - pythonMaxMemoryMB デフォルト 8GB に変更
+  - メモリ監視・自動再起動機能の追加
+  - 実験用コードの削除とリファクタリング
+  - スレッドダンプログを DEBUG モード時のみ有効化
+
+- Updated dependencies [1402dc7]
+  - @search-docs/db-engine@1.0.13
+  - @search-docs/types@1.0.9
+  - @search-docs/storage@1.0.7
+
 ## 1.1.3
 
 ### Patch Changes

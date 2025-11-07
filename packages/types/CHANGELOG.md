@@ -1,5 +1,17 @@
 # @search-docs/types
 
+## 1.0.9
+
+### Patch Changes
+
+- 1402dc7: メモリリーク解決とコードクリーンアップ
+
+  - TOKENIZERS_PARALLELISM=false 自動設定でメモリリーク 98.5%削減
+  - pythonMaxMemoryMB デフォルト 8GB に変更
+  - メモリ監視・自動再起動機能の追加
+  - 実験用コードの削除とリファクタリング
+  - スレッドダンプログを DEBUG モード時のみ有効化
+
 ## 1.0.8
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @search-docs/mcp-server
 
+## 1.0.20
+
+### Patch Changes
+
+- Updated dependencies [1402dc7]
+  - @search-docs/types@1.0.9
+  - @search-docs/cli@1.0.15
+  - @search-docs/client@1.0.9
+
 ## 1.0.19
 
 ### Patch Changes
