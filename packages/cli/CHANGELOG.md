@@ -1,5 +1,14 @@
 # @search-docs/cli
 
+## 1.0.16
+
+### Patch Changes
+
+- Updated dependencies
+  - @search-docs/server@1.1.5
+  - @search-docs/types@1.0.10
+  - @search-docs/client@1.0.10
+
 ## 1.0.15
 
 ### Patch Changes

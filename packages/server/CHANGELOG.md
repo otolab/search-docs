@@ -1,5 +1,18 @@
 # @search-docs/server
 
+## 1.1.5
+
+### Patch Changes
+
+- サーバ起動の非同期化で MCP タイムアウトを解消
+
+  StartupSyncWorker を導入し、初期インデックス同期をバックグラウンド化。大規模プロジェクトでの MCP サーバ起動時のコネクションタイムアウトを解決しました。
+
+- Updated dependencies
+  - @search-docs/types@1.0.10
+  - @search-docs/db-engine@1.0.14
+  - @search-docs/storage@1.0.8
+
 ## 1.1.4
 
 ### Patch Changes
