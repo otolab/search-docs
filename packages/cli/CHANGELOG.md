@@ -1,5 +1,36 @@
 # @search-docs/cli
 
+## 1.0.18
+
+### Patch Changes
+
+- **PID ファイル競合状態の修正とビルドプロセス改善**
+
+  **修正内容**:
+
+  1. **server: PID ファイル競合状態の修正**
+
+     - デーモン起動時に自分自身の PID を除外するロジックを追加
+     - `existingPid.pid !== process.pid` チェックを追加
+     - サーバプロセスが自分自身を「既に起動中」と誤認する問題を解決
+
+  2. **すべてのパッケージ: prepublishOnly スクリプト追加**
+     - npm publish 時に自動的にビルドを実行
+     - 古いビルド成果物が誤って公開される問題を防止
+     - 一貫性のあるリリースプロセスを確保
+
+  **修正された問題**:
+
+  - デーモンモードでのサーバ起動タイムアウト
+  - npm publish 時の古いコードの公開
+
+  **Breaking Changes**: なし
+
+- Updated dependencies
+  - @search-docs/server@1.1.7
+  - @search-docs/client@1.0.12
+  - @search-docs/types@1.0.12
+
 ## 1.0.17
 
 ### Patch Changes
