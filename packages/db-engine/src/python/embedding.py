@@ -37,37 +37,34 @@ class RuriEmbedding(EmbeddingModel):
         }
     }
 
-    def __init__(self, model_name: str = None):
+    def __init__(self, model_name: str = 'cl-nagoya/ruri-v3-30m', dimension: int = None):
         """
-        初期化（モデルロードは常に遅延実行）
+        Initialize Ruri embedding model
 
         Args:
-            model_name: 使用するモデル名。Noneの場合はデフォルト
+            model_name: モデル名（デフォルト: 'cl-nagoya/ruri-v3-30m'）
+            dimension: 出力次元数（Noneの場合はモデルのデフォルト次元）
         """
-        # モデル名を保存（後でinitialize()で使用）
-        self.model_name = model_name or 'cl-nagoya/ruri-v3-30m'
-
-        # モデル設定を取得
-        if self.model_name not in self.MODEL_CONFIGS:
-            sys.stderr.write(f"Warning: Unknown model {self.model_name}, using ruri-v3-30m\n")
-            self.model_name = 'cl-nagoya/ruri-v3-30m'
-
-        config = self.MODEL_CONFIGS[self.model_name]
-        self._dimension = config['dimension']
-
-        # モデルは未ロード状態で開始
-        self.model = None
+        self.model_name = model_name
         self.available = False
+        self.model = None
 
-    def initialize(self) -> bool:
-        """
-        モデルを実際にロード（明示的な初期化）
+        if model_name not in self.MODEL_CONFIGS:
+            raise ValueError(
+                f"Unsupported model: {model_name}. "
+                f"Supported models: {list(self.MODEL_CONFIGS.keys())}"
+            )
 
-        Returns:
-            初期化成功時True、失敗時False
-        """
+        config = self.MODEL_CONFIGS[model_name]
+        self._dimension = dimension if dimension is not None else config['dimension']
+        self.model_dimension = config['dimension']
+
+        # 遅延ロード: load() を呼ぶまでモデルをロードしない
+        sys.stderr.write(f"RuriEmbedding initialized: {model_name} ({config['description']})\n")
+
+    def load(self) -> bool:
+        """モデルを実際にロード"""
         if self.available:
-            # 既に初期化済み
             return True
 
         try:
@@ -87,85 +84,88 @@ class RuriEmbedding(EmbeddingModel):
             self.model = None
             return False
 
+    def initialize(self) -> bool:
+        """モデルを初期化（loadのエイリアス）"""
+        return self.load()
+
     @property
     def dimension(self) -> int:
         """モデルの出力次元数"""
         return self._dimension
-
-    @property
-    def is_loaded(self) -> bool:
-        """モデルがロード済みかどうか"""
-        return self.available
 
     def encode(self, text: str, dimension: int = None) -> List[float]:
         """
         テキストをベクトル化
 
         Args:
-            text: ベクトル化するテキスト
-            dimension: 出力次元数（Noneの場合はモデルのデフォルト）
+            text: 変換対象のテキスト
+            dimension: 出力次元数（Noneの場合はコンストラクタで指定した次元）
 
         Returns:
-            ベクトル表現
+            ベクトル表現（floatのリスト）
         """
-        if dimension is None:
-            dimension = self._dimension
-
         if not self.available:
-            # モデルが利用できない場合はダミーベクトルを返す
-            return [0.0] * dimension
+            raise RuntimeError("Model not loaded. Call load() first.")
 
-        embeddings = self.model.encode(text)
+        target_dim = dimension if dimension is not None else self._dimension
 
-        # 次元調整
-        embeddings = self._adjust_dimension(embeddings, dimension)
-        return embeddings.tolist()
+        try:
+            # SentenceTransformerでエンコード
+            embeddings = self.model.encode(text, convert_to_numpy=True)
 
-    def _adjust_dimension(self, embeddings: np.ndarray, target_dim: int) -> np.ndarray:
+            # 次元調整
+            embeddings = self._adjust_dimensions(embeddings, target_dim)
+
+            return embeddings.tolist()
+
+        except Exception as e:
+            sys.stderr.write(f"Error encoding text: {e}\n")
+            raise
+
+    def _adjust_dimensions(self, vector: np.ndarray, target_dim: int) -> np.ndarray:
         """
         ベクトルの次元を調整
 
         Args:
-            embeddings: 元のベクトル
+            vector: 入力ベクトル
             target_dim: 目標次元数
 
         Returns:
-            調整後のベクトル
+            調整されたベクトル
         """
-        current_dim = len(embeddings)
+        current_dim = len(vector)
 
         if current_dim == target_dim:
-            return embeddings
+            return vector
 
-        elif current_dim > target_dim:
-            # MRLを利用した次元削減
-            embeddings = embeddings[:target_dim]
-            # L2正規化
-            norm = np.linalg.norm(embeddings)
+        if current_dim > target_dim:
+            # 高次元 → 低次元: 切り詰めてL2正規化
+            vector = vector[:target_dim]
+            norm = np.linalg.norm(vector)
             if norm > 0:
-                embeddings = embeddings / norm
-
+                vector = vector / norm
+            return vector
         else:
-            # 次元が少ない場合はゼロパディング
-            padding = [0.0] * (target_dim - current_dim)
-            embeddings = np.concatenate([embeddings, padding])
-
-        return embeddings
-
-    @classmethod
-    def get_available_models(cls) -> dict:
-        """利用可能なモデルのリストを返す"""
-        return cls.MODEL_CONFIGS.copy()
+            # 低次元 → 高次元: ゼロパディング
+            padded = np.zeros(target_dim, dtype=vector.dtype)
+            padded[:current_dim] = vector
+            return padded
 
 
-def create_embedding_model(model_name: str = None) -> EmbeddingModel:
+def create_embedding_model(model_name: str) -> EmbeddingModel:
     """
-    埋め込みモデルのファクトリ関数
+    埋め込みモデルのファクトリー関数
 
     Args:
-        model_name: 使用するモデル名
+        model_name: モデル名
 
     Returns:
-        埋め込みモデルのインスタンス
+        EmbeddingModelインスタンス
     """
-    return RuriEmbedding(model_name)
+    # Ruriモデルの場合
+    if model_name.startswith('cl-nagoya/ruri'):
+        model = RuriEmbedding(model_name=model_name)
+        model.load()
+        return model
+    else:
+        raise ValueError(f"Unsupported model: {model_name}")
