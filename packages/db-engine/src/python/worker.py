@@ -448,36 +448,17 @@ class SearchDocsWorker:
         self.log_thread_info(f"BEFORE add_sections (call #{self._add_count + 1})")
 
         # モデル初期化
-        if not self.embedding_model.is_loaded:
+        if not self.embedding_model.available:
             self.embedding_model.initialize()
-
-        # 実験モード取得
-        test_mode = os.environ.get('THREAD_TEST_MODE', '')
 
         # 各セクションを処理
         for section in sections:
             validate_section(section)
 
             # ベクトル化
-            if test_mode == 'skip_encode':
-                # skip_encodeモード: ダミーのvectorを設定
-                if "vector" not in section or not section["vector"]:
-                    section["vector"] = [0.0] * self.vector_dimension
-                    sys.stderr.write("[EXPERIMENT] skip_encode: using zero vector\n")
-                    sys.stderr.flush()
-            elif test_mode == 'no_store_vector':
-                # 【実験】vectorを生成するが格納しない（即座に破棄）
-                if "vector" not in section or not section["vector"]:
-                    text = f"{section['heading']}\n{section['content']}"
-                    _ = self.embedding_model.encode(text, self.vector_dimension)  # 結果を破棄
-                    section["vector"] = [0.0] * self.vector_dimension  # table.addのためダミーを設定
-                    sys.stderr.write("[EXPERIMENT] no_store_vector: vector generated but not stored\n")
-                    sys.stderr.flush()
-            else:
-                # 通常モード
-                if "vector" not in section or not section["vector"]:
-                    text = f"{section['heading']}\n{section['content']}"
-                    section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
+            if "vector" not in section or not section["vector"]:
+                text = f"{section['heading']}\n{section['content']}"
+                section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
 
             # データ正規化
             self._normalize_section_data(section)
@@ -485,15 +466,9 @@ class SearchDocsWorker:
         # スレッド情報（table.add前）
         self.log_thread_info("BEFORE table.add()")
 
-        # table.add実行（skip_addモードではスキップ）
-        if test_mode != 'skip_add':
-            table = self._get_sections_table()
-            table.add(sections)
-            sys.stderr.write(f"[EXPERIMENT] table.add completed for {len(sections)} sections\n")
-            sys.stderr.flush()
-        else:
-            sys.stderr.write(f"[EXPERIMENT] skip_add: table.add skipped for {len(sections)} sections\n")
-            sys.stderr.flush()
+        # table.add実行
+        table = self._get_sections_table()
+        table.add(sections)
 
         # スレッド情報（table.add後）
         self.log_thread_info("AFTER table.add()")
@@ -536,7 +511,7 @@ class SearchDocsWorker:
             raise ValueError("query parameter is required")
 
         # モデル初期化
-        if not self.embedding_model.is_loaded:
+        if not self.embedding_model.available:
             self.embedding_model.initialize()
 
         # クエリをベクトル化
