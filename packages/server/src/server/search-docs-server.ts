@@ -376,8 +376,8 @@ export class SearchDocsServer {
     // IndexWorkerの状態を取得
     const workerStatus = this.indexWorker?.getStatus() ?? { running: false, processing: false };
 
-    // pendingリクエストの数を取得
-    const pendingRequests = await this.dbEngine.findIndexRequests({ status: 'pending' });
+    // pendingリクエストの数を取得（count専用メソッドで高速化）
+    const queueCount = await this.dbEngine.countIndexRequests({ status: 'pending' });
 
     return {
       server: {
@@ -401,7 +401,7 @@ export class SearchDocsServer {
       worker: {
         running: workerStatus.running,
         processing: workerStatus.processing ? 1 : 0,
-        queue: pendingRequests.length,
+        queue: queueCount,
       },
     };
   }

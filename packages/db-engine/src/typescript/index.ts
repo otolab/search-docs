@@ -939,6 +939,31 @@ export class DBEngine extends EventEmitter {
   }
 
   /**
+   * IndexRequestの件数をカウント（高速）
+   */
+  async countIndexRequests(filter: IndexRequestFilter = {}): Promise<number> {
+    // camelCase → snake_caseに変換
+    const pythonParams: Record<string, unknown> = {};
+
+    if (filter.documentPath) {
+      pythonParams.document_path = filter.documentPath;
+    }
+    if (filter.documentHash) {
+      pythonParams.document_hash = filter.documentHash;
+    }
+    if (filter.status) {
+      pythonParams.status = filter.status;
+    }
+    if (filter.createdAt) {
+      pythonParams.created_at = filter.createdAt;
+    }
+
+    const result = await this.sendRequest('countIndexRequests', pythonParams);
+    const response = result as { count: number };
+    return response.count;
+  }
+
+  /**
    * IndexRequestを更新
    */
   async updateIndexRequest(id: string, updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash' | 'createdAt'>>): Promise<IndexRequest> {

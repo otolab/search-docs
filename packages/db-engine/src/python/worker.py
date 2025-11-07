@@ -338,6 +338,7 @@ class SearchDocsWorker:
                 'search': 'search',
                 'getStats': 'get_stats',
                 'findIndexRequests': 'find_index_requests',
+                'countIndexRequests': 'count_index_requests',
                 'createIndexRequest': 'create_index_request',
                 'updateIndexRequest': 'update_index_request',
             }
@@ -373,6 +374,8 @@ class SearchDocsWorker:
                 result = self.create_index_request(params)
             elif method == "findIndexRequests":
                 result = self.find_index_requests(params)
+            elif method == "countIndexRequests":
+                result = self.count_index_requests(params)
             elif method == "updateIndexRequest":
                 result = self.update_index_request(params)
             elif method == "updateManyIndexRequests":
@@ -808,6 +811,37 @@ class SearchDocsWorker:
             formatted_requests.append(formatted_req)
 
         return {"requests": formatted_requests}
+
+    def count_index_requests(self, params: Dict[str, Any]) -> Dict[str, int]:
+        """IndexRequestの件数をカウント（高速）"""
+        table = self._get_index_requests_table()
+
+        # フィルタ条件の構築（find_index_requestsと同じロジック）
+        where_clauses = []
+
+        if "document_path" in params:
+            where_clauses.append(f"document_path = '{params['document_path']}'")
+
+        if "document_hash" in params:
+            where_clauses.append(f"document_hash = '{params['document_hash']}'")
+
+        if "status" in params:
+            status = params["status"]
+            if isinstance(status, list):
+                # 複数のstatusをORで結合
+                status_clauses = [f"status = '{s}'" for s in status]
+                where_clauses.append(f"({' OR '.join(status_clauses)})")
+            else:
+                where_clauses.append(f"status = '{status}'")
+
+        # count_rows()を使用（WHERE句でフィルタリング可能）
+        if where_clauses:
+            where_str = " AND ".join(where_clauses)
+            count = table.count_rows(filter=where_str)
+        else:
+            count = table.count_rows()
+
+        return {"count": count}
 
     def update_index_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """IndexRequestを更新"""

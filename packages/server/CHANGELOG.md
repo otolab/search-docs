@@ -1,5 +1,29 @@
 # @search-docs/server
 
+## 1.1.9
+
+### Patch Changes
+
+- perf(server): server status コマンドのパフォーマンス最適化
+
+  `server status`コマンドで、pending キューの件数取得が非効率だった問題を修正。
+  全データをフェッチしてカウントする代わりに、`count_rows()`を使った専用カウントメソッドを実装。
+
+  **主な変更**:
+
+  - Python worker: `count_index_requests()`メソッドを追加（`table.count_rows()`使用）
+  - DBEngine: `countIndexRequests()`メソッドを追加
+  - SearchDocsServer: `getStatus()`で`findIndexRequests().length`の代わりに`countIndexRequests()`を使用
+
+  **パフォーマンス改善**:
+
+  - 修正前: 1.210 秒（1000 件キュー）
+  - 修正後: 0.834 秒（1000 件キュー）
+  - 約 31%の高速化（0.376 秒短縮）
+
+- Updated dependencies
+  - @search-docs/db-engine@1.0.18
+
 ## 1.1.8
 
 ### Patch Changes
