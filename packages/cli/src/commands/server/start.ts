@@ -4,14 +4,12 @@
 
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { readFileSync, createWriteStream, type WriteStream } from 'fs';
+import { createWriteStream, type WriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import { ConfigLoader } from '@search-docs/types';
 import {
   readPidFile,
-  writePidFile,
   deletePidFile,
-  type PidFileContent,
 } from '../../utils/pid.js';
 import {
   isProcessAlive,
@@ -145,41 +143,9 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
       }
 
       log(`Server process spawned (PID: ${serverProcess.pid})`);
+      log('Note: Server will create PID file after initialization');
 
-    // 9. PIDファイル作成
-    // CLIモジュールのパスからpackage.jsonを解決
-    // workspace環境では import.meta.resolve() が失敗することがあるため、
-    // fallbackとして __dirname からの相対パスも試行
-    let packageJson: { version: string };
-    try {
-      const cliModulePath = import.meta.resolve('@search-docs/cli');
-      const cliModuleFile = fileURLToPath(cliModulePath);
-      const cliPkgDir = path.dirname(path.dirname(cliModuleFile)); // dist/index.js → dist → cli/
-      const packageJsonPath = path.join(cliPkgDir, 'package.json');
-      packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version: string };
-    } catch (_error) {
-      // Fallback: __dirname から相対的に取得 (開発環境用)
-      // dist/commands/server/ → ../../../package.json
-      const fallbackPath = path.join(__dirname, '../../../package.json');
-      packageJson = JSON.parse(readFileSync(fallbackPath, 'utf-8')) as { version: string };
-    }
-
-    const pidFileContent: PidFileContent = {
-      pid: serverProcess.pid,
-      startedAt: new Date().toISOString(),
-      projectRoot,
-      projectName: config.project.name,
-      host: config.server.host,
-      port,
-      configPath,
-      logPath: options.log,
-      version: packageJson.version,
-      nodeVersion: process.version,
-    };
-
-    await writePidFile(pidFileContent);
-
-    // 10. 起動確認
+      // 9. 起動確認
     if (isDaemon) {
       // デーモンモードの場合はヘルスチェックで確認
       console.log('Waiting for server to start...');
@@ -198,8 +164,24 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
           `  - Endpoint: http://${config.server.host}:${port}/rpc`
         );
       } else {
-        // 起動失敗、PIDファイル削除
-        await deletePidFile(projectRoot);
+        // 起動失敗、プロセスをkill
+        // サーバプロセスがSIGTERMハンドラでPIDファイルを削除する
+        log(`ERROR: Server startup timeout, killing process ${serverProcess.pid}`);
+        if (serverProcess.pid) {
+          try {
+            process.kill(serverProcess.pid, 'SIGTERM');
+            log('Sent SIGTERM, waiting 2s for graceful shutdown...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // プロセスがまだ生きていたら強制終了
+            if (isProcessAlive(serverProcess.pid)) {
+              log('Process still alive, sending SIGKILL...');
+              process.kill(serverProcess.pid, 'SIGKILL');
+            }
+          } catch (killError) {
+            log(`Failed to kill process: ${(killError as Error).message}`);
+          }
+        }
         throw new Error(
           'Server startup timeout. Check logs for details.'
         );
@@ -216,9 +198,8 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
           });
         });
 
-        // 終了時にPIDファイル削除
+        // 終了時のメッセージ（PIDファイルはサーバが削除）
         log('Server stopped');
-        await deletePidFile(projectRoot);
       }
 
       log('Server startup completed successfully');

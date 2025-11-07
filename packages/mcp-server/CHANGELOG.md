@@ -1,5 +1,14 @@
 # @search-docs/mcp-server
 
+## 1.0.22
+
+### Patch Changes
+
+- Updated dependencies
+  - @search-docs/cli@1.0.17
+  - @search-docs/types@1.0.11
+  - @search-docs/client@1.0.11
+
 ## 1.0.21
 
 ### Patch Changes

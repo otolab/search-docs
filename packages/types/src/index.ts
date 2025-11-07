@@ -48,3 +48,7 @@ export type {
 
 // Storage
 export type { DocumentStorage } from './storage.js';
+
+// PID
+export type { PidFileContent } from './pid.js';
+export { getPidFilePath } from './pid.js';
