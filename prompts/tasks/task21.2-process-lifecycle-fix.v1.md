@@ -339,3 +339,159 @@ PIDファイル存在？
 - より堅牢なヘルスチェック実装
 
 ただし、Phase3の実装により孤児プロセス問題は解決されたため、優先度は低い。
+
+## 追加修正: DB接続の非ブロック化 (2025-11-07)
+
+### 発見された問題
+
+Phase3実装後の検証で、サーバー起動時に「Not connected to database」エラーが多発することが判明:
+
+```
+[IndexWorker] Error in initial processing: Error: Not connected to database
+Failed to index AGENTS.md: Error: Not connected to database
+```
+
+### 原因分析
+
+サーバー起動フロー:
+1. `SearchDocsServer.start()` が呼ばれる
+2. `dbEngine.connect()` を**待たずに**すぐにワーカーを起動
+3. IndexWorker/StartupSyncWorkerがDB操作を試みる
+4. DB接続がまだ完了していない → エラー
+
+問題点:
+- `dbEngine.connect()` は非同期だが、await していない
+- ワーカーはDB接続完了を待たずに即座に起動
+- 結果的にDBが準備できていない状態でリクエストが発行される
+
+### 実装内容
+
+#### 1. OpenPromiseパターンの導入 (db-engine)
+
+`packages/db-engine/src/typescript/index.ts`:
+
+```typescript
+// openPromiseパターン: 接続完了を外部から待機可能にする
+private connectedPromise: Promise<void>;
+private resolveConnected!: () => void;
+private rejectConnected!: (error: Error) => void;
+
+constructor(options: DBEngineOptions = {}) {
+  super();
+  // 接続完了を待機できるPromiseを作成
+  this.connectedPromise = new Promise((resolve, reject) => {
+    this.resolveConnected = resolve;
+    this.rejectConnected = reject;
+  });
+}
+
+async connect(): Promise<void> {
+  // ... 接続処理 ...
+
+  // DB準備完了時にresolve
+  await this.waitForReady(workerError, () => workerExited);
+  // resolveConnected()がwaitForReady内で呼ばれる
+}
+
+waitForConnection(): Promise<void> {
+  return this.connectedPromise;
+}
+```
+
+#### 2. サーバー起動フローの修正 (server)
+
+`packages/server/src/server/search-docs-server.ts`:
+
+```typescript
+async start(): Promise<void> {
+  this.startTime = Date.now();
+
+  // DB接続をバックグラウンドで開始（サーバ起動をブロックしない）
+  this.dbEngine.connect().catch((error) => {
+    console.error('[SearchDocsServer] DB connection failed:', error);
+  });
+
+  // DB接続完了後にDB依存のワーカーを起動
+  this.dbEngine.waitForConnection().then(() => {
+    // パフォーマンスログを開始
+    if (process.env.ENABLE_PERFORMANCE_LOG === '1') {
+      const logPath = process.env.PERFORMANCE_LOG_PATH;
+      this.dbEngine.startPerformanceLogging(logPath);
+    }
+
+    // 起動時にインデックスを同期（バックグラウンドで非同期実行）
+    if (this.startupSyncWorker) {
+      this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
+    }
+
+    // IndexWorker開始
+    if (this.indexWorker) {
+      this.indexWorker.start();
+    }
+  }).catch((error) => {
+    console.error('[SearchDocsServer] Failed to start DB-dependent workers:', error);
+  });
+
+  // FileWatcher開始（DB非依存）
+  if (this.watcher) {
+    await this.watcher.start();
+  }
+}
+```
+
+### 設計ポイント
+
+1. **非ブロッキング起動**:
+   - HTTPサーバーはDB接続を待たずに即座に起動
+   - ユーザーは起動遅延を感じない
+   - `/health` エンドポイントは即座にアクセス可能
+
+2. **依存関係の明確化**:
+   - DB依存のワーカー（IndexWorker、StartupSyncWorker）はDB接続完了後に起動
+   - DB非依存のワーカー（FileWatcher）は即座に起動
+
+3. **冪等性**:
+   - `connect()` は複数回呼ばれても安全
+   - 既に接続済みの場合は何もしない
+
+### テスト結果
+
+✅ search-docsプロジェクト:
+```
+[DBEngine] Calling resolveConnected(), isReady= true
+[DBEngine] resolveConnected() called
+[SearchDocsServer] .then() callback started, DB connected, starting DB-dependent workers...
+[IndexWorker] Starting (interval: 5000ms, maxConcurrent: 3)
+[StartupSyncWorker] Sync completed: 70 documents processed in 781ms
+```
+
+✅ karte-io-systemsプロジェクト:
+```
+[DBEngine] Calling resolveConnected(), isReady= true
+[DBEngine] resolveConnected() called
+[SearchDocsServer] .then() callback started, DB connected, starting DB-dependent workers...
+[IndexWorker] Starting (interval: 5000ms, maxConcurrent: 3)
+[IndexWorker] Found 1000 pending requests, processing 620 latest ones
+[IndexWorker] Processing 620 index requests
+```
+
+✅ エラーなし: 「Not connected to database」エラーは完全に解消
+
+### リリース内容
+
+**Changeset**: `.changeset/fix-db-connection-timing.md`
+
+**公開バージョン**:
+- @search-docs/db-engine: 1.0.15 → 1.0.17
+- @search-docs/server: 1.1.6 → 1.1.8
+- @search-docs/cli: 1.0.17 → 1.0.19
+- @search-docs/mcp-server: 1.0.22 → 1.0.24
+
+**コミット**: `96f945c - fix(server): DB接続の非ブロック化とワーカー起動タイミングの修正`
+
+### 解決された問題
+
+✅ DB接続完了前のワーカー起動による「Not connected to database」エラーを根本解決
+✅ サーバー起動の高速化（DB接続を待たずにHTTPサーバーが起動）
+✅ 依存関係の明確化（DB依存/非依存ワーカーの分離）
+✅ 大規模プロジェクトでの安定性向上（620ドキュメントを正常処理）
