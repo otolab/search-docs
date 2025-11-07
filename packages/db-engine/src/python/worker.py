@@ -181,6 +181,10 @@ class SearchDocsWorker:
 
     def log_thread_info(self, label: str):
         """スレッド情報をログ出力（デバッグ用）"""
+        # DEBUGモードでのみ有効
+        if not os.getenv('DEBUG'):
+            return
+
         threads = threading.enumerate()
         sys.stderr.write(f"[ThreadDump] {label}\n")
         sys.stderr.write(f"  Active threads: {len(threads)}\n")
