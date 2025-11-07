@@ -268,3 +268,74 @@ PIDファイル存在？
 - フェーズ2は推奨（ユーザビリティ向上）
 - フェーズ3はオプション（設計改善だが影響範囲大）
 - まずはフェーズ1から着手
+
+## 作業完了 (2025-11-07)
+
+### 実装内容
+
+ユーザーからのフィードバックで、**フェーズ3（PIDファイル管理の再設計）が本質的な修正**であると確認され、Phase3を優先実装しました。
+
+#### 1. types packageへのPID型定義追加
+
+新規ファイル `packages/types/src/pid.ts`:
+- `PidFileContent` インターフェイスを定義
+- `getPidFilePath()` ヘルパー関数を実装
+- server/cli間で型定義を共有
+
+#### 2. server側でPIDファイル管理を実装
+
+新規ファイル `packages/server/src/utils/pid.ts`:
+- `writePidFile()`: PIDファイル作成
+- `readPidFile()`: PIDファイル読み込み
+- `deletePidFile()`: PIDファイル削除
+- `isProcessAlive()`: プロセス存在確認
+
+`packages/server/src/bin/server.ts`の修正:
+- 起動時に既存PIDファイルをチェック（重複起動防止）
+- プロセス起動後にPIDファイル作成
+- SIGTERM/SIGINTハンドラでPIDファイル削除
+
+#### 3. cli側でPIDファイル作成を削除・修正
+
+`packages/cli/src/commands/server/start.ts`の修正:
+- `writePidFile()` 呼び出しを削除
+- タイムアウト時にSIGTERMでプロセスをkill（サーバのハンドラでPIDファイル削除される）
+- フォアグラウンドモード終了時のPIDファイル削除処理を削除
+
+### テスト結果
+
+✅ デーモンモードで起動成功（サーバがPIDファイル作成）
+✅ PIDファイル内容確認（server側のprocess.pidが記録されている）
+✅ 既存サーバ検出（重複起動時にエラー）
+✅ サーバ停止時にPIDファイル削除確認
+✅ 孤児プロセスが残らないことを確認
+
+### リリース内容
+
+**Changeset**: `.changeset/pid-management-fix.md`
+
+**公開バージョン**:
+- @search-docs/types: 1.0.10 → 1.0.11
+- @search-docs/server: 1.1.5 → 1.1.6
+- @search-docs/cli: 1.0.16 → 1.0.17
+- @search-docs/client: 1.0.10 → 1.0.11
+- @search-docs/db-engine: 1.0.14 → 1.0.15
+- @search-docs/storage: 1.0.8 → 1.0.9
+- @search-docs/mcp-server: 1.0.21 → 1.0.22
+
+**コミット**: `8d81c7a - fix: PIDファイル管理をサーバ側に移管`
+
+### 解決された問題
+
+✅ タイムアウト時のサーバプロセス孤児化を根本解決
+✅ 複数サーバプロセスの同時起動を防止
+✅ PIDファイル管理の責務を明確化（標準的なデーモンパターンに準拠）
+✅ 異常終了時の整合性向上（SIGTERMハンドラでクリーンアップ）
+
+### 今後の課題
+
+フェーズ2（既存プロセスチェックの改善）は現状必須ではないが、将来的な改善として検討可能:
+- プロセスが存在するが応答しない場合の自動killと再起動
+- より堅牢なヘルスチェック実装
+
+ただし、Phase3の実装により孤児プロセス問題は解決されたため、優先度は低い。
