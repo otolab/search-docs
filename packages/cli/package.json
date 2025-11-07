@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
-    "build:fast": "tsc --build"
+    "build:fast": "tsc --build",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@search-docs/client": "workspace:*",

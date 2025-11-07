@@ -16,7 +16,7 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "build:fast": "tsc --build",
-    "prepack": "pnpm build"
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@parcel/watcher": "^2.5.1",

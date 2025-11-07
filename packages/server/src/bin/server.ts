@@ -25,7 +25,7 @@ async function main() {
 
     // 1. 既存PIDファイルチェック
     const existingPid = await readPidFile(projectRoot);
-    if (existingPid && isProcessAlive(existingPid.pid)) {
+    if (existingPid && existingPid.pid !== process.pid && isProcessAlive(existingPid.pid)) {
       throw new Error(
         `Server is already running for this project.\n` +
           `  PID: ${existingPid.pid}\n` +
@@ -36,8 +36,8 @@ async function main() {
       );
     }
 
-    // 古いPIDファイルがあれば削除
-    if (existingPid) {
+    // 古いPIDファイルがあれば削除（自分自身のPIDでない場合のみ）
+    if (existingPid && existingPid.pid !== process.pid) {
       console.log(`Cleaning up stale PID file (previous PID: ${existingPid.pid})`);
       await deletePidFile(projectRoot);
     }
