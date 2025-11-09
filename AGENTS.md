@@ -16,7 +16,7 @@ Search-Docs Server (プロジェクト毎)
 DocumentStorage ←→ SearchIndex (LanceDB)
 ```
 
-**詳細**: @docs/client-server-architecture.md
+**詳細**: docs/client-server-architecture.md
 
 ### データモデル
 
@@ -24,7 +24,7 @@ DocumentStorage ←→ SearchIndex (LanceDB)
 - **SearchIndex**: Vector検索（LanceDB + Ruri Embedding）
 - **Section**: 分割データ（depth 0-3、トークン数ベース）
 
-**詳細**: @docs/data-model.md
+**詳細**: docs/data-model.md
 
 ### システム全体
 
@@ -32,7 +32,7 @@ DocumentStorage ←→ SearchIndex (LanceDB)
 - **Python**: LanceDB操作、Vector化（uvで管理）
 - **pnpm**: モノレポ管理
 
-**詳細**: @docs/architecture.md
+**詳細**: docs/architecture.md
 
 ## プロジェクト構造
 
@@ -74,7 +74,7 @@ search-docs/
 
 このプロジェクト自身のドキュメントをsearch-docsで検索可能にしています。
 
-**利用マニュアル**: @prompts/SEARCH_DOCS.md
+**利用マニュアル**: prompts/SEARCH_DOCS.md
 
 ### 作業メモ
 
@@ -123,6 +123,18 @@ search-docs/
 - ✅ ファイル検索ルール（include/exclude glob）
 - ✅ .gitignoreの尊重
 
+### 5. LanceDBインデックス戦略
+- ✅ カーディナリティベースのインデックスタイプ選択（BTREE/BITMAP）
+- ✅ Phase 1インデックス実装（5つ）
+  - index_requests: status (BITMAP), document_path (BTREE), document_hash (BTREE)
+  - sections: document_path (BTREE), is_dirty (BITMAP)
+- ✅ 前方一致検索機能（includePaths/excludePaths）
+  - LIKE演算子によるパス絞り込み
+  - DataFusion統計ベース最適化の活用
+- 📊 Phase 2/3の実装は使用状況に応じて検討
+
+**詳細**: docs/architecture-decisions.md (ADR-016)
+
 ## 参考プロジェクト
 
 - **sebas-chan** (`../sebas-chan/`): DBエンジンのアーキテクチャ参照元
@@ -140,11 +152,12 @@ search-docs/
 
 ## 関連ドキュメント
 
-- @README.md - プロジェクト全体概要
-- @docs/client-server-architecture.md - アーキテクチャ詳細
-- @docs/data-model.md - データモデル設計
-- @docs/architecture.md - システムアーキテクチャ
-- @prompts/README.md - Claude Code設定
+- README.md - プロジェクト全体概要
+- docs/client-server-architecture.md - アーキテクチャ詳細
+- docs/data-model.md - データモデル設計
+- docs/architecture.md - システムアーキテクチャ
+- docs/architecture-decisions.md - アーキテクチャ決定記録（ADR）
+- prompts/README.md - Claude Code設定
 
 ---
 

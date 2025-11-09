@@ -1550,6 +1550,148 @@ search-docs server start  # デフォルトでバックグラウンド
 
 ---
 
+## ADR-016: LanceDBインデックス戦略と前方一致検索
+
+**日付**: 2025-11-07
+**状態**: 採用
+**決定者**: 実装チーム
+**関連**: task22, LanceDB最適化
+
+### コンテキスト
+
+task21でstatusカラムにBITMAPインデックスを追加し、count_rows()が約40倍高速化（30秒タイムアウト→0.741秒）した成功を受けて、他のカラムへのインデックス戦略を検討する必要があった。
+
+同時に、MCP検索ツールでパス指定による絞り込み機能が不足していた：
+- excludePathsは存在したが完全一致のみ
+- includePathsパラメータが存在しない
+- 「特定ディレクトリ配下のみ検索」ができない
+
+### 検討した選択肢
+
+#### 1. インデックスタイプの選択
+
+**BTREE vs BITMAP**:
+- BTREE: 等価検索、範囲検索に有効
+- BITMAP: Low-cardinality（ユニーク値が少ない）に最適
+
+**決定**: カーディナリティに基づいて使い分け
+- Low-cardinality (< 数千): BITMAP
+- Medium/High-cardinality: BTREE
+
+#### 2. 前方一致検索の実装方法
+
+**オプション1: LIKE演算子** (採用):
+- `document_path LIKE 'docs/%'`
+- DataFusionネイティブサポート
+- 統計ベース最適化の活用
+
+**オプション2: 正規表現**:
+- より柔軟だが複雑
+- パフォーマンスが不明
+
+### 決定
+
+#### Phase 1インデックス実装
+
+**index_requestsテーブル**:
+1. status (BITMAP) - 5値、既存（task21）
+2. document_path (BTREE) - 等価検索用
+3. document_hash (BTREE) - 等価検索用
+
+**sectionsテーブル**:
+1. document_path (BTREE) - 等価検索用
+2. is_dirty (BITMAP) - 2値（true/false）
+
+**理由**:
+1. 高頻度クエリのパフォーマンス向上
+2. BTREEは等価検索に確実に有効
+3. BITMAPはLow-cardinalityで最適
+4. task21での実績（40倍高速化）
+
+#### 前方一致検索の実装
+
+**includePaths**: OR条件
+```python
+path_conditions = [f"document_path LIKE '{path}%'" for path in include_paths]
+filters.append(f"({' OR '.join(path_conditions)})")
+```
+
+**excludePaths**: AND条件
+```python
+for path in exclude_paths:
+    filters.append(f"document_path NOT LIKE '{path}%'")
+```
+
+**理由**:
+1. LIKE演算子はDataFusionでネイティブサポート
+2. NOT LIKE 'prefix%'はmin/max統計ベース最適化あり（DataFusion 46.0.0）
+3. シンプルで理解しやすい実装
+4. 将来のBTREE効果検証に備える
+
+### 影響
+
+**ポジティブ**:
+- 等価検索のパフォーマンス向上（特にcount_rows）
+- パス指定による柔軟な検索が可能に
+- includePaths/excludePathsの組み合わせ使用
+- MCP統合完了
+
+**ネガティブ**:
+- LIKE 'prefix%'クエリのBTREE効果は未検証
+- インデックス維持コスト（ストレージ、書き込み速度）
+
+**トレードオフ**:
+- ストレージ使用量の増加 vs クエリパフォーマンス向上
+- 書き込み速度の若干低下 vs 検索速度の大幅向上
+
+### 実装詳細
+
+**wait_for_index() API**:
+```python
+table.wait_for_index(["column_name_idx"], timeout=timedelta(seconds=60))
+```
+
+**インデックス命名**: `{column_name}_idx`
+
+**バグ修正**: SearchDocsServer.search()のexcludePaths処理
+```typescript
+const mergedExcludePaths = [
+  ...(request.options?.excludePaths || []),
+  ...(autoExcludePaths || []),
+];
+```
+
+### 検証結果
+
+**テスト実施日**: 2025-11-07
+
+1. includePaths: ["docs/"] → docs/配下のみ検索 ✅
+2. excludePaths: ["docs/"] → docs/配下を除外 ✅
+3. 複合条件: includePaths: ["prompts/"], excludePaths: ["prompts/tasks/"] ✅
+
+**パフォーマンス**: 未測定（将来のタスク）
+
+### 今後の検討事項
+
+1. **LIKE 'prefix%'のパフォーマンス測定**
+   - BTREEインデックスの効果検証
+   - 大規模データでのベンチマーク
+
+2. **Phase 2インデックス**
+   - sections.depth (BTREE or BITMAP)
+   - 使用状況に応じて判断
+
+3. **複合インデックス**
+   - 現状は不要だが、将来的に検討
+
+### 関連ドキュメント
+
+- 戦略文書: `prompts/tasks/task22.index-strategy.v1.md`
+- 実装: `packages/db-engine/src/python/worker.py`
+- DataFusion 46.0.0: NOT LIKE prefix optimization
+
+---
+
 ## 更新履歴
 
 - 2025-01-27: 初版作成（ADR-001〜010）
@@ -1558,3 +1700,4 @@ search-docs server start  # デフォルトでバックグラウンド
 - 2025-10-28: ADR-013追加（CLIサーバプロセス管理の実装方針）
 - 2025-10-30: ADR-014追加（IndexRequestテーブルによる非同期インデックス管理）
 - 2025-10-31: ADR-015追加（CLI設定管理とサーバ起動の改善）
+- 2025-11-07: ADR-016追加（LanceDBインデックス戦略と前方一致検索）
