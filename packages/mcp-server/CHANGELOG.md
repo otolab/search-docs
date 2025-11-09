@@ -1,5 +1,11 @@
 # @search-docs/mcp-server
 
+## 1.1.1
+
+### Patch Changes
+
+- @search-docs/cli@1.0.23
+
 ## 1.1.0
 
 ### Minor Changes
