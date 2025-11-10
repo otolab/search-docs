@@ -116,7 +116,7 @@ class RuriEmbedding(EmbeddingModel):
         self,
         text: Union[str, List[str]],
         dimension: int = None,
-        batch_size: int = 32
+        batch_size: int = 128
     ) -> Union[List[float], List[List[float]]]:
         """
         テキストをベクトル化（バッチ処理対応）
