@@ -68,6 +68,45 @@ pnpm build
 npm install -g search-docs
 ```
 
+### GPU対応（オプション）
+
+GPUを使用することで、Vector化処理を大幅に高速化できます（数倍〜数十倍）。
+
+#### 前提条件
+
+- **NVIDIA GPU + CUDA Toolkit**（CUDA 11.8 または 12.1以降）
+- または **AMD GPU + ROCm**
+- または **Apple Silicon Mac**（M1/M2/M3など、MPSバックエンドを自動使用）
+
+#### インストール方法
+
+```bash
+# CUDA 11.8環境の場合
+cd packages/db-engine
+uv pip install -e ".[gpu]"
+
+# CUDA 12.1環境の場合
+uv pip install -e ".[gpu-cu121]"
+
+# PyTorchインデックスを使用する場合（推奨）
+uv pip install torch --index-url https://download.pytorch.org/whl/cu118
+```
+
+#### 動作確認
+
+```bash
+# サーバ起動時のログで確認
+search-docs server start --foreground
+
+# GPU使用時の例:
+# > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on GPU (NVIDIA GeForce RTX 3090)
+
+# CPU使用時の例:
+# > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on CPU
+```
+
+コードは自動的にGPUの有無を検出し、利用可能な場合はGPUを使用します。GPU環境でない場合は、通常通りCPUで動作します（追加設定不要）。
+
 ## 使用方法
 
 ### 設定ファイルの初期化

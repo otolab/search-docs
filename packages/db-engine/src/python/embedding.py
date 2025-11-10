@@ -5,7 +5,7 @@ search-docs用にsebas-chanのRuriEmbeddingを利用
 """
 
 import sys
-from typing import List
+from typing import List, Union
 import numpy as np
 
 
@@ -48,6 +48,7 @@ class RuriEmbedding(EmbeddingModel):
         self.model_name = model_name
         self.available = False
         self.model = None
+        self.device = None
 
         if model_name not in self.MODEL_CONFIGS:
             raise ValueError(
@@ -72,10 +73,21 @@ class RuriEmbedding(EmbeddingModel):
 
             config = self.MODEL_CONFIGS[self.model_name]
 
-            # モデルをロード
-            self.model = SentenceTransformer(self.model_name)
+            # GPU/CPU自動検出
+            try:
+                import torch
+                self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                device_info = f"GPU ({torch.cuda.get_device_name(0)})" if self.device == 'cuda' else "CPU"
+            except ImportError:
+                self.device = 'cpu'
+                device_info = "CPU (torch not available)"
+
+            # モデルをロード（deviceを指定）
+            self.model = SentenceTransformer(self.model_name, device=self.device)
             self.available = True
-            sys.stderr.write(f"Ruri model loaded: {self.model_name} - {config['description']}\n")
+            sys.stderr.write(
+                f"Ruri model loaded: {self.model_name} - {config['description']} on {device_info}\n"
+            )
             return True
 
         except (ImportError, Exception) as e:
@@ -93,30 +105,51 @@ class RuriEmbedding(EmbeddingModel):
         """モデルの出力次元数"""
         return self._dimension
 
-    def encode(self, text: str, dimension: int = None) -> List[float]:
+    def encode(
+        self,
+        text: Union[str, List[str]],
+        dimension: int = None,
+        batch_size: int = 32
+    ) -> Union[List[float], List[List[float]]]:
         """
-        テキストをベクトル化
+        テキストをベクトル化（バッチ処理対応）
 
         Args:
-            text: 変換対象のテキスト
+            text: 変換対象のテキスト（単一文字列またはリスト）
             dimension: 出力次元数（Noneの場合はコンストラクタで指定した次元）
+            batch_size: バッチサイズ（デフォルト: 32）
 
         Returns:
-            ベクトル表現（floatのリスト）
+            ベクトル表現（floatのリストまたはリストのリスト）
+            - 入力が単一文字列の場合: List[float]
+            - 入力がリストの場合: List[List[float]]
         """
         if not self.available:
             raise RuntimeError("Model not loaded. Call load() first.")
 
         target_dim = dimension if dimension is not None else self._dimension
+        is_single = isinstance(text, str)
 
         try:
-            # SentenceTransformerでエンコード
-            embeddings = self.model.encode(text, convert_to_numpy=True)
+            # 単一文字列の場合はリストに変換
+            texts = [text] if is_single else text
 
-            # 次元調整
-            embeddings = self._adjust_dimensions(embeddings, target_dim)
+            # SentenceTransformerでバッチエンコード
+            embeddings = self.model.encode(
+                texts,
+                convert_to_numpy=True,
+                batch_size=batch_size,
+                show_progress_bar=False
+            )
 
-            return embeddings.tolist()
+            # 各ベクトルの次元を調整
+            adjusted = [self._adjust_dimensions(vec, target_dim) for vec in embeddings]
+
+            # リストに変換
+            result = [vec.tolist() for vec in adjusted]
+
+            # 単一入力の場合は単一の結果を返す（後方互換性）
+            return result[0] if is_single else result
 
         except Exception as e:
             sys.stderr.write(f"Error encoding text: {e}\n")

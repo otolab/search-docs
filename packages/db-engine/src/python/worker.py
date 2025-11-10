@@ -590,16 +590,26 @@ class SearchDocsWorker:
         if not self.embedding_model.available:
             self.embedding_model.initialize()
 
-        # 各セクションを処理
-        for section in sections:
+        # ベクトル化が必要なセクションを収集
+        texts_to_encode = []
+        indices_to_encode = []
+
+        for i, section in enumerate(sections):
             validate_section(section)
 
-            # ベクトル化
             if "vector" not in section or not section["vector"]:
                 text = f"{section['heading']}\n{section['content']}"
-                section["vector"] = self.embedding_model.encode(text, self.vector_dimension)
+                texts_to_encode.append(text)
+                indices_to_encode.append(i)
 
-            # データ正規化
+        # バッチでベクトル化
+        if texts_to_encode:
+            vectors = self.embedding_model.encode(texts_to_encode, self.vector_dimension)
+            for idx, vector in zip(indices_to_encode, vectors):
+                sections[idx]["vector"] = vector
+
+        # データ正規化
+        for section in sections:
             self._normalize_section_data(section)
 
         # スレッド情報（table.add前）
