@@ -389,6 +389,27 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] is_dirty index already exists\n")
                     sys.stderr.flush()
 
+                # document_hash (BTREE) - findSectionsByPathAndHash()の高速化
+                has_document_hash_index = any(
+                    hasattr(idx, 'columns') and idx.columns == ['document_hash']
+                    for idx in existing_indices
+                )
+
+                if not has_document_hash_index:
+                    sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_hash column...\n")
+                    sys.stderr.flush()
+                    try:
+                        sections_table.create_scalar_index("document_hash", index_type="BTREE")
+                        sections_table.wait_for_index(["document_hash_idx"], timeout=timedelta(seconds=60))
+                        sys.stderr.write(f"[IndexCheck] BTREE index on document_hash created and ready\n")
+                        sys.stderr.flush()
+                    except Exception as idx_error:
+                        sys.stderr.write(f"[IndexCheck] Error creating document_hash index: {idx_error}\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[IndexCheck] document_hash index already exists\n")
+                    sys.stderr.flush()
+
             except Exception as e:
                 sys.stderr.write(f"[IndexCheck] Warning: Error while managing sections indices: {e}\n")
                 sys.stderr.flush()
