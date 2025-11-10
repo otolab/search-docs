@@ -1,5 +1,35 @@
 # @search-docs/db-engine
 
+## 1.2.1
+
+### Patch Changes
+
+- Apple Silicon MPS GPU 対応を追加しました。
+
+  ## 変更内容
+
+  Python の embedding.py に Apple Silicon MPS (Metal Performance Shaders) GPU 対応を追加しました。
+
+  ### GPU デバイス検出の優先順位
+
+  1. CUDA (NVIDIA GPU)
+  2. **MPS (Apple Silicon GPU)** - 新規追加
+  3. CPU (フォールバック)
+
+  ### 動作確認
+
+  Apple Silicon Mac (M1/M2/M3 など) で自動的に MPS GPU が検出され、Vector 化処理が高速化されます：
+
+  ```
+  Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on GPU (Apple Silicon MPS)
+  ```
+
+  ## ユーザーへの影響
+
+  - Apple Silicon Mac で自動的に GPU 加速が有効化されます
+  - PyTorch がインストールされていれば追加設定不要
+  - 既存の CUDA/CPU 環境への影響なし
+
 ## 1.2.0
 
 ### Minor Changes
