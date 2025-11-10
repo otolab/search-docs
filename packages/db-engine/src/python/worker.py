@@ -791,8 +791,14 @@ class SearchDocsWorker:
             raise ValueError("documentHash parameter is required")
 
         table = self._get_sections_table()
+
+        # 存在確認用途では1件だけ取得すれば十分（IndexWorkerでの使用を想定）
+        # limit指定がない場合は1件のみ取得（デフォルト）
+        limit = params.get("limit", 1)
+
         results = table.search()\
             .where(f"document_path = '{document_path}' AND document_hash = '{document_hash}'")\
+            .limit(limit)\
             .to_list()
 
         # 結果をフォーマット
