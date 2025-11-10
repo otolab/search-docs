@@ -76,8 +76,15 @@ class RuriEmbedding(EmbeddingModel):
             # GPU/CPU自動検出
             try:
                 import torch
-                self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-                device_info = f"GPU ({torch.cuda.get_device_name(0)})" if self.device == 'cuda' else "CPU"
+                if torch.cuda.is_available():
+                    self.device = 'cuda'
+                    device_info = f"GPU ({torch.cuda.get_device_name(0)})"
+                elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    self.device = 'mps'
+                    device_info = "GPU (Apple Silicon MPS)"
+                else:
+                    self.device = 'cpu'
+                    device_info = "CPU"
             except ImportError:
                 self.device = 'cpu'
                 device_info = "CPU (torch not available)"
