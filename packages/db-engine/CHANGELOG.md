@@ -1,5 +1,21 @@
 # @search-docs/db-engine
 
+## 1.2.2
+
+### Patch Changes
+
+- パフォーマンス最適化とテスト修正
+
+  **db-engine:**
+
+  - findSectionsByPathAndHash()を LIMIT 1 に最適化（42x 高速化: 47.69ms → 1.20ms）
+  - sections テーブルに document_hash インデックスを追加
+  - デフォルトバッチサイズを 128 に変更して GPU 効率を改善
+
+  **server:**
+
+  - テストファイルの直列実行を設定（Python ワーカーの競合を回避）
+
 ## 1.2.1
 
 ### Patch Changes

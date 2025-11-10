@@ -1,5 +1,12 @@
 # @search-docs/cli
 
+## 1.0.26
+
+### Patch Changes
+
+- Updated dependencies
+  - @search-docs/server@1.2.4
+
 ## 1.0.25
 
 ### Patch Changes
