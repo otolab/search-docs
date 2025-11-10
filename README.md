@@ -82,8 +82,7 @@ GPUを使用することで、Vector化処理を大幅に高速化できます�
 
 ```bash
 # Apple Silicon (M1/M2/M3) の場合
-cd packages/db-engine
-uv pip install torch
+# 追加のインストール不要 - sentence-transformersの依存関係としてPyTorchが自動的にインストールされます
 
 # CUDA 11.8環境の場合
 cd packages/db-engine
