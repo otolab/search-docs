@@ -1,5 +1,38 @@
 # @search-docs/db-engine
 
+## 1.2.0
+
+### Minor Changes
+
+- バッチ処理と GPU 対応で Vector 化を高速化
+
+  ## バッチ処理対応
+
+  - embedding.py: encode()を常にバッチ処理対応に変更
+    - 単一テキスト・複数テキスト両対応（後方互換性維持）
+    - SentenceTransformer.encode()の batch_size=32 を活用
+  - worker.py: add_sections()でバッチ Vector 化を実装
+    - 1 件ずつの encode()から、まとめて encode()に変更
+
+  **パフォーマンス改善見込み:**
+
+  - CPU 環境: 1.5〜2 倍高速化
+  - GPU 環境: 3〜5 倍高速化
+
+  ## GPU 対応
+
+  - embedding.py: GPU 自動検出機能を追加
+    - torch.cuda.is_available()で自動判定
+    - device パラメータを自動設定（'cuda' or 'cpu'）
+    - デバイス情報をログ出力
+  - pyproject.toml: オプショナル依存を追加
+    - [gpu]: CUDA 11.8 用
+    - [gpu-cu121]: CUDA 12.1 用
+
+  **GPU 環境がない場合:**
+
+  - 追加設定不要、通常通り CPU で動作
+
 ## 1.1.1
 
 ### Patch Changes
