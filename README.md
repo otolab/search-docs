@@ -81,6 +81,10 @@ GPUを使用することで、Vector化処理を大幅に高速化できます�
 #### インストール方法
 
 ```bash
+# Apple Silicon (M1/M2/M3) の場合
+cd packages/db-engine
+uv pip install torch
+
 # CUDA 11.8環境の場合
 cd packages/db-engine
 uv pip install -e ".[gpu]"
@@ -98,7 +102,10 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu118
 # サーバ起動時のログで確認
 search-docs server start --foreground
 
-# GPU使用時の例:
+# Apple Silicon MPS GPU使用時の例:
+# > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on GPU (Apple Silicon MPS)
+
+# NVIDIA GPU使用時の例:
 # > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on GPU (NVIDIA GeForce RTX 3090)
 
 # CPU使用時の例:
