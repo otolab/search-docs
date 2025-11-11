@@ -1,5 +1,21 @@
 # @search-docs/mcp-server
 
+## 1.2.3
+
+### Patch Changes
+
+- server_start/stop の不適切な reconnect 案内を削除
+
+  変更内容:
+
+  - server_start と server_stop のメッセージから reconnect 案内を削除
+  - 2 状態モデルでは、これらの操作後にツールリストは変わらないため不要
+
+  理由:
+
+  - init 実行後のみ reconnect が必要（NOT_CONFIGURED → CONFIGURED）
+  - server_start/stop 実行後は reconnect 不要（CONFIGURED 状態のまま）
+
 ## 1.2.2
 
 ### Patch Changes
