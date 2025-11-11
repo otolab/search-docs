@@ -28,7 +28,7 @@ pnpm build
 ### Phase 2: Workaroundの効果測定
 
 #### 2.1 測定環境
-- **測定対象**: karte-io-systemsプロジェクト
+- **測定対象**: large-test-projectプロジェクト
 - **測定時間**: 60秒
 - **ログ保存**: `prompts/tasks/logs/task20.3-workaround-test.log`
 
@@ -178,7 +178,7 @@ timeout 300 node packages/cli/dist/index.js server start --foreground > logs/tas
 #### テスト完了
 
 **テスト内容**:
-- 環境: karte-io-systemsプロジェクト
+- 環境: large-test-projectプロジェクト
 - モード: `SPLIT_BY_PUNCTUATION=1`
 - 時間: 60秒
 - ログ: `prompts/tasks/logs/task20.3-punctuation-60s.log`
@@ -235,7 +235,7 @@ if (logPath) {
 ### Phase 3: 句読点分割のメモリ影響測定
 
 #### テスト条件
-- **環境**: karte-io-systemsプロジェクト
+- **環境**: large-test-projectプロジェクト
 - **設定**: `SPLIT_BY_PUNCTUATION=1`、モデル再ロード無効（`_reload_interval = 999999`）
 - **時間**: 60秒
 - **ログ**: `prompts/tasks/logs/task20.3-split-60s.log`
@@ -379,7 +379,7 @@ assert np.allclose(original_vector, split_vector)  # ✅ 一致
 #### テスト結果（60s）
 
 **設定**:
-- 環境: karte-io-systems
+- 環境: large-test-project
 - 時間: 60秒
 - CSV: `task20.3-tokenizer-split-60s.csv`
 
@@ -445,7 +445,7 @@ class TokenizerReloader:
 #### テスト結果（120s）
 
 **設定**:
-- 環境: karte-io-systems
+- 環境: large-test-project
 - 時間: 120秒
 - CSV: `task20.3-tokenizer-reload-120s.csv`
 - 環境変数: `RELOAD_TOKENIZER=1`
@@ -552,7 +552,7 @@ self._reload_interval = int(reload_interval_str)
 #### テスト結果（180s）
 
 **設定**:
-- 環境: karte-io-systems
+- 環境: large-test-project
 - 時間: 180秒
 - CSV: `task20.3-model-reload-180s.csv`
 - 環境変数: `RELOAD_TOKENIZER=1`, `RELOAD_MODEL_INTERVAL=10`
@@ -1538,11 +1538,11 @@ const dbEngine = new DBEngine({
 });
 ```
 
-### 10.3 検証結果（karte-io-systems、600秒実行）
+### 10.3 検証結果（large-test-project、600秒実行）
 
 #### テスト条件
 
-- **環境**: karte-io-systems（大規模プロジェクト）
+- **環境**: large-test-project（大規模プロジェクト）
 - **時間**: 600秒（10分）
 - **ログ**: /tmp/karte-io-tokenizers-parallelism-600s.csv
 - **設定**: TOKENIZERS_PARALLELISM=false（自動設定）

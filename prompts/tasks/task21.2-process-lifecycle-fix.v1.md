@@ -8,7 +8,7 @@ task21（StartupSyncWorker実装）の検証中に発見された、プロセス
 
 ### 問題の発見経緯
 
-karte-io-systemsプロジェクトでsearch-docsサーバを起動テストした際、**7個のサーバプロセスと6個のPython workerプロセスが同時起動**していることを発見。
+large-test-projectプロジェクトでsearch-docsサーバを起動テストした際、**7個のサーバプロセスと6個のPython workerプロセスが同時起動**していることを発見。
 
 ```
 # プロセス確認結果
@@ -465,7 +465,7 @@ async start(): Promise<void> {
 [StartupSyncWorker] Sync completed: 70 documents processed in 781ms
 ```
 
-✅ karte-io-systemsプロジェクト:
+✅ large-test-projectプロジェクト:
 ```
 [DBEngine] Calling resolveConnected(), isReady= true
 [DBEngine] resolveConnected() called

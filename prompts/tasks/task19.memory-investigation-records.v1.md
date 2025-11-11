@@ -2,7 +2,7 @@
 
 ## 目的
 
-karte-io-systemsプロジェクト（102,893 Markdownファイル）で観測されたPythonプロセスのメモリ増加について、測定記録を時系列で保存する。
+large-test-projectプロジェクト（102,893 Markdownファイル）で観測されたPythonプロセスのメモリ増加について、測定記録を時系列で保存する。
 
 ## 記録の原則
 
@@ -17,7 +17,7 @@ karte-io-systemsプロジェクト（102,893 Markdownファイル）で観測さ
 ### 記録1: フレッシュスタート測定（1秒間隔）
 
 **測定日時**: 2025-11-05
-**測定対象**: karte-io-systemsプロジェクト（102,893 Markdownファイル）
+**測定対象**: large-test-projectプロジェクト（102,893 Markdownファイル）
 **測定方法**: 1秒間隔でPID監視
 **ログファイル**: `/tmp/memory-fresh-start.log`
 
@@ -378,9 +378,9 @@ Time(s), RSS(MB), VSZ(MB), Threads
 [DEBUG] executeServerStart options: {}
 Server start requested
 Loading configuration...
-Project root: /Users/naoto.kato/Develop/plaid/karte-io-systems
-Config: /Users/naoto.kato/Develop/plaid/karte-io-systems/.search-docs.json
-Log file: /Users/naoto.kato/Develop/plaid/karte-io-systems/.search-docs/server.log
+Project root: /path/to/large-test-project
+Config: /path/to/large-test-project/.search-docs.json
+Log file: /path/to/large-test-project/.search-docs/server.log
 Checking for existing server...
 Checking port 53567...
 Port 53567 is available
@@ -391,7 +391,7 @@ Server process spawned (PID: 20072)
 Waiting for server to start...
 ERROR: Server startup timeout. Check logs for details.
 
-Check log file for details: /Users/naoto.kato/Develop/plaid/karte-io-systems/.search-docs/server.log
+Check log file for details: /path/to/large-test-project/.search-docs/server.log
 Error: Server startup timeout. Check logs for details.
 ```
 

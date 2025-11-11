@@ -77,8 +77,8 @@ def add_sections(self, params: Dict[str, Any]) -> Dict[str, int]:
 #### Phase 3: 測定実施
 
 ```bash
-# karte-io-systemsで再度測定
-cd /Users/naoto.kato/Develop/plaid/karte-io-systems
+# large-test-projectで再度測定
+cd /path/to/large-test-project
 rm -rf .search-docs
 
 # サーバ起動（フォアグラウンドで短時間）

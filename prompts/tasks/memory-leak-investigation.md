@@ -131,7 +131,7 @@ objgraph.show_backrefs(objs[-1], max_depth=5, filename='leak.png')
 
 ## 観測事実
 
-### karte-io-systemsでの観測
+### large-test-projectでの観測
 - 0-60秒: 2.3GB → 2.5GB（+200MB）
 - 60-90秒: 2.5GB → 5.8GB（+3.3GB）
 
@@ -181,7 +181,7 @@ objgraph.show_backrefs(objs[-1], max_depth=5, filename='leak.png')
 ### 本番環境でのメモリ増加の原因
 
 Python workerコード、LanceDB、Transformersのいずれもリークがないことが証明された。
-karte-io-systemsで観測された 2.3GB → 5.8GB の急激な増加は、以下の可能性が高い：
+large-test-projectで観測された 2.3GB → 5.8GB の急激な増加は、以下の可能性が高い：
 
 1. **データ量のスケール**: 102,893ファイルという大規模データセット
 2. **LanceDBの内部キャッシュ**: インデックス構築時の一時的なメモリ使用
@@ -242,7 +242,7 @@ karte-io-systemsで観測された 2.3GB → 5.8GB の急激な増加は、以�
 ### Phase 5: PyArrowメモリプールの影響
 
 #### 背景
-- karte-io-systemsで観測: systemメモリプール使用時も 0s: 24MB → 478s: 6.5GB と増加
+- large-test-projectで観測: systemメモリプール使用時も 0s: 24MB → 478s: 6.5GB と増加
 - スレッド数も増加: 131 → 173スレッド
 - 非線形な増加パターン: 段階的に増え、時々急激に増加
 
@@ -264,7 +264,7 @@ pa.mimalloc_memory_pool() # mimalloc
   - OSへのメモリ返却を遅らせてパフォーマンス向上
 - **system (malloc)**: 標準allocator、overallocation少ない
 
-#### 実験結果 (karte-io-systems, 102,893ファイル)
+#### 実験結果 (large-test-project, 102,893ファイル)
 
 **mimalloc (デフォルト)**:
 - 60秒時点: 5.36 GB

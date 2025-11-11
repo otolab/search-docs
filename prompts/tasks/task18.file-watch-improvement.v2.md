@@ -22,7 +22,7 @@ this.watcher = chokidar.watch(this.rootDir, {  // ← プロジェクトルー�
 **問題**:
 1. rootDir全体を監視対象に指定
 2. ignoredコールバックでフィルタリングしているが、chokidarは最初に全ディレクトリをスキャン
-3. 結果：大規模プロジェクト（karte-io-systemsなど）で数万のファイルディスクリプタを消費
+3. 結果：大規模プロジェクト（large-test-projectなど）で数万のファイルディスクリプタを消費
 4. `EMFILE: too many open files`エラーが発生
 
 ### なぜこの実装になっているか

@@ -74,14 +74,14 @@ done
 
 ### 2. 測定手順
 
-1. **karte-io-systemsの.search-docsディレクトリをクリア**
+1. **large-test-projectの.search-docsディレクトリをクリア**
    ```bash
-   rm -rf /Users/naoto.kato/Develop/plaid/karte-io-systems/.search-docs
+   rm -rf /path/to/large-test-project/.search-docs
    ```
 
 2. **サーバ起動**
    ```bash
-   cd /Users/naoto.kato/Develop/plaid/karte-io-systems
+   cd /path/to/large-test-project
    node /Users/naoto.kato/Develop/otolab/search-docs/packages/cli/dist/index.js server start --daemon
    ```
 
@@ -102,7 +102,7 @@ done
 
 ### 3. 測定環境
 
-- **プロジェクト**: karte-io-systems
+- **プロジェクト**: large-test-project
 - **ファイル数**: 102,893 Markdownファイル
 - **測定間隔**: 1秒
 - **測定時間**: 300秒（5分）
@@ -182,16 +182,16 @@ mkdir -p prompts/tasks/logs
 
 ## 測定手順（実装版）
 
-### 1. karte-io-systemsのインデックスをクリア
+### 1. large-test-projectのインデックスをクリア
 
 ```bash
-rm -rf /Users/naoto.kato/Develop/plaid/karte-io-systems/.search-docs
+rm -rf /path/to/large-test-project/.search-docs
 ```
 
 ### 2. サーバを起動（パフォーマンスログ有効化）
 
 ```bash
-cd /Users/naoto.kato/Develop/plaid/karte-io-systems
+cd /path/to/large-test-project
 ENABLE_PERFORMANCE_LOG=1 \
 PERFORMANCE_LOG_PATH=/Users/naoto.kato/Develop/otolab/search-docs/prompts/tasks/logs/task20-measurement-$(date +%Y%m%d-%H%M%S).csv \
 node /Users/naoto.kato/Develop/otolab/search-docs/packages/cli/dist/index.js server start --daemon
@@ -201,7 +201,7 @@ node /Users/naoto.kato/Develop/otolab/search-docs/packages/cli/dist/index.js ser
 
 ```bash
 # サーバログ
-tail -f /Users/naoto.kato/Develop/plaid/karte-io-systems/.search-docs/server.log
+tail -f /path/to/large-test-project/.search-docs/server.log
 
 # パフォーマンスログ
 tail -f /Users/naoto.kato/Develop/otolab/search-docs/prompts/tasks/logs/task20-measurement-*.csv
@@ -210,16 +210,16 @@ tail -f /Users/naoto.kato/Develop/otolab/search-docs/prompts/tasks/logs/task20-m
 ### 4. 測定完了後、サーバを停止
 
 ```bash
-cd /Users/naoto.kato/Develop/plaid/karte-io-systems
+cd /path/to/large-test-project
 node /Users/naoto.kato/Develop/otolab/search-docs/packages/cli/dist/index.js server stop
 ```
 
 ## 測定実行ログ
 
-### 測定1: karte-io-systems初回インデックス作成
+### 測定1: large-test-project初回インデックス作成
 
 **日時**: 2025-11-05 12:23
-**プロジェクト**: karte-io-systems（102,893ファイル）
+**プロジェクト**: large-test-project（102,893ファイル）
 **測定時間**: 74秒
 **CSVファイル**: `prompts/tasks/logs/task20-measurement-converted.csv`
 

@@ -145,7 +145,7 @@ import * as path from 'path';
 
 ### 問題の詳細
 
-大規模プロジェクト（例: karte-io-systems）で以下のエラーが発生：
+大規模プロジェクト（例: large-test-project）で以下のエラーが発生：
 
 ```
 File watcher error: Error: EMFILE: too many open files, watch
@@ -312,7 +312,7 @@ file.md 変更 → タイマーリセット
 }
 ```
 
-### 大規模プロジェクト（karte-io-systemsなど）
+### 大規模プロジェクト（large-test-projectなど）
 ```json
 {
   "watcher": {

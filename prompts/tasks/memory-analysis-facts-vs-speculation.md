@@ -4,7 +4,7 @@
 
 ### 1.1 メモリ使用量の測定データ
 
-#### karte-io-systems プロジェクト (102,893 Markdownファイル)
+#### large-test-project プロジェクト (102,893 Markdownファイル)
 
 **測定1: デフォルト設定（mimalloc）**
 - 0秒: 起動時
@@ -85,7 +85,7 @@ await new Promise(resolve => setTimeout(resolve, 100));  // 100ms wait
 ```
 
 **呼び出し回数**:
-- karte-io-systems: 102,893ファイル = 約**102,893回のadd_sections()呼び出し**
+- large-test-project: 102,893ファイル = 約**102,893回のadd_sections()呼び出し**
 
 **LanceDB推奨事項**（公式ドキュメント）:
 - バッチ挿入を使用（1行ずつではなく）
@@ -395,7 +395,7 @@ os.environ['MKL_NUM_THREADS'] = '1'
 ### 即座に実行可能
 1. LanceDB Fragment数の確認コードを書いて実行
 2. add_sections()バッチ化の実装（TypeScript側）
-3. バッチ化版でkarte-io-systemsテスト実行
+3. バッチ化版でlarge-test-projectテスト実行
 
 ### 追加調査が必要
 4. スレッド生成元の特定（プロファイリングツール使用）
