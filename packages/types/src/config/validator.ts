@@ -252,6 +252,38 @@ function validateWorkerConfig(worker: unknown): void {
   if (wrk.maxConcurrent !== undefined && (wrk.maxConcurrent) <= 0) {
     throw new Error('config.worker.maxConcurrent must be positive');
   }
+
+  if (wrk.delayBetweenDocuments !== undefined && typeof wrk.delayBetweenDocuments !== 'number') {
+    throw new Error('config.worker.delayBetweenDocuments must be a number');
+  }
+
+  if (wrk.delayBetweenDocuments !== undefined && (wrk.delayBetweenDocuments) < 0) {
+    throw new Error('config.worker.delayBetweenDocuments must be non-negative');
+  }
+
+  if (wrk.maxBatchTokens !== undefined && typeof wrk.maxBatchTokens !== 'number') {
+    throw new Error('config.worker.maxBatchTokens must be a number');
+  }
+
+  if (wrk.maxBatchTokens !== undefined && (wrk.maxBatchTokens) <= 0) {
+    throw new Error('config.worker.maxBatchTokens must be positive');
+  }
+
+  if (wrk.pythonMaxMemoryMB !== undefined && typeof wrk.pythonMaxMemoryMB !== 'number') {
+    throw new Error('config.worker.pythonMaxMemoryMB must be a number');
+  }
+
+  if (wrk.pythonMaxMemoryMB !== undefined && (wrk.pythonMaxMemoryMB) <= 0) {
+    throw new Error('config.worker.pythonMaxMemoryMB must be positive');
+  }
+
+  if (wrk.memoryCheckIntervalMs !== undefined && typeof wrk.memoryCheckIntervalMs !== 'number') {
+    throw new Error('config.worker.memoryCheckIntervalMs must be a number');
+  }
+
+  if (wrk.memoryCheckIntervalMs !== undefined && (wrk.memoryCheckIntervalMs) <= 0) {
+    throw new Error('config.worker.memoryCheckIntervalMs must be positive');
+  }
 }
 
 function validateWatcherConfig(watcher: unknown): void {

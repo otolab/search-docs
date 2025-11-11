@@ -14,7 +14,7 @@ import gc
 import time
 import threading
 import copy
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Tuple
 from datetime import datetime, timedelta
 import lancedb
 import pyarrow as pa
@@ -22,6 +22,13 @@ import pandas as pd
 import numpy as np
 import duckdb
 from pathlib import Path
+
+# PyTorch（MPSキャッシュクリア用）
+try:
+    import torch
+    TORCH_AVAILABLE = torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False
+except ImportError:
+    TORCH_AVAILABLE = False
 
 # パフォーマンス監視用
 try:
@@ -57,6 +64,10 @@ from schemas import (
     validate_section,
     validate_index_request
 )
+# ユーティリティをインポート
+from utils.token_utils import estimate_tokens, estimate_total_tokens
+from utils.batch_utils import create_token_aware_batches, get_batch_stats
+from utils.section_filter import filter_sections_by_token_limit, get_texts_to_encode
 
 
 class PerformanceLogger:
@@ -161,11 +172,19 @@ class SearchDocsWorker:
         Path(db_path).mkdir(parents=True, exist_ok=True)
         self.db = lancedb.connect(db_path)
 
+        # MPS情報をログ出力
+        if TORCH_AVAILABLE:
+            sys.stderr.write("[MemoryOptimization] PyTorch MPS available, will clear cache after batches\n")
+            sys.stderr.flush()
+
         # モデルを初期化（まだロードしない）
         model_name = self._get_model_name()
         self.embedding_model = create_embedding_model(model_name)
         self.vector_dimension = self.embedding_model.dimension if hasattr(self.embedding_model, 'dimension') else 256
         self.init_tables()
+
+        # 設定値を取得
+        self.max_batch_tokens = self._get_max_batch_tokens()
 
         # テーブルハンドルのキャッシュ（メモリリーク対策）
         # 参考: https://lancedb.github.io/lancedb/python/python/
@@ -205,6 +224,17 @@ class SearchDocsWorker:
 
         sys.stderr.flush()
 
+    def clear_gpu_cache(self):
+        """GPU（MPS）キャッシュをクリア"""
+        if TORCH_AVAILABLE:
+            try:
+                torch.mps.empty_cache()
+                # sys.stderr.write("[MemoryOptimization] MPS cache cleared\n")
+                # sys.stderr.flush()
+            except Exception as e:
+                sys.stderr.write(f"[MemoryOptimization] Warning: Failed to clear MPS cache: {e}\n")
+                sys.stderr.flush()
+
     def _get_model_name(self):
         """モデル名を取得
 
@@ -236,6 +266,22 @@ class SearchDocsWorker:
                 return arg.split('=', 1)[1]
         # デフォルト値
         return "./.search-docs/index"
+
+    @staticmethod
+    def _get_max_batch_tokens() -> int:
+        """コマンドライン引数からmax_batch_tokensを取得
+
+        Returns:
+            max_batch_tokens整数
+        """
+        for arg in sys.argv[1:]:
+            if arg.startswith('--max-batch-tokens='):
+                try:
+                    return int(arg.split('=', 1)[1])
+                except ValueError:
+                    pass
+        # デフォルト値
+        return 4000
 
     def init_tables(self):
         """必要なテーブルを初期化"""
@@ -581,6 +627,69 @@ class SearchDocsWorker:
             "dimension": self.vector_dimension
         }
 
+    def _create_token_aware_batches(
+        self,
+        texts: List[str],
+        indices: List[int]
+    ) -> Tuple[List[Tuple[List[str], List[int]]], List[int]]:
+        """
+        トークン量を考慮してバッチを分割し、大きすぎるセクションをスキップ
+
+        Args:
+            texts: エンコードするテキストのリスト
+            indices: 各テキストに対応するインデックス
+
+        Returns:
+            (batches, skipped_indices)のタプル
+            - batches: (texts, indices)のタプルのリスト
+            - skipped_indices: スキップされたセクションのインデックスリスト
+        """
+        max_tokens = self.max_batch_tokens
+
+        # デバッグログ: 関数が呼ばれたことを確認
+        estimated_total_tokens = estimate_total_tokens(texts)
+        sys.stderr.write(f"[TokenBatch] Processing {len(texts)} texts, ~{estimated_total_tokens} tokens (max: {max_tokens})\n")
+        sys.stderr.flush()
+
+        # 大きすぎるセクションをフィルタリング
+        filtered_texts = []
+        filtered_indices = []
+        skipped_indices = []
+
+        for text, idx in zip(texts, indices):
+            token_count = estimate_tokens(text)
+            if token_count > max_tokens:
+                skipped_indices.append(idx)
+                sys.stderr.write(f"[TokenBatch] SKIP: Section too large (~{token_count} tokens > {max_tokens}), index={idx}\n")
+                sys.stderr.flush()
+            else:
+                filtered_texts.append(text)
+                filtered_indices.append(idx)
+
+        # スキップした件数を報告
+        if skipped_indices:
+            sys.stderr.write(f"[TokenBatch] Skipped {len(skipped_indices)} sections (too large)\n")
+            sys.stderr.flush()
+
+        # バッチ分割（スキップ後のテキストのみ）
+        if not filtered_texts:
+            return ([], skipped_indices)
+
+        batches = create_token_aware_batches(filtered_texts, filtered_indices, max_tokens)
+
+        # バッチ分割のログ出力（デバッグ用）
+        if len(batches) > 1:
+            stats = get_batch_stats(batches)
+            sys.stderr.write(f"[TokenBatch] Split into {stats['num_batches']} batches (total texts: {stats['total_texts']})\n")
+            for batch_info in stats['batches_info']:
+                sys.stderr.write(
+                    f"[TokenBatch]   Batch {batch_info['batch_num']}: "
+                    f"{batch_info['num_texts']} texts, ~{batch_info['estimated_tokens']} tokens\n"
+                )
+            sys.stderr.flush()
+
+        return (batches, skipped_indices)
+
     def _normalize_section_data(self, section: Dict[str, Any]) -> None:
         """セクションデータの正規化（in-place）"""
         # タイムスタンプをPandas Timestampに変換
@@ -611,23 +720,41 @@ class SearchDocsWorker:
         if not self.embedding_model.available:
             self.embedding_model.initialize()
 
-        # ベクトル化が必要なセクションを収集
-        texts_to_encode = []
-        indices_to_encode = []
-
-        for i, section in enumerate(sections):
+        # セクションをバリデーション
+        for section in sections:
             validate_section(section)
 
-            if "vector" not in section or not section["vector"]:
-                text = f"{section['heading']}\n{section['content']}"
-                texts_to_encode.append(text)
-                indices_to_encode.append(i)
+        # 有効なセクションからベクトル化が必要なテキストを抽出
+        texts_to_encode, indices_to_encode = get_texts_to_encode(sections)
 
-        # バッチでベクトル化
+        # トークン量ベースのバッチ分割でベクトル化（スキップ処理も含む）
         if texts_to_encode:
-            vectors = self.embedding_model.encode(texts_to_encode, self.vector_dimension)
-            for idx, vector in zip(indices_to_encode, vectors):
-                sections[idx]["vector"] = vector
+            # トークン数でバッチを分割し、大きすぎるセクションはスキップ
+            batches, skipped_indices = self._create_token_aware_batches(texts_to_encode, indices_to_encode)
+
+            # バッチ処理でベクトル化
+            for batch_texts, batch_indices in batches:
+                vectors = self.embedding_model.encode(batch_texts, self.vector_dimension)
+                for idx, vector in zip(batch_indices, vectors):
+                    sections[idx]["vector"] = vector
+
+                # バッチごとにGCとMPSキャッシュクリア（大きなベクトルオブジェクトとGPUメモリを即座に解放）
+                gc.collect()
+                self.clear_gpu_cache()
+
+            # スキップされたセクションの処理
+            if skipped_indices:
+                for idx in skipped_indices:
+                    section = sections[idx]
+                    heading = section.get("heading", "(no heading)")
+                    token_count = section.get("token_count", 0)
+                    sys.stderr.write(
+                        f"[SKIP] Section skipped (too large): '{heading}' "
+                        f"({token_count} tokens > {self.max_batch_tokens})\n"
+                    )
+                    # 空のベクトルを設定（検索には使われないが、スキーマの整合性を保つ）
+                    sections[idx]["vector"] = np.zeros(self.vector_dimension, dtype=np.float32)
+                sys.stderr.flush()
 
         # データ正規化
         for section in sections:
@@ -643,10 +770,12 @@ class SearchDocsWorker:
         # スレッド情報（table.add後）
         self.log_thread_info("AFTER table.add()")
 
-        # メモリリーク対策: GCを明示的に実行
-        # LanceDB内部の一時オブジェクトを解放
+        # メモリリーク対策: GCとMPSキャッシュクリアを明示的に実行（1ファイルごと）
+        # LanceDB内部の一時オブジェクトとGPUメモリを解放
+        # 世代2（最古の世代）までスキャンして完全にGC
         count = len(sections)
-        gc.collect()
+        gc.collect(2)
+        self.clear_gpu_cache()
 
         # 呼び出し回数をカウント
         self._add_count += 1
@@ -657,7 +786,8 @@ class SearchDocsWorker:
                 sys.stderr.write(f"Compacting table (add_count={self._add_count})...\n")
                 sys.stderr.flush()
                 table.optimize.compact_files()
-                gc.collect()  # compact後もGC
+                gc.collect(2)  # compact後もGC（全世代）
+                self.clear_gpu_cache()  # MPSキャッシュもクリア
                 sys.stderr.write(f"Compaction completed\n")
                 sys.stderr.flush()
             except Exception as e:

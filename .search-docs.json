@@ -48,6 +48,8 @@
   "worker": {
     "enabled": true,
     "interval": 5000,
-    "maxConcurrent": 3
+    "maxConcurrent": 3,
+    "delayBetweenDocuments": 2000,
+    "maxBatchTokens": 4000
   }
 }

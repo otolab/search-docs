@@ -78,6 +78,7 @@ export class SearchDocsServer {
         splitter: this.splitter,
         interval: config.worker.interval,
         maxConcurrent: config.worker.maxConcurrent,
+        delayBetweenDocuments: config.worker.delayBetweenDocuments,
       });
     }
 

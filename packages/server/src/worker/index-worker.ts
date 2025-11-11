@@ -13,6 +13,7 @@ export interface IndexWorkerOptions {
   splitter: Splitter;
   interval?: number; // ms（デフォルト: 5000）
   maxConcurrent?: number; // 最大同時処理数（デフォルト: 3）
+  delayBetweenDocuments?: number; // ドキュメント処理後の待機時間（ms、デフォルト: 0）
 }
 
 export class IndexWorker {
@@ -21,6 +22,7 @@ export class IndexWorker {
   private splitter: Splitter;
   private interval: number;
   private maxConcurrent: number;
+  private delayBetweenDocuments: number;
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private isProcessing = false;
@@ -31,6 +33,7 @@ export class IndexWorker {
     this.splitter = options.splitter;
     this.interval = options.interval ?? 5000;
     this.maxConcurrent = options.maxConcurrent ?? 3;
+    this.delayBetweenDocuments = options.delayBetweenDocuments ?? 0;
   }
 
   /**
@@ -43,7 +46,7 @@ export class IndexWorker {
     }
 
     this.isRunning = true;
-    console.log(`[IndexWorker] Starting (interval: ${this.interval}ms, maxConcurrent: ${this.maxConcurrent})`);
+    console.log(`[IndexWorker] Starting (interval: ${this.interval}ms, maxConcurrent: ${this.maxConcurrent}, delay: ${this.delayBetweenDocuments}ms)`);
 
     // 初回は即座に実行
     this.processNextRequests().catch((error) => {
@@ -101,8 +104,13 @@ export class IndexWorker {
       console.log(`[IndexWorker] Processing ${requests.length} index requests`);
 
       // 2. 1件ずつ処理（将来的には並列化可能）
-      for (const request of requests) {
-        await this.processRequest(request);
+      for (let i = 0; i < requests.length; i++) {
+        await this.processRequest(requests[i]);
+
+        // ドキュメント処理後の待機（最後のドキュメントの後は待機しない）
+        if (this.delayBetweenDocuments > 0 && i < requests.length - 1) {
+          await this.sleep(this.delayBetweenDocuments);
+        }
       }
     } finally {
       this.isProcessing = false;
@@ -257,6 +265,13 @@ export class IndexWorker {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * 待機処理
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

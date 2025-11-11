@@ -273,6 +273,10 @@ export class ConfigLoader {
         enabled: config.worker?.enabled ?? DEFAULT_CONFIG.worker.enabled,
         interval: config.worker?.interval ?? DEFAULT_CONFIG.worker.interval,
         maxConcurrent: config.worker?.maxConcurrent ?? DEFAULT_CONFIG.worker.maxConcurrent,
+        delayBetweenDocuments: config.worker?.delayBetweenDocuments ?? DEFAULT_CONFIG.worker.delayBetweenDocuments,
+        maxBatchTokens: config.worker?.maxBatchTokens ?? DEFAULT_CONFIG.worker.maxBatchTokens,
+        pythonMaxMemoryMB: config.worker?.pythonMaxMemoryMB ?? DEFAULT_CONFIG.worker.pythonMaxMemoryMB,
+        memoryCheckIntervalMs: config.worker?.memoryCheckIntervalMs ?? DEFAULT_CONFIG.worker.memoryCheckIntervalMs,
       },
       watcher: {
         enabled: config.watcher?.enabled ?? DEFAULT_CONFIG.watcher.enabled,

@@ -3,6 +3,11 @@
   "include": [],
   "references": [
     { "path": "packages/types" },
-    { "path": "packages/storage" }
+    { "path": "packages/storage" },
+    { "path": "packages/db-engine" },
+    { "path": "packages/server" },
+    { "path": "packages/client" },
+    { "path": "packages/cli" },
+    { "path": "packages/mcp-server" }
   ]
 }

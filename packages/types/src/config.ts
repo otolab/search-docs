@@ -77,6 +77,10 @@ export interface WorkerConfig {
   interval: number;
   /** 最大並行処理数 */
   maxConcurrent: number;
+  /** ドキュメント処理後の待機時間（ミリ秒）。CPU・メモリ負荷を下げるために使用 */
+  delayBetweenDocuments?: number;
+  /** バッチ処理の最大トークン数。GPUメモリピークを制御（デフォルト: 4000） */
+  maxBatchTokens?: number;
   /** Pythonワーカーの最大メモリ使用量（MB）。超過時に自動再起動 */
   pythonMaxMemoryMB?: number;
   /** メモリ監視の間隔（ミリ秒） */
@@ -130,8 +134,10 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     enabled: true,
     interval: 5000,
     maxConcurrent: 3,
+    delayBetweenDocuments: 0, // 待機なし（デフォルト）
+    maxBatchTokens: 4000, // バッチ処理の最大トークン数（GPUメモリピーク制御）
     pythonMaxMemoryMB: 8192, // 8GB
-    memoryCheckIntervalMs: 30000, // 30秒
+    memoryCheckIntervalMs: 10000, // 10秒
   },
   watcher: {
     enabled: true,

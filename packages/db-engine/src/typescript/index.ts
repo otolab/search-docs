@@ -56,6 +56,12 @@ export interface DBEngineOptions {
   dbPath?: string;
 
   /**
+   * バッチ処理の最大トークン数。GPUメモリピークを制御
+   * @default 4000
+   */
+  maxBatchTokens?: number;
+
+  /**
    * Pythonワーカーの最大メモリ使用量（MB）
    * 超過時に自動再起動
    */
@@ -157,7 +163,7 @@ export class DBEngine extends EventEmitter {
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Pick<Required<DBEngineOptions>, 'embeddingModel' | 'dbPath'>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingModel' | 'dbPath' | 'maxBatchTokens'>;
   private performanceCsvPath: string | null = null;
   private performanceCsvStream: fs.WriteStream | null = null;
   private memoryCheckInterval: NodeJS.Timeout | null = null;
@@ -174,6 +180,7 @@ export class DBEngine extends EventEmitter {
     this.options = {
       embeddingModel: options.embeddingModel || 'cl-nagoya/ruri-v3-30m',
       dbPath: options.dbPath || './.search-docs/index',
+      maxBatchTokens: options.maxBatchTokens ?? 4000,
     };
     this.pythonMaxMemoryMB = options.pythonMaxMemoryMB ?? null;
     this.memoryCheckIntervalMs = options.memoryCheckIntervalMs ?? 30000;
@@ -235,6 +242,11 @@ export class DBEngine extends EventEmitter {
     // モデル選択オプションを追加
     if (this.options.embeddingModel) {
       pythonArgs.push(`--model=${this.options.embeddingModel}`);
+    }
+
+    // maxBatchTokensオプションを追加
+    if (this.options.maxBatchTokens !== undefined) {
+      pythonArgs.push(`--max-batch-tokens=${this.options.maxBatchTokens}`);
     }
 
     // dbPathを絶対パスに解決して追加

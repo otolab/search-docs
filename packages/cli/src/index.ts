@@ -37,6 +37,28 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as {
   version: string;
 };
 
+// db-engineのバージョンを読み込む
+function getDbEngineVersion(): string {
+  try {
+    const dbEnginePackageJsonPath = join(__dirname, '..', 'node_modules', '@search-docs', 'db-engine', 'package.json');
+    const dbEnginePackageJson = JSON.parse(readFileSync(dbEnginePackageJsonPath, 'utf-8')) as { version: string };
+    return dbEnginePackageJson.version;
+  } catch {
+    return 'unknown';
+  }
+}
+
+// serverのバージョンを読み込む
+function getServerVersion(): string {
+  try {
+    const serverPackageJsonPath = join(__dirname, '..', 'node_modules', '@search-docs', 'server', 'package.json');
+    const serverPackageJson = JSON.parse(readFileSync(serverPackageJsonPath, 'utf-8')) as { version: string };
+    return serverPackageJson.version;
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * グローバル設定（preSubcommandフックで設定）
  */
@@ -47,7 +69,11 @@ const program = new Command();
 program
   .name('search-docs')
   .description('search-docs コマンドラインツール')
-  .version(packageJson.version)
+  .version(
+    `CLI: ${packageJson.version}\nServer: ${getServerVersion()}\nDB Engine: ${getDbEngineVersion()}`,
+    '-v, --version',
+    'バージョン情報を表示'
+  )
   .addOption(
     new Option('-c, --config <path>', '設定ファイルのパス')
       .env('SEARCH_DOCS_CONFIG')
