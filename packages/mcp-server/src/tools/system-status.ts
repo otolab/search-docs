@@ -3,15 +3,15 @@
  * システム全体の状態を取得する
  */
 
-import type { ToolRegistrationContext } from './types.js';
+import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
  * get_system_status ツールを登録
  */
-export function registerSystemStatusTool(context: ToolRegistrationContext): void {
+export function registerSystemStatusTool(context: ToolRegistrationContext): RegisteredTool {
   const { server, systemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'get_system_status',
     {
       description:

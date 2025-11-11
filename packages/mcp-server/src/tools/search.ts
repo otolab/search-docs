@@ -6,15 +6,15 @@
 import { z } from 'zod';
 import { getStateErrorMessage } from '../state.js';
 import { getDepthLabel, getPreviewContent } from '../utils.js';
-import type { ToolRegistrationContext } from './types.js';
+import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
  * search ツールを登録
  */
-export function registerSearchTool(context: ToolRegistrationContext): void {
+export function registerSearchTool(context: ToolRegistrationContext): RegisteredTool {
   const { server, systemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'search',
     {
       description: '文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。検索結果には行番号(startLine-endLine)とセクションIDが含まれるため、Readツールで該当箇所を直接参照したり、get_documentでセクション全体を取得できます。',

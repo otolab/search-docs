@@ -7,15 +7,15 @@ import { z } from 'zod';
 import { startServer } from '@search-docs/cli/commands/server/start';
 import { stopServer } from '@search-docs/cli/commands/server/stop';
 import { getStateErrorMessage } from '../state.js';
-import type { ToolRegistrationContext } from './types.js';
+import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
  * server_start ツールを登録
  */
-export function registerServerStartTool(context: ToolRegistrationContext): void {
+export function registerServerStartTool(context: ToolRegistrationContext): RegisteredTool {
   const { server, systemState, refreshSystemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'server_start',
     {
       description:
@@ -89,10 +89,10 @@ export function registerServerStartTool(context: ToolRegistrationContext): void 
 /**
  * server_stop ツールを登録
  */
-export function registerServerStopTool(context: ToolRegistrationContext): void {
+export function registerServerStopTool(context: ToolRegistrationContext): RegisteredTool {
   const { server, systemState, refreshSystemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'server_stop',
     {
       description: 'search-docsサーバを停止します。起動中のサーバを安全に終了します。',

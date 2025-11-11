@@ -11,7 +11,7 @@ import { createRequire } from 'module';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
-import { detectSystemState } from './state.js';
+import { detectSystemState, type SystemState } from './state.js';
 import { ServerManager } from './server-manager.js';
 import {
   registerInitTool,
@@ -21,6 +21,7 @@ import {
   registerSearchTool,
   registerGetDocumentTool,
   registerIndexStatusTool,
+  type RegisteredTool,
 } from './tools/index.js';
 
 // package.jsonからバージョンを読み込む
@@ -80,6 +81,64 @@ function parseArgs(): CLIOptions {
   return {
     projectDir: options.projectDir ? path.resolve(options.projectDir) : undefined,
   };
+}
+
+/**
+ * ツールハンドル
+ */
+interface ToolHandles {
+  init: RegisteredTool;
+  serverStart: RegisteredTool;
+  serverStop: RegisteredTool;
+  systemStatus: RegisteredTool;
+  search: RegisteredTool;
+  getDocument: RegisteredTool;
+  indexStatus: RegisteredTool;
+}
+
+/**
+ * ツールの有効/無効を更新
+ */
+function updateToolAvailability(state: SystemState, handles: ToolHandles): void {
+  debugLog(`Updating tool availability for state: ${state}`);
+
+  switch (state) {
+    case 'NOT_CONFIGURED':
+      // 未設定状態: init, get_system_status のみ
+      handles.init.enable();
+      handles.systemStatus.enable();
+      handles.serverStart.disable();
+      handles.serverStop.disable();
+      handles.search.disable();
+      handles.getDocument.disable();
+      handles.indexStatus.disable();
+      debugLog('Tools enabled: init, systemStatus');
+      break;
+
+    case 'CONFIGURED_SERVER_DOWN':
+      // 設定済み・サーバ停止状態: init, server_start, server_stop, get_system_status
+      handles.init.enable();
+      handles.serverStart.enable();
+      handles.serverStop.enable();
+      handles.systemStatus.enable();
+      handles.search.disable();
+      handles.getDocument.disable();
+      handles.indexStatus.disable();
+      debugLog('Tools enabled: init, serverStart, serverStop, systemStatus');
+      break;
+
+    case 'RUNNING':
+      // 稼働中: 全ツール
+      handles.init.enable();
+      handles.serverStart.enable();
+      handles.serverStop.enable();
+      handles.systemStatus.enable();
+      handles.search.enable();
+      handles.getDocument.enable();
+      handles.indexStatus.enable();
+      debugLog('All tools enabled');
+      break;
+  }
 }
 
 /**
@@ -156,47 +215,39 @@ async function main() {
     }
   );
 
+  // ツールハンドルを保持する変数
+  let toolHandles: ToolHandles | null = null;
+
   // システム状態を再検出する関数
   const refreshSystemState = async () => {
     const newState = await detectSystemState(cwd);
     // systemStateオブジェクトのプロパティを更新
     Object.assign(systemState, newState);
     debugLog(`System state refreshed: ${systemState.state}`);
+
+    // ツールの有効/無効を更新
+    if (toolHandles) {
+      updateToolAvailability(systemState.state, toolHandles);
+    }
   };
 
   // ツール登録コンテキスト
   const context = { server, systemState, refreshSystemState };
 
-  // 状態に応じてツールを登録
-  switch (systemState.state) {
-    case 'NOT_CONFIGURED':
-      // 未設定状態: init, get_system_status のみ
-      debugLog('Registering tools for NOT_CONFIGURED state');
-      registerInitTool(context);
-      registerSystemStatusTool(context);
-      break;
+  // 全ツールを登録
+  debugLog('Registering all tools...');
+  toolHandles = {
+    init: registerInitTool(context),
+    serverStart: registerServerStartTool(context),
+    serverStop: registerServerStopTool(context),
+    systemStatus: registerSystemStatusTool(context),
+    search: registerSearchTool(context),
+    getDocument: registerGetDocumentTool(context),
+    indexStatus: registerIndexStatusTool(context),
+  };
 
-    case 'CONFIGURED_SERVER_DOWN':
-      // 設定済み・サーバ停止状態: init, server_start, server_stop, get_system_status
-      debugLog('Registering tools for CONFIGURED_SERVER_DOWN state');
-      registerInitTool(context);
-      registerServerStartTool(context);
-      registerServerStopTool(context);
-      registerSystemStatusTool(context);
-      break;
-
-    case 'RUNNING':
-      // 稼働中: 全ツール
-      debugLog('Registering all tools for RUNNING state');
-      registerInitTool(context);
-      registerServerStartTool(context);
-      registerServerStopTool(context);
-      registerSystemStatusTool(context);
-      registerSearchTool(context);
-      registerGetDocumentTool(context);
-      registerIndexStatusTool(context);
-      break;
-  }
+  // 初期状態に応じてツールの有効/無効を設定
+  updateToolAvailability(systemState.state, toolHandles);
 
   // サーバの起動
   const transport = new StdioServerTransport();

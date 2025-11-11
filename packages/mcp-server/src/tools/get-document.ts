@@ -6,15 +6,15 @@
 import { z } from 'zod';
 import { getStateErrorMessage } from '../state.js';
 import { getDepthLabel } from '../utils.js';
-import type { ToolRegistrationContext } from './types.js';
+import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
  * get_document ツールを登録
  */
-export function registerGetDocumentTool(context: ToolRegistrationContext): void {
+export function registerGetDocumentTool(context: ToolRegistrationContext): RegisteredTool {
   const { server, systemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'get_document',
     {
       description: '文書の内容を取得します。パス指定で文書全体、またはセクションIDで特定セクションを取得できます。pathとsectionIdのどちらか一方は必須です。',

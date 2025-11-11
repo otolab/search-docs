@@ -12,4 +12,4 @@ export { registerInitTool } from './init.js';
 export { registerServerStartTool, registerServerStopTool } from './server-control.js';
 export { registerSystemStatusTool } from './system-status.js';
 
-export type { ToolRegistrationContext } from './types.js';
+export type { ToolRegistrationContext, RegisteredTool } from './types.js';

@@ -8,10 +8,60 @@ Claude Codeから直接search-docsを利用するためのMCP Serverです。
 
 ## 提供機能
 
+### 動的ツール登録
+
+v1.1.6以降、MCP Serverはシステム状態に応じて利用可能なツールを動的に変更します。
+
+**システム状態とツールの対応**:
+
+| 状態 | init | server_start | server_stop | get_system_status | search | get_document | index_status |
+|------|------|--------------|-------------|-------------------|--------|--------------|--------------|
+| NOT_CONFIGURED（未設定） | ✓ | - | - | ✓ | - | - | - |
+| CONFIGURED_SERVER_DOWN（設定済み・サーバ停止） | ✓ | ✓ | ✓ | ✓ | - | - | - |
+| RUNNING（稼働中） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+**状態遷移時の自動更新**:
+- `init`実行後、自動的にツールリストが更新され、`server_start`などが利用可能になります
+- `server_start`実行後、検索系ツール（`search`、`get_document`、`index_status`）が利用可能になります
+- `server_stop`実行後、検索系ツールは利用できなくなります
+
 ### ツール一覧
 
-#### 1. `search`
+#### 1. `init`
+設定ファイルを初期化します。
+
+**利用可能条件**: 常時
+
+**パラメータ**:
+- `port` (number, オプション): サーバポート番号
+- `force` (boolean, オプション): 既存設定を上書き
+
+#### 2. `server_start`
+search-docsサーバを起動します。
+
+**利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
+
+**パラメータ**:
+- `foreground` (boolean, オプション): フォアグラウンド起動
+
+#### 3. `server_stop`
+search-docsサーバを停止します。
+
+**利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
+
+**パラメータ**: なし
+
+#### 4. `get_system_status`
+システムの状態を取得します。
+
+**利用可能条件**: 常時
+
+**パラメータ**: なし
+
+#### 5. `search`
 文書を検索します。
+
+**利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**:
 - `query` (string, 必須): 検索クエリ
@@ -26,8 +76,10 @@ depth: 1
 limit: 5
 ```
 
-#### 2. `get_document`
+#### 6. `get_document`
 文書の内容を取得します。
+
+**利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**:
 - `path` (string, 必須): 文書パス
@@ -37,8 +89,10 @@ limit: 5
 path: "docs/architecture.md"
 ```
 
-#### 3. `index_status`
+#### 7. `index_status`
 インデックスの状態を確認します。
+
+**利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**: なし
 

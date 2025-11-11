@@ -5,15 +5,15 @@
 
 import { z } from 'zod';
 import { initConfig } from '@search-docs/cli/commands/config/init';
-import type { ToolRegistrationContext } from './types.js';
+import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
  * init ツールを登録
  */
-export function registerInitTool(context: ToolRegistrationContext): void {
-  const { server, systemState } = context;
+export function registerInitTool(context: ToolRegistrationContext): RegisteredTool {
+  const { server, systemState, refreshSystemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'init',
     {
       description:
@@ -39,6 +39,9 @@ export function registerInitTool(context: ToolRegistrationContext): void {
           force,
           cwd: systemState.projectRoot,
         });
+
+        // システム状態を再検出してツールリストを更新
+        await refreshSystemState();
 
         let resultText = '✅ 設定ファイルの初期化が完了しました。\n\n';
 

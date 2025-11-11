@@ -4,15 +4,15 @@
  */
 
 import { getStateErrorMessage } from '../state.js';
-import type { ToolRegistrationContext } from './types.js';
+import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
  * index_status ツールを登録
  */
-export function registerIndexStatusTool(context: ToolRegistrationContext): void {
+export function registerIndexStatusTool(context: ToolRegistrationContext): RegisteredTool {
   const { server, systemState } = context;
 
-  server.registerTool(
+  return server.registerTool(
     'index_status',
     {
       description: 'インデックスの状態を確認します。総文書数、セクション数、Dirtyセクション数などを表示します。',

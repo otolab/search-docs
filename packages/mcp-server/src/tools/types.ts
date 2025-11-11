@@ -6,6 +6,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SystemStateInfo } from '../state.js';
 
 /**
+ * 登録されたツールのハンドル
+ * registerTool()の戻り値の型
+ */
+export type RegisteredTool = ReturnType<McpServer['registerTool']>;
+
+/**
  * ツール登録コンテキスト
  */
 export interface ToolRegistrationContext {
