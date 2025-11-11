@@ -66,14 +66,10 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
           resultText += 'バックグラウンドモードで起動しました。\n\n';
         }
 
-        resultText += '📌 重要: 検索系ツール（search, get_document, index_status）が利用可能になりました。\n';
-        resultText += '   Claude Codeを再接続すると表示されます。\n';
-        resultText += '   （Claude Codeは現時点でMCP通知に未対応のため、reconnectが必要です）\n\n';
         resultText += '次のステップ:\n';
-        resultText += '  1. **Claude Codeを再接続してツールリストを更新**\n';
-        resultText += '  2. システム状態を確認: get_system_status\n';
-        resultText += '  3. インデックス状態を確認: index_status\n';
-        resultText += '  4. 文書を検索: search\n';
+        resultText += '  1. システム状態を確認: get_system_status\n';
+        resultText += '  2. インデックス状態を確認: index_status\n';
+        resultText += '  3. 文書を検索: search\n';
 
         return {
           content: [
@@ -134,9 +130,6 @@ export function registerServerStopTool(context: ToolRegistrationContext): Regist
         await refreshSystemState();
 
         let resultText = '✅ サーバを停止しました。\n\n';
-        resultText += '📌 注意: 検索系ツール（search, get_document, index_status）が利用不可になりました。\n';
-        resultText += '   Claude Codeを再接続すると、ツールリストが更新されます。\n';
-        resultText += '   （Claude Codeは現時点でMCP通知に未対応のため、reconnectが必要です）\n\n';
         resultText += '次のステップ:\n';
         resultText += '  - サーバを再起動: server_start\n';
 
