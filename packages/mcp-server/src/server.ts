@@ -98,46 +98,37 @@ interface ToolHandles {
 
 /**
  * ツールの有効/無効を更新
+ *
+ * シンプルな2状態モデル:
+ * - NOT_CONFIGURED: init, get_system_status のみ
+ * - CONFIGURED (SERVER_DOWN/RUNNING): 全ツール有効
+ *
+ * 各ツール内で状態チェックを行い、適切なエラーメッセージを返す
  */
 function updateToolAvailability(state: SystemState, handles: ToolHandles): void {
   debugLog(`Updating tool availability for state: ${state}`);
 
-  switch (state) {
-    case 'NOT_CONFIGURED':
-      // 未設定状態: init, get_system_status のみ
-      handles.init.enable();
-      handles.systemStatus.enable();
-      handles.serverStart.disable();
-      handles.serverStop.disable();
-      handles.search.disable();
-      handles.getDocument.disable();
-      handles.indexStatus.disable();
-      debugLog('Tools enabled: init, systemStatus');
-      break;
-
-    case 'CONFIGURED_SERVER_DOWN':
-      // 設定済み・サーバ停止状態: init, server_start, server_stop, get_system_status
-      handles.init.enable();
-      handles.serverStart.enable();
-      handles.serverStop.enable();
-      handles.systemStatus.enable();
-      handles.search.disable();
-      handles.getDocument.disable();
-      handles.indexStatus.disable();
-      debugLog('Tools enabled: init, serverStart, serverStop, systemStatus');
-      break;
-
-    case 'RUNNING':
-      // 稼働中: 全ツール
-      handles.init.enable();
-      handles.serverStart.enable();
-      handles.serverStop.enable();
-      handles.systemStatus.enable();
-      handles.search.enable();
-      handles.getDocument.enable();
-      handles.indexStatus.enable();
-      debugLog('All tools enabled');
-      break;
+  if (state === 'NOT_CONFIGURED') {
+    // 未設定状態: init, get_system_status のみ
+    handles.init.enable();
+    handles.systemStatus.enable();
+    handles.serverStart.disable();
+    handles.serverStop.disable();
+    handles.search.disable();
+    handles.getDocument.disable();
+    handles.indexStatus.disable();
+    debugLog('Tools enabled: init, systemStatus');
+  } else {
+    // 設定済み（サーバ起動状態に関わらず全ツール有効）
+    // 各ツール内で状態チェックを行う
+    handles.init.enable();
+    handles.serverStart.enable();
+    handles.serverStop.enable();
+    handles.systemStatus.enable();
+    handles.search.enable();
+    handles.getDocument.enable();
+    handles.indexStatus.enable();
+    debugLog('All tools enabled (configured state)');
   }
 }
 

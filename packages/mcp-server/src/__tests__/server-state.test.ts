@@ -63,7 +63,7 @@ describe('MCP Server 状態確認テスト', () => {
   });
 
   describe('CONFIGURED_SERVER_DOWN状態', () => {
-    test('利用可能なツールはserver_start, server_stopなどが追加', async () => {
+    test('全ツールが利用可能', async () => {
       env = await setupTestEnvironment({
         prefix: 'state-configured-down',
         createConfig: true,
@@ -74,16 +74,14 @@ describe('MCP Server 状態確認テスト', () => {
       const response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
       const toolNames = response.tools.map((t) => t.name);
 
-      // CONFIGURED_SERVER_DOWN状態では server_start, server_stop も利用可能
+      // CONFIGURED状態では全ツールが利用可能
       expect(toolNames).toContain('init');
       expect(toolNames).toContain('server_start');
       expect(toolNames).toContain('server_stop');
       expect(toolNames).toContain('get_system_status');
-
-      // 検索系ツールは利用不可
-      expect(toolNames).not.toContain('search');
-      expect(toolNames).not.toContain('get_document');
-      expect(toolNames).not.toContain('index_status');
+      expect(toolNames).toContain('search');
+      expect(toolNames).toContain('get_document');
+      expect(toolNames).toContain('index_status');
     });
 
     test('get_system_statusで設定済み・サーバ停止中状態を確認', async () => {

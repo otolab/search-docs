@@ -46,99 +46,36 @@ describe('動的ツール更新テスト', () => {
     response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
     toolNames = response.tools.map((t) => t.name);
 
-    // init実行後: server_start, server_stop が追加される
+    // init実行後: 全ツールが利用可能になる
     expect(toolNames).toContain('init');
     expect(toolNames).toContain('get_system_status');
     expect(toolNames).toContain('server_start');
     expect(toolNames).toContain('server_stop');
-
-    // 検索系ツールはまだ利用不可
-    expect(toolNames).not.toContain('search');
-    expect(toolNames).not.toContain('get_document');
-    expect(toolNames).not.toContain('index_status');
+    expect(toolNames).toContain('search');
+    expect(toolNames).toContain('get_document');
+    expect(toolNames).toContain('index_status');
   });
 
-  test(
-    'server_start実行後に検索系ツールが利用可能になる',
-    async () => {
-      // CONFIGURED_SERVER_DOWN状態で起動
-      env = await setupTestEnvironment({
-        prefix: 'dynamic-start',
-        createConfig: true,
-        port: 54333,
-        createIndexDir: false,
-      });
+  test('CONFIGURED状態では全ツールが利用可能', async () => {
+    // CONFIGURED_SERVER_DOWN状態で起動
+    env = await setupTestEnvironment({
+      prefix: 'dynamic-configured',
+      createConfig: true,
+      port: 54333,
+      createIndexDir: false,
+    });
 
-      // 初期状態: 検索系ツールは利用不可
-      let response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
-      let toolNames = response.tools.map((t) => t.name);
+    // 初期状態: 設定済みなので全ツール利用可能
+    let response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
+    let toolNames = response.tools.map((t) => t.name);
 
-      expect(toolNames).toContain('server_start');
-      expect(toolNames).not.toContain('search');
-      expect(toolNames).not.toContain('get_document');
-      expect(toolNames).not.toContain('index_status');
-
-      // server_start実行
-      const startResult = await env.tester.callTool('server_start', {});
-      expect(startResult.success).toBe(true);
-
-      // サーバ起動完了を待機
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // tools/listを再取得
-      response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
-      toolNames = response.tools.map((t) => t.name);
-
-      // server_start実行後: 検索系ツールが追加される
-      expect(toolNames).toContain('search');
-      expect(toolNames).toContain('get_document');
-      expect(toolNames).toContain('index_status');
-    },
-    30000
-  );
-
-  test(
-    'server_stop実行後に検索系ツールが利用不可になる',
-    async () => {
-      // RUNNING状態で起動（auto-start）
-      env = await setupTestEnvironment({
-        prefix: 'dynamic-stop',
-        createConfig: true,
-        port: 54332,
-        createIndexDir: true,
-      });
-
-      // auto-start完了を待機
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // 初期状態: 全ツール利用可能
-      let response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
-      let toolNames = response.tools.map((t) => t.name);
-
-      expect(toolNames).toContain('search');
-      expect(toolNames).toContain('get_document');
-      expect(toolNames).toContain('index_status');
-
-      // server_stop実行
-      const stopResult = await env.tester.callTool('server_stop', {});
-      expect(stopResult.success).toBe(true);
-
-      // サーバ停止完了を待機
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // tools/listを再取得
-      response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
-      toolNames = response.tools.map((t) => t.name);
-
-      // server_stop実行後: 検索系ツールが削除される
-      expect(toolNames).not.toContain('search');
-      expect(toolNames).not.toContain('get_document');
-      expect(toolNames).not.toContain('index_status');
-
-      // サーバ制御ツールは残る
-      expect(toolNames).toContain('server_start');
-      expect(toolNames).toContain('server_stop');
-    },
-    40000
-  );
+    // 全ツールが利用可能
+    expect(toolNames).toContain('init');
+    expect(toolNames).toContain('server_start');
+    expect(toolNames).toContain('server_stop');
+    expect(toolNames).toContain('get_system_status');
+    expect(toolNames).toContain('search');
+    expect(toolNames).toContain('get_document');
+    expect(toolNames).toContain('index_status');
+  });
 });
