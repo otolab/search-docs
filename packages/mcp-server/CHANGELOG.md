@@ -1,5 +1,18 @@
 # @search-docs/mcp-server
 
+## 1.2.0
+
+### Minor Changes
+
+- MCP 動的ツール登録の実装
+
+  init 実行後に server_start などのツールが利用可能にならない問題を解決。システム状態に応じてツールの有効/無効を自動的に切り替えるよう実装。
+
+  - MCP SDK の動的ツール管理機能を活用（.enable()/.disable()）
+  - init 実行後、自動的にツールリストが更新される
+  - システム状態とツールの対応を明確化
+  - README.md に動的ツール登録の詳細説明を追加
+
 ## 1.1.5
 
 ### Patch Changes
