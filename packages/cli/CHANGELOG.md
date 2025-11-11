@@ -1,5 +1,21 @@
 # @search-docs/cli
 
+## 1.0.27
+
+### Patch Changes
+
+- GPU メモリ最適化とバッチサイズ制御の改善
+
+  - maxTokensPerText 削除、maxBatchTokens に統一して GPU メモリピークを確実に制御
+  - バッチサイズを超えるセクションはベクトル化をスキップ
+  - PyTorch MPS キャッシュクリア機能を追加
+  - バッチ処理ごとにメモリを積極的に解放
+
+- Updated dependencies
+  - @search-docs/types@1.2.0
+  - @search-docs/server@1.2.5
+  - @search-docs/client@1.0.14
+
 ## 1.0.26
 
 ### Patch Changes

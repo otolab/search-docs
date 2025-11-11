@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/mcp-server",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "MCP Server for search-docs - Claude Code integration",
   "type": "module",
   "main": "dist/server.js",

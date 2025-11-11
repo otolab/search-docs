@@ -1,5 +1,21 @@
 # @search-docs/db-engine
 
+## 1.3.0
+
+### Minor Changes
+
+- GPU メモリ最適化とバッチサイズ制御の改善
+
+  - maxTokensPerText 削除、maxBatchTokens に統一して GPU メモリピークを確実に制御
+  - バッチサイズを超えるセクションはベクトル化をスキップ
+  - PyTorch MPS キャッシュクリア機能を追加
+  - バッチ処理ごとにメモリを積極的に解放
+
+### Patch Changes
+
+- Updated dependencies
+  - @search-docs/types@1.2.0
+
 ## 1.2.2
 
 ### Patch Changes
