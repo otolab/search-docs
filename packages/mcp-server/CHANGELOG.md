@@ -1,5 +1,17 @@
 # @search-docs/mcp-server
 
+## 1.2.1
+
+### Patch Changes
+
+- Claude Code 再接続が必要な旨の案内メッセージを追加
+
+  変更内容:
+
+  - init、server_start、server_stop 実行後に Claude Code 再接続を案内
+  - Claude Code が MCP 通知に未対応のため、ツールリスト更新には再接続が必要
+  - 動的ツール更新テストのポート競合を修正
+
 ## 1.2.0
 
 ### Minor Changes
