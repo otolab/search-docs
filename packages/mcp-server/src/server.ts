@@ -26,7 +26,7 @@ import {
 
 // package.jsonからバージョンを読み込む
 const require = createRequire(import.meta.url);
-const packageJson = require('../package.json');
+const packageJson = require('../package.json') as { version: string };
 const VERSION = packageJson.version;
 
 /**
@@ -47,6 +47,7 @@ function debugLog(message: string): void {
     const debugFile = '/tmp/mcp-server-debug.log';
     const timestamp = new Date().toISOString();
     const logMessage = `[${timestamp}] [mcp-server] ${message}\n`;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     require('fs').appendFileSync(debugFile, logMessage);
   } catch {
     // Ignore file write errors

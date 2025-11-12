@@ -19,6 +19,32 @@ export function getDepthLabel(depth: number): string {
 }
 
 /**
+ * セクション番号を章節項号形式に変換
+ *
+ * @param sectionNumber - セクション番号の配列（例: [1, 2, 3, 1]）
+ * @returns 章節項号の文字列（例: "第1章2節3項1号"）
+ */
+export function formatSectionNumber(sectionNumber: number[]): string {
+  if (sectionNumber.length === 0) {
+    return '';
+  }
+
+  const units = ['章', '節', '項', '号'];
+  const parts: string[] = [];
+
+  sectionNumber.forEach((num, index) => {
+    if (index === 0) {
+      parts.push(`第${num}${units[0]}`);
+    } else {
+      const unit = units[index] || '号';
+      parts.push(`${num}${unit}`);
+    }
+  });
+
+  return parts.join('');
+}
+
+/**
  * コンテンツのプレビューを取得（行ベース）
  *
  * @param content - 元のコンテンツ

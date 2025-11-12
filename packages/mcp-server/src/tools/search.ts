@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 import { getStateErrorMessage } from '../state.js';
-import { getDepthLabel, getPreviewContent } from '../utils.js';
+import { formatSectionNumber, getPreviewContent } from '../utils.js';
 import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
@@ -17,7 +17,7 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
   return server.registerTool(
     'search',
     {
-      description: '文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。検索結果には行番号(startLine-endLine)とセクションIDが含まれるため、Readツールで該当箇所を直接参照したり、get_documentでセクション全体を取得できます。',
+      description: '文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。検索結果には行番号とセクションIDが含まれます。続きを見るにはget_document(sectionId)を使用してください。limitとpreviewLinesで表示内容を調整できます。',
       inputSchema: {
         query: z.string().describe('検索クエリ'),
         depth: z
@@ -76,37 +76,44 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
         if (response.results.length === 0) {
           resultText += '該当する結果が見つかりませんでした。';
         } else {
+          const total = response.results.length;
+
           response.results.forEach((result, index) => {
-            // ヘッダー行
+            resultText += '---\n';
+
             const heading = result.heading || '(no heading)';
-            resultText += `${index + 1}. ${result.documentPath} > ${heading}\n`;
+            const hierarchy = formatSectionNumber(result.sectionNumber);
 
-            // メタデータ（1行にまとめる）
-            const depthLabel = getDepthLabel(result.depth);
-            const sectionPath = result.sectionNumber.join('-');
-            const metaParts = [
-              `Level: ${depthLabel}`,
-              `Section: ${sectionPath}`,
-              `Line: ${result.startLine}-${result.endLine}`,
-              `Score: ${result.score.toFixed(4)}`,
-            ];
-
-            // indexStatusが'updating'または'outdated'の場合のみ表示
-            if (result.indexStatus === 'updating' || result.indexStatus === 'outdated') {
-              metaParts.push(`Status: ${result.indexStatus}`);
+            // 1行目: タイトル + 章節項号
+            if (hierarchy) {
+              resultText += `📄 「${heading}」(${hierarchy})\n`;
+            } else {
+              // depth=0の場合は章節項号なし
+              resultText += `📄 ${heading}\n`;
             }
 
-            resultText += metaParts.join(' | ') + '\n\n';
+            // 2行目: ファイルパス
+            resultText += `   ${result.documentPath}\n`;
 
-            // コンテンツ（引用として明確に）
-            resultText += '```markdown\n';
+            // 3行目: 行数、順位、ID
+            const rank = index + 1;
+            resultText += `   ${result.startLine}-${result.endLine}行目 | ${rank}位/${total}件 | id: ${result.id}\n\n`;
+
+            // コンテンツ（インデント）
             const preview = getPreviewContent(result.content, previewLines);
-            resultText += preview + '\n';
-            resultText += '```\n\n';
-
-            // セクションID（get_documentで取得するため）
-            resultText += `(セクションID: ${result.id})\n\n`;
+            const indentedContent = preview
+              .split('\n')
+              .map((line) => `   ${line}`)
+              .join('\n');
+            resultText += indentedContent + '\n';
           });
+
+          // 検索ヒント
+          resultText += '\n💡 検索のヒント:\n';
+          resultText += '   - 結果は関連性順（上位ほど関連性が高い）\n';
+          resultText += '   - 続きを見る: get_document(sectionId: "...")\n';
+          resultText += '   - 件数調整: search(..., { limit: 20 })\n';
+          resultText += '   - 表示行数: search(..., { previewLines: 10 })\n';
         }
 
         return {

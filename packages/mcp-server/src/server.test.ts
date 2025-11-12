@@ -77,6 +77,7 @@ describe('search-docs MCP Server E2E Tests', () => {
     });
 
     test('利用可能なツールの確認', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       const response = (await tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
 
       expect(response.tools).toBeDefined();
