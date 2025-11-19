@@ -32,10 +32,13 @@ search-docsは、クライアント・サーバ構成で実装されています
 
 ### コンポーネント
 
-- **Server**: プロジェクト毎に起動される文書管理・検索サーバ
-- **Client Library**: サーバと通信するTypeScriptクライアント
-- **CLI Tool**: コマンドラインインターフェイス
-- **MCP Server**: Claude Code統合用のMCPサーバ
+- **Server** (`@search-docs/server`): プロジェクト毎に起動される文書管理・検索サーバ
+- **Client Library** (`@search-docs/client`): サーバと通信するTypeScriptクライアント
+- **CLI Tool** (`@search-docs/cli`): コマンドラインインターフェイス
+- **MCP Server** (`@search-docs/mcp-server`): Claude Code統合用のMCPサーバ
+- **DB Engine** (`@search-docs/db-engine`): LanceDB操作のPythonラッパー
+- **Storage** (`@search-docs/storage`): 文書の永続化層
+- **Types** (`@search-docs/types`): 共通の型定義
 
 詳細なアーキテクチャ情報については、以下のドキュメントを参照してください：
 - [クライアント・サーバアーキテクチャ](docs/client-server-architecture.md)
@@ -65,7 +68,13 @@ pnpm build
 ### グローバルインストール（本番利用）
 
 ```bash
-npm install -g search-docs
+# グローバルインストール
+npm install -g @search-docs/cli
+
+# またはnpxで直接実行（インストール不要）
+npx @search-docs/cli config init
+npx @search-docs/cli server start
+npx @search-docs/cli search "検索クエリ"
 ```
 
 ### GPU対応（オプション）
@@ -161,14 +170,30 @@ search-docs search "検索クエリ" --limit 20
 
 ### Claude Code統合
 
-```bash
-# MCP Serverとして追加
-claude mcp add search-docs -- search-docs mcp-server --project $(pwd)
+MCP Serverとして利用する場合は、Claude Codeの設定ファイルに以下を追加します：
+
+```json
+{
+  "mcpServers": {
+    "search-docs": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/search-docs/packages/mcp-server/dist/server.js",
+        "--project-dir",
+        "${workspaceFolder}"
+      ]
+    }
+  }
+}
 ```
+
+**注意**: `/absolute/path/to/search-docs/` は実際のパスに置き換えてください。
+
+詳細は [MCP統合ガイド](docs/mcp-integration.md) を参照してください。
 
 ### 設定ファイル
 
-プロジェクトルートに `.search-docs/config.json` を配置：
+プロジェクトルートに `.search-docs.json` を配置：
 
 ```json
 {

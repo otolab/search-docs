@@ -32,11 +32,15 @@ Model Context Protocol (MCP)は、AI アシスタントが外部ツールやデ�
 
 1. **search-docsサーバが起動していること**
    ```bash
+   # グローバルインストールの場合
    search-docs server start
+
+   # またはnpxの場合
+   npx @search-docs/cli server start
    ```
 
 2. **プロジェクトに設定ファイルがあること**
-   - `.search-docs.json` または `.search-docs/config.json`
+   - `.search-docs.json` (推奨) または `search-docs.json`
 
 ### 方法1: プロジェクトスコープ設定（推奨）
 
@@ -104,12 +108,23 @@ Claude Codeのグローバル設定ファイルに追加します。
 }
 ```
 
-**注意**: グローバルインストール（`npm install -g search-docs`）が必要です。
+**注意**: グローバルインストール（`npm install -g @search-docs/mcp-server`）が必要です。
 
-### 方法3: Claude Code コマンドで追加
+または、npxを使用する場合：
 
-```bash
-claude mcp add search-docs -- search-docs mcp-server --project-dir $(pwd)
+```json
+{
+  "mcpServers": {
+    "search-docs": {
+      "command": "npx",
+      "args": [
+        "@search-docs/mcp-server",
+        "--project-dir",
+        "${workspaceFolder}"
+      ]
+    }
+  }
+}
 ```
 
 ## 利用可能なツール

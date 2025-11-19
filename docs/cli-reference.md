@@ -2,6 +2,22 @@
 
 search-docs CLIツールの完全なコマンドリファレンスです。
 
+## インストールと使用方法
+
+### グローバルインストール
+
+```bash
+npm install -g @search-docs/cli
+```
+
+### npxで直接実行（インストール不要）
+
+```bash
+npx @search-docs/cli <command>
+```
+
+**注意**: 以下のコマンド例では `search-docs` を使用していますが、npxで実行する場合は `npx @search-docs/cli` に置き換えてください。
+
 ## 目次
 
 - [グローバルオプション](#グローバルオプション)
@@ -21,10 +37,21 @@ search-docs [options] [command]
 
 ### オプション
 
-| オプション | 説明 |
-|-----------|------|
-| `-V, --version` | バージョン番号を表示 |
-| `-h, --help` | ヘルプを表示 |
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `-v, --version` | バージョン情報を表示 | - |
+| `-c, --config <path>` | 設定ファイルのパス | `.search-docs.json` |
+| `-h, --help` | ヘルプを表示 | - |
+
+**注意**: `--config`オプションはグローバルオプションのため、コマンドの前に指定します。
+
+```bash
+# 正しい使い方
+search-docs --config ./custom-config.json server start
+
+# 誤った使い方
+search-docs server start --config ./custom-config.json
+```
 
 ### 使用例
 
@@ -55,8 +82,7 @@ search-docs server start [options]
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
-| `--config <path>` | 設定ファイルのパス | `.search-docs.json` |
-| `--port <port>` | ポート番号 | `24280` |
+| `--port <port>` | ポート番号 | 設定ファイルのポート |
 | `--foreground, -f` | フォアグラウンドで起動（開発時） | `false` |
 | `--log <path>` | ログファイルのパス | なし |
 
@@ -75,8 +101,8 @@ search-docs server start --port 24281
 # ログファイルを指定して起動
 search-docs server start --log .search-docs/server.log
 
-# カスタム設定ファイルを使用
-search-docs server start --config ./custom-config.json
+# カスタム設定ファイルを使用（グローバルオプション）
+search-docs --config ./custom-config.json server start
 ```
 
 #### 動作
@@ -100,14 +126,12 @@ search-docs server start --config ./custom-config.json
 サーバを停止します。
 
 ```bash
-search-docs server stop [options]
+search-docs server stop
 ```
 
 #### オプション
 
-| オプション | 説明 | デフォルト |
-|-----------|------|-----------|
-| `--config <path>` | 設定ファイルのパス | `.search-docs.json` |
+なし（グローバルオプション`--config`は使用可能）
 
 #### 使用例
 
@@ -115,8 +139,8 @@ search-docs server stop [options]
 # サーバを停止
 search-docs server stop
 
-# カスタム設定ファイルを指定
-search-docs server stop --config ./custom-config.json
+# カスタム設定ファイルを指定（グローバルオプション）
+search-docs --config ./custom-config.json server stop
 ```
 
 #### 動作
@@ -136,20 +160,21 @@ search-docs server stop --config ./custom-config.json
 サーバの状態を確認します。
 
 ```bash
-search-docs server status [options]
+search-docs server status
 ```
 
 #### オプション
 
-| オプション | 説明 | デフォルト |
-|-----------|------|-----------|
-| `--config <path>` | 設定ファイルのパス | `.search-docs.json` |
+なし（グローバルオプション`--config`は使用可能）
 
 #### 使用例
 
 ```bash
 # サーバの状態を確認
 search-docs server status
+
+# カスタム設定ファイルを指定（グローバルオプション）
+search-docs --config ./custom-config.json server status
 ```
 
 #### 出力例
@@ -184,13 +209,21 @@ search-docs server restart [options]
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
-| `--config <path>` | 設定ファイルのパス | `.search-docs.json` |
+| `--port <port>` | ポート番号 | 設定ファイルのポート |
+| `--foreground, -f` | フォアグラウンドで起動（開発時） | `false` |
+| `--log <path>` | ログファイルのパス | なし |
 
 #### 使用例
 
 ```bash
-# サーバを再起動
+# サーバを再起動（バックグラウンド）
 search-docs server restart
+
+# フォアグラウンドで再起動
+search-docs server restart --foreground
+
+# カスタムポートで再起動
+search-docs server restart --port 24281
 ```
 
 #### 動作
@@ -201,7 +234,6 @@ search-docs server restart
 
 #### 注意事項
 
-- 常にバックグラウンドモードで起動されます
 - 設定ファイルを変更した場合は再起動が必要です
 
 ## search コマンド
@@ -223,10 +255,10 @@ search-docs search <query> [options]
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--limit <n>` | 最大結果数 | `10` |
-| `--depth <depths...>` | 深度フィルタ（複数指定可） | すべて |
+| `--depth <depth>` | 最大深度（0=文書全体のみ、1=章まで、2=節まで、3=項まで） | すべて |
 | `--format <format>` | 出力形式（text, json） | `text` |
 | `--clean-only` | Dirtyセクションを除外 | `false` |
-| `--server <url>` | サーバURL | `http://localhost:24280` |
+| `--server <url>` | サーバURL | 設定ファイルのURL |
 
 ### 使用例
 
@@ -237,8 +269,11 @@ search-docs search "Vector検索"
 # 結果数を指定
 search-docs search "Vector検索" --limit 20
 
-# depth 1と2のみ検索
-search-docs search "Vector検索" --depth 1 2
+# depth 1まで検索（文書全体と章）
+search-docs search "Vector検索" --depth 1
+
+# depth 2まで検索（文書全体、章、節）
+search-docs search "Vector検索" --depth 2
 
 # JSON形式で出力
 search-docs search "Vector検索" --format json

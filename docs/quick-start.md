@@ -39,7 +39,15 @@ pnpm build
 ### グローバルインストールの場合
 
 ```bash
-npm install -g search-docs
+npm install -g @search-docs/cli
+```
+
+### npxで直接実行する場合（インストール不要）
+
+```bash
+# インストール不要で直接使用可能
+npx @search-docs/cli config init
+npx @search-docs/cli server start
 ```
 
 ## ステップ2: テストプロジェクトを作成
@@ -127,10 +135,14 @@ search-docsは以下の手順で使用します：
 node /path/to/search-docs/packages/cli/dist/index.js server start
 ```
 
-### グローバルインストールの場合
+### グローバルインストールまたはnpxの場合
 
 ```bash
+# グローバルインストールした場合
 search-docs server start
+
+# npxで実行する場合
+npx @search-docs/cli server start
 ```
 
 **注意**: v1.0.1以降、サーバはデフォルトでバックグラウンドで起動します。
