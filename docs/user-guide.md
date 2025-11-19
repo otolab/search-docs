@@ -43,7 +43,12 @@ pnpm build
 #### グローバルインストール（本番利用）
 
 ```bash
-npm install -g search-docs
+# グローバルインストール
+npm install -g @search-docs/cli
+
+# またはnpxで直接実行（インストール不要）
+npx @search-docs/cli config init
+npx @search-docs/cli server start
 ```
 
 ### 設定ファイルの作成
