@@ -118,6 +118,7 @@ Claude Codeのグローバル設定ファイルに追加します。
     "search-docs": {
       "command": "npx",
       "args": [
+        "-y",
         "@search-docs/mcp-server",
         "--project-dir",
         "${workspaceFolder}"
