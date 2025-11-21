@@ -23,9 +23,19 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - uses: astral-sh/setup-uv@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Setup Python dependencies
+        run: uv sync
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
