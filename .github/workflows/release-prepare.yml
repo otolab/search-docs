@@ -23,8 +23,15 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
 
       - name: Apply changesets
         run: pnpm changeset version
