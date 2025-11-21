@@ -18,7 +18,6 @@
     "semantic-search"
   ],
   "scripts": {
-    "postinstall": "uv sync",
     "prepublishOnly": "pnpm run build:all",
     "build": "tsc --build --force",
     "build:fast": "tsc --build",
