@@ -223,8 +223,11 @@ async function main() {
     }
   };
 
+  // サーバマネージャーの作成（複数プロジェクト管理用）
+  const serverManager = new ServerManager();
+
   // ツール登録コンテキスト
-  const context = { server, systemState, refreshSystemState };
+  const context = { server, systemState, refreshSystemState, serverManager };
 
   // 全ツールを登録
   debugLog('Registering all tools...');

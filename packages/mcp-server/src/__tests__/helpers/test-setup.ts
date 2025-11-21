@@ -32,6 +32,8 @@ export interface TestEnvironment {
   testDir: string;
   /** MCPテスター */
   tester: MCPServiceE2ETester;
+  /** サーバポート */
+  port: number;
   /** クリーンアップ関数 */
   cleanup: () => Promise<void>;
 }
@@ -144,6 +146,7 @@ export async function setupTestEnvironment(
   return {
     testDir,
     tester,
+    port,
     cleanup,
   };
 }

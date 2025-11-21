@@ -135,6 +135,7 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
         configPath,
         daemon: isDaemon,
         logPath,
+        projectRoot,
       });
 
       if (!serverProcess.pid) {

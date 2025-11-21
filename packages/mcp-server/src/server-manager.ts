@@ -16,10 +16,23 @@ interface ServerProcess {
 }
 
 /**
- * サーバマネージャー
+ * サーバ情報（複数プロジェクト対応）
+ */
+interface ServerInfo {
+  client: SearchDocsClient;
+  port: number;
+  projectRoot: string;
+  projectName: string;
+}
+
+/**
+ * サーバマネージャー（複数プロジェクト対応）
  */
 export class ServerManager {
   private serverProcess: ServerProcess | null = null;
+
+  // 複数プロジェクトのサーバを管理
+  private servers: Map<string, ServerInfo> = new Map();
 
   /**
    * @search-docs/cliパッケージのエントリポイントを解決
@@ -185,5 +198,62 @@ export class ServerManager {
    */
   cleanup(): void {
     this.stopServer();
+  }
+
+  /**
+   * プロジェクトのサーバを取得または起動
+   * @param projectName プロジェクト名（キャッシュキー）
+   * @param projectRoot プロジェクトルート
+   * @param port ポート番号
+   * @param configPath 設定ファイルパス（オプション）
+   * @returns SearchDocsClient
+   */
+  async getOrStartServer(
+    projectName: string,
+    projectRoot: string,
+    port: number,
+    configPath?: string
+  ): Promise<SearchDocsClient> {
+    // キャッシュチェック
+    const cached = this.servers.get(projectName);
+    if (cached) {
+      // ヘルスチェック
+      try {
+        await cached.client.healthCheck();
+        console.error(`[mcp-server] Using cached client for project: ${projectName}`);
+        return cached.client;
+      } catch (error) {
+        // サーバが停止している、キャッシュをクリア
+        console.error(`[mcp-server] Cached server for ${projectName} is down, restarting...`);
+        this.servers.delete(projectName);
+      }
+    }
+
+    // サーバを起動
+    console.error(`[mcp-server] Starting server for project: ${projectName}`);
+    await this.startServer(projectRoot, port, configPath);
+
+    // クライアントを作成してキャッシュ
+    const serverUrl = `http://localhost:${port}`;
+    const client = new SearchDocsClient({ baseUrl: serverUrl });
+
+    const serverInfo: ServerInfo = {
+      client,
+      port,
+      projectRoot,
+      projectName,
+    };
+
+    this.servers.set(projectName, serverInfo);
+    console.error(`[mcp-server] Server cached for project: ${projectName}`);
+
+    return client;
+  }
+
+  /**
+   * すべてのサーバ情報を取得
+   */
+  getAllServers(): Map<string, ServerInfo> {
+    return this.servers;
   }
 }
