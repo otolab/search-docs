@@ -191,6 +191,7 @@ export interface SpawnServerOptions {
   configPath?: string | null;
   daemon: boolean;
   logPath?: string;
+  projectRoot?: string;
 }
 
 export function spawnServer(options: SpawnServerOptions): ChildProcess {
@@ -207,6 +208,8 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
     detached: options.daemon,
     stdio: 'inherit',
     env,
+    // プロジェクトルートを作業ディレクトリとして設定（サーバがprocess.cwd()から設定を読み込むため）
+    cwd: options.projectRoot,
   };
 
   // デーモンモードの場合、stdioをログファイルまたはignoreに設定
