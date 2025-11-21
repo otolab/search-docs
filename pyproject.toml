@@ -2,7 +2,7 @@
 name = "search-docs"
 version = "0.1.0"
 description = "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "lancedb>=0.5.0",
     "pyarrow>=14.0.0",
