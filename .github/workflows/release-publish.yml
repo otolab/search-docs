@@ -52,4 +52,7 @@ jobs:
             --target main
 
       - name: Publish to npm (with Trusted Publishing)
-        run: pnpm publish -r --no-git-checks --provenance --access public
+        run: |
+          # 依存関係順に公開（types -> その他のパッケージ）
+          pnpm --filter @search-docs/types publish --no-git-checks --provenance --access public
+          pnpm publish -r --filter '!@search-docs/types' --no-git-checks --provenance --access public

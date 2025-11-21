@@ -1,5 +1,12 @@
 # @search-docs/mcp-server
 
+## 1.4.1
+
+### Patch Changes
+
+- Updated dependencies [5ca2ecf]
+  - @search-docs/cli@1.0.29
+
 ## 1.4.0
 
 ### Minor Changes
