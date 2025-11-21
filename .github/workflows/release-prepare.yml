@@ -33,15 +33,19 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      - name: Apply changesets
-        run: pnpm changeset version
-
       - name: Get version from branch name
         id: version
         run: |
           VERSION=${GITHUB_REF#refs/heads/release/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+
+      - name: Apply changesets
+        run: pnpm changeset version
+
+      - name: Update root package.json version
+        run: |
+          node -e "const pkg = require('./package.json'); pkg.version = '${{ steps.version.outputs.version }}'; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');"
 
       - name: Commit and push changes
         run: |

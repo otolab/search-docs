@@ -34,10 +34,11 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      - name: Get version from package.json
+      - name: Get version from merged PR branch name
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          VERSION="${BRANCH_NAME#release/}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: v$VERSION"
 
