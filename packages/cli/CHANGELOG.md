@@ -1,5 +1,11 @@
 # @search-docs/cli
 
+## 1.0.29
+
+### Patch Changes
+
+- 5ca2ecf: CI 修正: npm 公開時の依存関係順序を修正
+
 ## 1.0.28
 
 ### Patch Changes
