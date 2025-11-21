@@ -1,6 +1,6 @@
 {
   "name": "search-docs",
-  "version": "0.1.0",
+  "version": "1.4.0",
   "description": "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供",
   "private": true,
   "license": "MIT",
@@ -18,7 +18,6 @@
     "semantic-search"
   ],
   "scripts": {
-    "postinstall": "uv sync",
     "prepublishOnly": "pnpm run build:all",
     "build": "tsc --build --force",
     "build:fast": "tsc --build",
