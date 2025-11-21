@@ -65,6 +65,48 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
           } catch (error) {
             statusText += `⚠️  サーバ情報の取得に失敗: ${(error as Error).message}\n`;
           }
+
+          // 関連プロジェクト情報を表示
+          if (systemState.config?.relatedProjects) {
+            const relatedProjects = Object.keys(systemState.config.relatedProjects);
+            if (relatedProjects.length > 0) {
+              statusText += '\n関連プロジェクト:\n';
+
+              const allServers = context.serverManager.getAllServers();
+
+              for (const projectName of relatedProjects) {
+                const projectConfig = systemState.config.relatedProjects[projectName];
+                const serverInfo = allServers.get(projectName);
+
+                statusText += `  • ${projectName}`;
+
+                if (projectConfig.description) {
+                  statusText += ` - ${projectConfig.description}`;
+                }
+
+                statusText += '\n';
+                statusText += `    ディレクトリ: ${projectConfig.dir}\n`;
+
+                if (serverInfo) {
+                  // サーバが起動中
+                  try {
+                    await serverInfo.client.healthCheck();
+                    statusText += `    状態: 稼働中 ✅\n`;
+                    statusText += `    ポート: ${serverInfo.port}\n`;
+                  } catch {
+                    statusText += `    状態: 停止中\n`;
+                  }
+                } else {
+                  statusText += `    状態: 未起動\n`;
+                }
+              }
+
+              statusText += '\n💡 関連プロジェクトを検索するには:\n';
+              statusText += '  search(query: "...", project: "プロジェクト名")\n';
+              statusText += '  get_document(path: "...", project: "プロジェクト名")\n';
+            }
+          }
+
           break;
       }
 

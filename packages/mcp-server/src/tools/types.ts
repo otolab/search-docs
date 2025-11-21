@@ -4,6 +4,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SystemStateInfo } from '../state.js';
+import type { ServerManager } from '../server-manager.js';
 
 /**
  * 登録されたツールのハンドル
@@ -21,4 +22,6 @@ export interface ToolRegistrationContext {
   systemState: SystemStateInfo;
   /** システム状態を再検出する関数 */
   refreshSystemState: () => Promise<void>;
+  /** サーバマネージャー（複数プロジェクト管理用） */
+  serverManager: ServerManager;
 }

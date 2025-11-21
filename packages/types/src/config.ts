@@ -2,9 +2,17 @@
  * 設定ファイルの型定義
  */
 
+export interface RelatedProjectConfig {
+  /** プロジェクトディレクトリ（相対パスまたは絶対パス） */
+  dir: string;
+  /** プロジェクトの説明（オプション） */
+  description?: string;
+}
+
 export interface SearchDocsConfig {
   version: string;
   project: ProjectConfig;
+  relatedProjects?: Record<string, RelatedProjectConfig>;
   files: FilesConfig;
   indexing: IndexingConfig;
   search: SearchConfig;

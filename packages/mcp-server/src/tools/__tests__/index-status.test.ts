@@ -6,9 +6,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerIndexStatusTool } from '../index-status.js';
 import type { ToolRegistrationContext } from '../types.js';
 import type { SystemStateInfo } from '../../state.js';
+import { ServerManager } from '../../server-manager.js';
 
 describe('index_status tool', () => {
   let mockServer: any;
+  let mockServerManager: ServerManager;
   let registeredTool: any;
 
   beforeEach(() => {
@@ -20,6 +22,9 @@ describe('index_status tool', () => {
         registeredTool = { name, schema, handler };
       }),
     };
+
+    // ServerManagerのモック
+    mockServerManager = new ServerManager();
   });
 
   it('RUNNING状態の場合、正常に動作する', async () => {
@@ -58,6 +63,7 @@ describe('index_status tool', () => {
       server: mockServer,
       systemState,
       refreshSystemState: async () => {},
+      serverManager: mockServerManager,
     };
 
     // ツール登録
@@ -93,6 +99,7 @@ describe('index_status tool', () => {
       server: mockServer,
       systemState,
       refreshSystemState: async () => {},
+      serverManager: mockServerManager,
     };
 
     // ツール登録
@@ -115,6 +122,7 @@ describe('index_status tool', () => {
       server: mockServer,
       systemState,
       refreshSystemState: async () => {},
+      serverManager: mockServerManager,
     };
 
     // ツール登録
@@ -142,6 +150,7 @@ describe('index_status tool', () => {
       server: mockServer,
       systemState,
       refreshSystemState: async () => {},
+      serverManager: mockServerManager,
     };
 
     // ツール登録
