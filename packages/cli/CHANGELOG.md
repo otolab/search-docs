@@ -1,5 +1,11 @@
 # @search-docs/cli
 
+## 1.0.30
+
+### Patch Changes
+
+- b8a2b70: CI 修正: npm Trusted Publishing 対応のため最新 npm に更新
+
 ## 1.0.29
 
 ### Patch Changes
