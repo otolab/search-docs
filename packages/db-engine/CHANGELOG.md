@@ -1,5 +1,15 @@
 # @search-docs/db-engine
 
+## 1.3.2
+
+### Patch Changes
+
+- 37a9959: Python 3.14 未満に制限（PyTorch torch.compile 互換性のため）
+
+  PyTorch 2.9.1 の torch.compile が Python 3.14 をサポートしていないため、requires-python を">=3.11,<3.14"に変更しました。この制限により、ModernBERT ベースの Ruri 埋め込みモデルが正しく動作します。
+
+  PyTorch 2.10 以降で Python 3.14 サポートが安定したら、この制限を解除する予定です。
+
 ## 1.3.1
 
 ### Patch Changes
