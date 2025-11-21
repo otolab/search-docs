@@ -42,7 +42,7 @@ describe('関連プロジェクト機能', () => {
           baseUrl: `http://localhost:${relatedEnv.port}`,
         });
         try {
-          await client.stopServer();
+          await client.shutdown();
           await new Promise((resolve) => setTimeout(resolve, 2000));
         } catch {
           // ignore
