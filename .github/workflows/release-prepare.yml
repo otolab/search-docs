@@ -36,10 +36,10 @@ jobs:
       - name: Apply changesets
         run: pnpm changeset version
 
-      - name: Get version from package.json
+      - name: Get version from branch name
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=${GITHUB_REF#refs/heads/release/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
