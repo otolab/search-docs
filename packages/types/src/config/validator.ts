@@ -137,8 +137,8 @@ function validateIndexingConfig(indexing: unknown): void {
 
   if (idx.maxDepth !== undefined) {
     const maxDepth = idx.maxDepth;
-    if (maxDepth < 0 || maxDepth > 3) {
-      throw new Error('config.indexing.maxDepth must be between 0 and 3');
+    if (maxDepth < 0 || maxDepth > 6) {
+      throw new Error('config.indexing.maxDepth must be between 0 and 6');
     }
   }
 
