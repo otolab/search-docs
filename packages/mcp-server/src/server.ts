@@ -20,6 +20,7 @@ import {
   registerSystemStatusTool,
   registerSearchTool,
   registerGetDocumentTool,
+  registerGetOutlineTool,
   registerIndexStatusTool,
   type RegisteredTool,
 } from './tools/index.js';
@@ -94,6 +95,7 @@ interface ToolHandles {
   systemStatus: RegisteredTool;
   search: RegisteredTool;
   getDocument: RegisteredTool;
+  getOutline: RegisteredTool;
   indexStatus: RegisteredTool;
 }
 
@@ -117,6 +119,7 @@ function updateToolAvailability(state: SystemState, handles: ToolHandles): void 
     handles.serverStop.disable();
     handles.search.disable();
     handles.getDocument.disable();
+    handles.getOutline.disable();
     handles.indexStatus.disable();
     debugLog('Tools enabled: init, systemStatus');
   } else {
@@ -128,6 +131,7 @@ function updateToolAvailability(state: SystemState, handles: ToolHandles): void 
     handles.systemStatus.enable();
     handles.search.enable();
     handles.getDocument.enable();
+    handles.getOutline.enable();
     handles.indexStatus.enable();
     debugLog('All tools enabled (configured state)');
   }
@@ -238,6 +242,7 @@ async function main() {
     systemStatus: registerSystemStatusTool(context),
     search: registerSearchTool(context),
     getDocument: registerGetDocumentTool(context),
+    getOutline: registerGetOutlineTool(context),
     indexStatus: registerIndexStatusTool(context),
   };
 

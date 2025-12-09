@@ -5,6 +5,7 @@
 // 既存ツール
 export { registerSearchTool } from './search.js';
 export { registerGetDocumentTool } from './get-document.js';
+export { registerGetOutlineTool } from './get-outline.js';
 export { registerIndexStatusTool } from './index-status.js';
 
 // 新規ツール

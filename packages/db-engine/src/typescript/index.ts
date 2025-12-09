@@ -97,6 +97,44 @@ export interface StatsResponse {
   totalDocuments: number;
 }
 
+// Python形式のセクション（snake_case）
+interface PythonSection {
+  id: string;
+  document_path: string;
+  heading: string;
+  depth: number;
+  content: string;
+  token_count: number;
+  vector?: number[];
+  parent_id: string | null;
+  order: number;
+  is_dirty: boolean;
+  document_hash: string;
+  created_at: string;
+  updated_at: string;
+  summary?: string;
+  document_summary?: string;
+  start_line: number;
+  end_line: number;
+  section_number: number[];
+}
+
+// Python形式の検索結果
+interface PythonSearchResult {
+  id: string;
+  document_path: string;
+  document_hash: string;
+  heading: string;
+  depth: number;
+  content: string;
+  score: number;
+  is_dirty: boolean;
+  token_count: number;
+  start_line: number;
+  end_line: number;
+  section_number: number[];
+}
+
 // IndexRequest関連の型定義
 export interface IndexRequest {
   id: string;
@@ -602,8 +640,8 @@ export class DBEngine extends EventEmitter {
 
     console.log(`[DBEngine] Memory monitoring started: limit=${this.pythonMaxMemoryMB}MB, interval=${this.memoryCheckIntervalMs}ms`);
 
-    this.memoryCheckInterval = setInterval(async () => {
-      await this.checkMemoryUsage();
+    this.memoryCheckInterval = setInterval(() => {
+      void this.checkMemoryUsage();
     }, this.memoryCheckIntervalMs);
   }
 
@@ -697,7 +735,7 @@ export class DBEngine extends EventEmitter {
   /**
    * Python形式 → TypeScript Sectionに変換
    */
-  private convertSectionFromPythonFormat(pythonSection: any): Section {
+  private convertSectionFromPythonFormat(pythonSection: PythonSection): Section {
     return {
       id: pythonSection.id,
       documentPath: pythonSection.document_path,
@@ -734,23 +772,23 @@ export class DBEngine extends EventEmitter {
    */
   async search(params: SearchParams): Promise<DBEngineSearchResponse> {
     const result = await this.sendRequest('search', params);
-    const response = result as any;
+    const response = result as { results: PythonSearchResult[]; total: number };
 
     // Pythonから返された検索結果をTypeScript形式に変換
-    const convertedResults = response.results.map((result: any): SearchResult => ({
-      id: result.id,
-      documentPath: result.document_path,
-      documentHash: result.document_hash,
-      heading: result.heading,
-      depth: result.depth,
-      content: result.content,
-      score: result.score,
-      isDirty: result.is_dirty,
-      tokenCount: result.token_count,
+    const convertedResults = response.results.map((pythonResult): SearchResult => ({
+      id: pythonResult.id,
+      documentPath: pythonResult.document_path,
+      documentHash: pythonResult.document_hash,
+      heading: pythonResult.heading,
+      depth: pythonResult.depth,
+      content: pythonResult.content,
+      score: pythonResult.score,
+      isDirty: pythonResult.is_dirty,
+      tokenCount: pythonResult.token_count,
       // Task 14フィールド
-      startLine: result.start_line,
-      endLine: result.end_line,
-      sectionNumber: result.section_number,
+      startLine: pythonResult.start_line,
+      endLine: pythonResult.end_line,
+      sectionNumber: pythonResult.section_number,
     }));
 
     return {
@@ -764,10 +802,10 @@ export class DBEngine extends EventEmitter {
    */
   async getSectionsByPath(documentPath: string): Promise<{ sections: Section[] }> {
     const result = await this.sendRequest('getSectionsByPath', { documentPath });
-    const response = result as any;
+    const response = result as { sections: PythonSection[] };
 
     // Pythonから返されたセクションをTypeScript形式に変換
-    const convertedSections = response.sections.map((section: any) =>
+    const convertedSections = response.sections.map((section) =>
       this.convertSectionFromPythonFormat(section)
     );
 
@@ -779,7 +817,7 @@ export class DBEngine extends EventEmitter {
    */
   async getSectionById(sectionId: string): Promise<{ section: Section }> {
     const result = await this.sendRequest('getSectionById', { sectionId });
-    const response = result as any;
+    const response = result as { section: PythonSection };
 
     // Pythonから返されたセクションをTypeScript形式に変換
     const convertedSection = this.convertSectionFromPythonFormat(response.section);
@@ -803,10 +841,10 @@ export class DBEngine extends EventEmitter {
       documentPath,
       documentHash
     });
-    const response = result as any;
+    const response = result as { sections: PythonSection[] };
 
     // Pythonから返されたセクションをTypeScript形式に変換
-    return response.sections.map((section: any) => this.convertSectionFromPythonFormat(section));
+    return response.sections.map((section) => this.convertSectionFromPythonFormat(section));
   }
 
   /**
@@ -833,10 +871,10 @@ export class DBEngine extends EventEmitter {
    */
   async getDirtySections(limit: number = 100): Promise<{ sections: Section[] }> {
     const result = await this.sendRequest('getDirtySections', { limit });
-    const response = result as any;
+    const response = result as { sections: PythonSection[] };
 
     // Pythonから返されたセクションをTypeScript形式に変換
-    const convertedSections = response.sections.map((section: any) =>
+    const convertedSections = response.sections.map((section) =>
       this.convertSectionFromPythonFormat(section)
     );
 
