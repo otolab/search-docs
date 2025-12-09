@@ -139,3 +139,15 @@ Claude Code統合ガイド（MCP Server）
 - 使用例
 - トラブルシューティング
 - パフォーマンス最適化
+
+### 開発者向けドキュメント
+
+#### [release-process.md](./release-process.md)
+リリースプロセスの完全ガイド
+
+- GitHub Actions自動化フロー
+- Changesetの使用方法
+- リリースブランチの作成手順
+- npm公開プロセス
+- トラブルシューティング
+- ⚠️ 重要な注意事項（手動でchangeset versionを実行しない等）
