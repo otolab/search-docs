@@ -108,14 +108,16 @@ export class JsonRpcServer {
     });
 
     // Graceful shutdown
-    this.app.post('/shutdown', async (_req, res) => {
+    this.app.post('/shutdown', (_req, res) => {
       res.json({ status: 'shutting down' });
 
       // レスポンスを送信後、少し待ってからサーバを停止
-      setTimeout(async () => {
-        console.log('Shutdown requested via /shutdown endpoint');
-        await this.stop();
-        process.exit(0);
+      setTimeout(() => {
+        void (async () => {
+          console.log('Shutdown requested via /shutdown endpoint');
+          await this.stop();
+          process.exit(0);
+        })();
       }, 100);
     });
 

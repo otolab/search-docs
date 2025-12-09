@@ -2,9 +2,9 @@
  * プロセス管理ユーティリティ
  */
 
-import { spawn, type ChildProcess, type StdioOptions } from 'child_process';
+import { spawn, type ChildProcess, type StdioOptions, type SpawnOptions } from 'child_process';
 import * as net from 'net';
-import { openSync, closeSync } from 'fs';
+import { openSync } from 'fs';
 
 /**
  * プロセスが生存しているか確認
@@ -204,7 +204,7 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
     env.SEARCH_DOCS_CONFIG = options.configPath;
   }
 
-  const spawnOptions: any = {
+  const spawnOptions: SpawnOptions = {
     detached: options.daemon,
     stdio: 'inherit',
     env,
