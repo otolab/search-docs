@@ -35,6 +35,9 @@ export class MarkdownSplitter {
     documentPath: string,
     documentHash: string
   ): Array<Omit<Section, 'vector'>> {
+    // 0. YAML frontmatter を除去
+    content = this.removeFrontmatter(content);
+
     // 1. Markdownをパース
     const tokens = marked.lexer(content);
 
@@ -45,6 +48,41 @@ export class MarkdownSplitter {
     const sections = this.buildSections(structure, documentPath, documentHash);
 
     return sections;
+  }
+
+  /**
+   * YAML frontmatter を除去
+   * frontmatter は以下の形式を想定:
+   * ---
+   * key: value
+   * ---
+   */
+  private removeFrontmatter(content: string): string {
+    // 先頭が "---" で始まるかチェック（前後の空白は許容）
+    const trimmed = content.trimStart();
+    if (!trimmed.startsWith('---')) {
+      return content;
+    }
+
+    // 最初の "---" の後に2つ目の "---" を探す
+    const lines = trimmed.split('\n');
+    let endIndex = -1;
+
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === '---') {
+        endIndex = i;
+        break;
+      }
+    }
+
+    // 2つ目の "---" が見つからない場合は、frontmatter ではないとみなす
+    if (endIndex === -1) {
+      return content;
+    }
+
+    // frontmatter 以降の内容を返す
+    const remainingLines = lines.slice(endIndex + 1);
+    return remainingLines.join('\n');
   }
 
   /**

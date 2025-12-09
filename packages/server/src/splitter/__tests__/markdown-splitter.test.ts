@@ -360,6 +360,52 @@ Some content here`;
   });
 
   describe('Markdownの各種要素', () => {
+    it('YAML frontmatterを除去する', () => {
+      const md = `---
+title: Test Document
+author: John Doe
+date: 2025-01-01
+---
+
+# Actual Content
+
+This is the real content.`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // frontmatter は除去され、# Actual Content から処理される
+      expect(sections).toHaveLength(2); // depth=0 + H1
+      expect(sections[0].content).not.toContain('title:');
+      expect(sections[0].content).not.toContain('author:');
+      expect(sections[0].content).toContain('# Actual Content');
+      expect(sections[1].heading).toBe('Actual Content');
+    });
+
+    it('frontmatterがない場合は通常通り処理する', () => {
+      const md = `# Normal Content
+
+No frontmatter here.`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      expect(sections).toHaveLength(2); // depth=0 + H1
+      expect(sections[1].heading).toBe('Normal Content');
+      expect(sections[1].content).toContain('No frontmatter here');
+    });
+
+    it('不完全なfrontmatter（閉じ---がない）は除去しない', () => {
+      const md = `---
+title: Test
+This is not closed
+
+# Content`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // frontmatterとして扱われないため、元のままパースされる
+      expect(sections).toHaveLength(2); // depth=0 + H1
+    });
+
     it('リストを含むコンテンツを正しく処理できる', () => {
       const md = `# Section
 - Item 1

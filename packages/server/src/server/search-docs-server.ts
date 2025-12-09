@@ -312,8 +312,24 @@ export class SearchDocsServer {
       sections = result.sections;
     }
 
-    // orderでソート
-    sections.sort((a, b) => a.order - b.order);
+    // depth=0（document root）を除外
+    sections = sections.filter(s => s.depth > 0);
+
+    // section_numberの配列を辞書順で比較してソート
+    sections.sort((a, b) => {
+      const aNum = a.sectionNumber;
+      const bNum = b.sectionNumber;
+
+      // 配列を要素ごとに比較
+      for (let i = 0; i < Math.min(aNum.length, bNum.length); i++) {
+        if (aNum[i] !== bNum[i]) {
+          return aNum[i] - bNum[i];
+        }
+      }
+
+      // 前半が同じ場合、短い方が先（例: [1, 2] < [1, 2, 1]）
+      return aNum.length - bNum.length;
+    });
 
     // OutlineItemに変換
     const items: OutlineItem[] = sections.map(section => ({

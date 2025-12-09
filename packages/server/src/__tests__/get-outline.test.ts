@@ -173,28 +173,117 @@ describe('getOutline API', () => {
 
     const result = await server.getOutline({ path: docPath });
 
-    expect(result.items).toHaveLength(3);
+    // depth=0（document root）は除外される
+    expect(result.items).toHaveLength(2);
     expect(result.items[0]).toEqual({
-      number: '1',
-      heading: '# Title',
-      lines: 10,
-      tokens: 100,
-      id: 'section-0',
-    });
-    expect(result.items[1]).toEqual({
       number: '1.1',
       heading: '## Section 1',
       lines: 10,
       tokens: 50,
       id: 'section-1',
     });
-    expect(result.items[2]).toEqual({
+    expect(result.items[1]).toEqual({
       number: '1.2',
       heading: '## Section 2',
       lines: 5,
       tokens: 30,
       id: 'section-2',
     });
+  });
+
+  it('section_numberの辞書順でソート（複雑な階層）', async () => {
+    const docPath = 'test-complex-order.md';
+    const doc: Document = {
+      path: docPath,
+      content: '# Root\n## A\n#### A.1.1\n## A.1',
+      metadata: {
+        fileHash: createHash('sha256').update('test-complex').digest('hex'),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    };
+
+    await storage.save(doc.path, doc);
+
+    // orderとsection_numberが一致しないケース
+    await dbEngine.addSections([
+      {
+        id: 'root',
+        documentPath: docPath,
+        documentHash: doc.metadata.fileHash,
+        heading: '(document root)',
+        depth: 0,
+        content: '',
+        tokenCount: 10,
+        parentId: null,
+        order: 0,
+        isDirty: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        startLine: 1,
+        endLine: 1,
+        sectionNumber: [1],
+      },
+      {
+        id: 'section-a',
+        documentPath: docPath,
+        documentHash: doc.metadata.fileHash,
+        heading: '## A',
+        depth: 1,
+        content: '## A',
+        tokenCount: 50,
+        parentId: 'root',
+        order: 1,
+        isDirty: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        startLine: 2,
+        endLine: 5,
+        sectionNumber: [1, 1],
+      },
+      {
+        id: 'section-a-1-1',
+        documentPath: docPath,
+        documentHash: doc.metadata.fileHash,
+        heading: '#### A.1.1',
+        depth: 1, // H4以降は親のcontentに含まれるが、テスト用に独立セクションとして登録
+        content: '#### A.1.1',
+        tokenCount: 30,
+        parentId: 'section-a',
+        order: 2, // order上は2番目
+        isDirty: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        startLine: 6,
+        endLine: 10,
+        sectionNumber: [1, 1, 1], // section_number上は [1, 1, 1]
+      },
+      {
+        id: 'section-a-1',
+        documentPath: docPath,
+        documentHash: doc.metadata.fileHash,
+        heading: '## A.1',
+        depth: 1,
+        content: '## A.1',
+        tokenCount: 40,
+        parentId: 'root',
+        order: 3, // order上は3番目だが、section_numberでは [1, 1, 1] より前
+        isDirty: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        startLine: 11,
+        endLine: 15,
+        sectionNumber: [1, 2], // section_number上は [1, 2]
+      },
+    ]);
+
+    const result = await server.getOutline({ path: docPath });
+
+    // section_numberの辞書順でソート: [1,1] < [1,1,1] < [1,2]
+    expect(result.items).toHaveLength(3);
+    expect(result.items[0].number).toBe('1.1'); // section-a
+    expect(result.items[1].number).toBe('1.1.1'); // section-a-1-1
+    expect(result.items[2].number).toBe('1.2'); // section-a-1
   });
 
   it('sectionId指定で特定セクション配下のアウトラインを取得', async () => {
