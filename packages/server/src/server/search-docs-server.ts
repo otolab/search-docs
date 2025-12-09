@@ -203,9 +203,43 @@ export class SearchDocsServer {
   }
 
   /**
+   * DB接続状態を確認し、未接続の場合は親切なエラーメッセージを投げる
+   */
+  private checkDatabaseConnection(): void {
+    const connectionState = this.dbEngine.getConnectionState();
+
+    if (connectionState.state !== 'ready') {
+      switch (connectionState.state) {
+        case 'connecting':
+          throw new Error(
+            'データベース接続中です。Pythonワーカーとデータベース接続を開始しています。\n' +
+            'しばらくお待ちください（通常5-10秒程度）。'
+          );
+        case 'initializing_model':
+          throw new Error(
+            'データベース接続中です。Ruri埋め込みモデルを初期化しています。\n' +
+            'しばらくお待ちください（残り5秒程度）。'
+          );
+        case 'error':
+          throw new Error(
+            `データベース接続エラー: ${connectionState.error?.message || '不明なエラー'}\n` +
+            'サーバーを再起動してください。'
+          );
+        case 'disconnected':
+        default:
+          throw new Error(
+            'データベースに接続されていません。サーバーを再起動してください。'
+          );
+      }
+    }
+  }
+
+  /**
    * 検索API
    */
   async search(request: SearchRequest): Promise<SearchResponse> {
+    this.checkDatabaseConnection();
+
     this.requestStats.total++;
     this.requestStats.search++;
     const startTime = Date.now();
@@ -256,6 +290,8 @@ export class SearchDocsServer {
    * 文書取得API
    */
   async getDocument(request: GetDocumentRequest): Promise<GetDocumentResponse> {
+    this.checkDatabaseConnection();
+
     this.requestStats.total++;
     this.requestStats.getDocument++;
 
@@ -284,6 +320,8 @@ export class SearchDocsServer {
    * 文書アウトライン取得API
    */
   async getOutline(request: GetOutlineRequest): Promise<GetOutlineResponse> {
+    this.checkDatabaseConnection();
+
     // pathとsectionIdのどちらか一方は必須
     if (!request.path && !request.sectionId) {
       throw new Error('pathまたはsectionIdのどちらか一方を指定してください');

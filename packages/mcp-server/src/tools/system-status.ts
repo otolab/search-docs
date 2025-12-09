@@ -53,14 +53,47 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
             statusText += `  バージョン: ${status.server.version}\n`;
             statusText += `  PID: ${status.server.pid}\n`;
             statusText += `  起動時間: ${(status.server.uptime / 1000).toFixed(1)}秒\n\n`;
-            statusText += 'インデックス情報:\n';
-            statusText += `  総文書数: ${status.index.totalDocuments}件\n`;
-            statusText += `  総セクション数: ${status.index.totalSections}件\n`;
-            statusText += `  Dirtyセクション: ${status.index.dirtyCount}件\n\n`;
 
-            if (status.index.dirtyCount > 0) {
-              statusText += `⚠️  ${status.index.dirtyCount}件の文書が更新待ちです。\n`;
-              statusText += 'バックグラウンドで順次インデックスが更新されます。\n';
+            // データベース接続状態を表示
+            statusText += 'データベース状態:\n';
+            switch (status.database.connectionState) {
+              case 'disconnected':
+                statusText += '  状態: 切断\n\n';
+                break;
+              case 'connecting':
+                statusText += '  状態: 接続中...\n';
+                statusText += '  進行状況: Pythonワーカーとデータベース接続を開始中\n\n';
+                break;
+              case 'initializing_model':
+                statusText += '  状態: モデル読み込み中...\n';
+                statusText += '  進行状況: Ruri埋め込みモデルを初期化中（5-10秒程度）\n\n';
+                break;
+              case 'ready':
+                statusText += '  状態: 接続完了 ✅\n\n';
+                break;
+              case 'error':
+                statusText += '  状態: エラー ❌\n';
+                if (status.database.connectionError) {
+                  statusText += `  エラー: ${status.database.connectionError}\n\n`;
+                } else {
+                  statusText += '\n';
+                }
+                break;
+            }
+
+            // DB接続完了時のみインデックス情報を表示
+            if (status.database.connectionState === 'ready') {
+              statusText += 'インデックス情報:\n';
+              statusText += `  総文書数: ${status.index.totalDocuments}件\n`;
+              statusText += `  総セクション数: ${status.index.totalSections}件\n`;
+              statusText += `  Dirtyセクション: ${status.index.dirtyCount}件\n\n`;
+
+              if (status.index.dirtyCount > 0) {
+                statusText += `⚠️  ${status.index.dirtyCount}件の文書が更新待ちです。\n`;
+                statusText += 'バックグラウンドで順次インデックスが更新されます。\n';
+              }
+            } else {
+              statusText += 'インデックス情報: データベース接続待ち...\n\n';
             }
           } catch (error) {
             statusText += `⚠️  サーバ情報の取得に失敗: ${(error as Error).message}\n`;

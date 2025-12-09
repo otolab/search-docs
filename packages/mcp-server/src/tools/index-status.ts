@@ -35,16 +35,49 @@ export function registerIndexStatusTool(context: ToolRegistrationContext): Regis
         statusText += `  起動時間: ${(response.server.uptime / 1000).toFixed(1)}秒\n`;
         statusText += `  PID: ${response.server.pid}\n\n`;
 
-        statusText += `インデックス情報:\n`;
-        statusText += `  総文書数: ${response.index.totalDocuments}件\n`;
-        statusText += `  総セクション数: ${response.index.totalSections}件\n`;
-        statusText += `  Dirtyセクション: ${response.index.dirtyCount}件\n`;
+        // データベース接続状態を表示
+        statusText += 'データベース状態:\n';
+        switch (response.database.connectionState) {
+          case 'disconnected':
+            statusText += '  状態: 切断\n\n';
+            break;
+          case 'connecting':
+            statusText += '  状態: 接続中...\n';
+            statusText += '  進行状況: Pythonワーカーとデータベース接続を開始中\n\n';
+            break;
+          case 'initializing_model':
+            statusText += '  状態: モデル読み込み中...\n';
+            statusText += '  進行状況: Ruri埋め込みモデルを初期化中（5-10秒程度）\n\n';
+            break;
+          case 'ready':
+            statusText += '  状態: 接続完了 ✅\n\n';
+            break;
+          case 'error':
+            statusText += '  状態: エラー ❌\n';
+            if (response.database.connectionError) {
+              statusText += `  エラー: ${response.database.connectionError}\n\n`;
+            } else {
+              statusText += '\n';
+            }
+            break;
+        }
 
-        if (response.worker) {
-          statusText += `\nワーカー情報:\n`;
-          statusText += `  実行中: ${response.worker.running ? 'Yes' : 'No'}\n`;
-          statusText += `  処理中: ${response.worker.processing}件\n`;
-          statusText += `  キュー: ${response.worker.queue}件\n`;
+        // DB接続完了時のみインデックス情報を表示
+        if (response.database.connectionState === 'ready') {
+          statusText += `インデックス情報:\n`;
+          statusText += `  総文書数: ${response.index.totalDocuments}件\n`;
+          statusText += `  総セクション数: ${response.index.totalSections}件\n`;
+          statusText += `  Dirtyセクション: ${response.index.dirtyCount}件\n`;
+
+          if (response.worker) {
+            statusText += `\nワーカー情報:\n`;
+            statusText += `  実行中: ${response.worker.running ? 'Yes' : 'No'}\n`;
+            statusText += `  処理中: ${response.worker.processing}件\n`;
+            statusText += `  キュー: ${response.worker.queue}件\n`;
+          }
+        } else {
+          statusText += 'インデックス情報: データベース接続待ち...\n';
+          statusText += '\nデータベース接続が完了するまでお待ちください（通常5-10秒程度）。\n';
         }
 
         return {
