@@ -143,6 +143,12 @@ export interface GetStatusResponse {
       rebuildIndex: number;
     };
   };
+  database: {
+    /** DB接続状態: disconnected | connecting | initializing_model | ready | error */
+    connectionState: 'disconnected' | 'connecting' | 'initializing_model' | 'ready' | 'error';
+    /** 接続エラー（エラー時のみ） */
+    connectionError?: string;
+  };
   index: {
     totalDocuments: number;
     totalSections: number;

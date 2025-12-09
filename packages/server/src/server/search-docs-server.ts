@@ -443,14 +443,23 @@ export class SearchDocsServer {
    * ステータス取得API
    */
   async getStatus(): Promise<GetStatusResponse> {
-    // DBから統計情報を取得（.select()で最適化済み）
-    const stats = await this.dbEngine.getStats();
+    // DB接続状態を取得
+    const connectionState = this.dbEngine.getConnectionState();
+
+    // DB接続が完了していない場合は、統計情報取得をスキップ
+    let stats = { totalDocuments: 0, totalSections: 0, dirtyCount: 0 };
+    let queueCount = 0;
+
+    if (connectionState.state === 'ready') {
+      // DBから統計情報を取得（.select()で最適化済み）
+      stats = await this.dbEngine.getStats();
+
+      // pendingリクエストの数を取得（count専用メソッドで高速化）
+      queueCount = await this.dbEngine.countIndexRequests({ status: 'pending' });
+    }
 
     // IndexWorkerの状態を取得
     const workerStatus = this.indexWorker?.getStatus() ?? { running: false, processing: false };
-
-    // pendingリクエストの数を取得（count専用メソッドで高速化）
-    const queueCount = await this.dbEngine.countIndexRequests({ status: 'pending' });
 
     return {
       server: {
@@ -465,6 +474,10 @@ export class SearchDocsServer {
           indexDocument: this.requestStats.indexDocument,
           rebuildIndex: this.requestStats.rebuildIndex,
         },
+      },
+      database: {
+        connectionState: connectionState.state,
+        connectionError: connectionState.error?.message,
       },
       index: {
         totalDocuments: stats.totalDocuments,
