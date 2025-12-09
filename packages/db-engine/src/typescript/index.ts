@@ -208,10 +208,24 @@ export class DBEngine extends EventEmitter {
   private pythonMaxMemoryMB: number | null = null;
   private memoryCheckIntervalMs: number = 30000;
 
+  // 接続状態管理
+  private connectionState: 'disconnected' | 'connecting' | 'initializing_model' | 'ready' | 'error' = 'disconnected';
+  private connectionError: Error | null = null;
+
   // openPromiseパターン: 接続完了を外部から待機可能にする
   private connectedPromise: Promise<void>;
   private resolveConnected!: () => void;
   private rejectConnected!: (error: Error) => void;
+
+  /**
+   * 接続状態を取得
+   */
+  getConnectionState(): { state: 'disconnected' | 'connecting' | 'initializing_model' | 'ready' | 'error'; error: Error | null } {
+    return {
+      state: this.connectionState,
+      error: this.connectionError,
+    };
+  }
 
   constructor(options: DBEngineOptions = {}) {
     super();
@@ -239,6 +253,7 @@ export class DBEngine extends EventEmitter {
     if (this.worker && this.isReady) {
       // 既に接続済みかつ準備完了の場合は何もしない（冪等性）
       console.log('DBEngine: Already connected and ready, skipping reconnection');
+      this.connectionState = 'ready';
       // 既に解決済みのPromiseが返される
       return;
     }
@@ -246,10 +261,15 @@ export class DBEngine extends EventEmitter {
     if (this.worker && !this.isReady) {
       // ワーカーは存在するが準備未完了の場合は待機
       console.log('DBEngine: Worker exists but not ready, waiting for ready state...');
+      this.connectionState = 'connecting';
       await this.waitForReady(null, () => false);
       // waitForReady内でresolveConnected()が呼ばれる
       return;
     }
+
+    // 接続開始
+    this.connectionState = 'connecting';
+    this.connectionError = null;
 
     // パッケージルートを取得（@search-docs/db-engineパッケージのルート）
     const packageRoot = getPackageRoot();
@@ -407,6 +427,11 @@ export class DBEngine extends EventEmitter {
     try {
       await this.waitForReady(workerError, () => workerExited);
     } catch (error) {
+      // エラー状態に設定
+      this.connectionState = 'error';
+      this.connectionError = error instanceof Error ? error : new Error(String(error));
+      this.rejectConnected(this.connectionError);
+
       // ワーカーが異常終了した場合は、より詳細なエラーを投げる
       if (workerError !== null) {
         // eslint-disable-next-line @typescript-eslint/only-throw-error
@@ -420,18 +445,36 @@ export class DBEngine extends EventEmitter {
 
     // モデルの初期化を確認
     console.log('[DBEngine.connect] Initializing embedding model...');
-    const initResult = await this.initModel();
-    if (!initResult.success) {
-      throw new Error(
-        `Failed to initialize embedding model: ${initResult.model_name}. ` +
-        'Vector search will not function properly. ' +
-        'Please ensure all Python dependencies (protobuf, sentencepiece) are installed.'
-      );
-    }
-    console.log(`[DBEngine.connect] Embedding model initialized: ${initResult.model_name} (${initResult.dimension}d)`);
+    this.connectionState = 'initializing_model';
 
-    // メモリ監視を開始
-    this.startMemoryMonitoring();
+    try {
+      const initResult = await this.initModel();
+      if (!initResult.success) {
+        const error = new Error(
+          `Failed to initialize embedding model: ${initResult.model_name}. ` +
+          'Vector search will not function properly. ' +
+          'Please ensure all Python dependencies (protobuf, sentencepiece) are installed.'
+        );
+        this.connectionState = 'error';
+        this.connectionError = error;
+        this.rejectConnected(error);
+        throw error;
+      }
+      console.log(`[DBEngine.connect] Embedding model initialized: ${initResult.model_name} (${initResult.dimension}d)`);
+
+      // 接続完了
+      this.connectionState = 'ready';
+      this.resolveConnected();
+
+      // メモリ監視を開始
+      this.startMemoryMonitoring();
+    } catch (error) {
+      // initModelでエラーが発生した場合
+      this.connectionState = 'error';
+      this.connectionError = error instanceof Error ? error : new Error(String(error));
+      this.rejectConnected(this.connectionError);
+      throw error;
+    }
   }
 
   /**
@@ -458,8 +501,8 @@ export class DBEngine extends EventEmitter {
         if (status.status === 'ok') {
           this.isReady = true;
           console.log('DB is ready:', status);
-          // 接続完了を通知
-          this.resolveConnected();
+          // waitForReadyは完了したが、まだモデル初期化が残っているため、
+          // resolveConnected()はinitModel完了後に呼ぶ
           return;
         }
       } catch (_e) {
@@ -621,6 +664,10 @@ export class DBEngine extends EventEmitter {
       this.isReady = false;
       this.buffer = ''; // バッファをクリア
     }
+
+    // 接続状態をリセット
+    this.connectionState = 'disconnected';
+    this.connectionError = null;
   }
 
   /**

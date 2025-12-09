@@ -74,15 +74,45 @@ export async function executeServerStatus(
 
       const status = await client.getStatus();
 
-      console.log('\nIndex Status:');
-      console.log(`  Total Documents: ${status.index.totalDocuments}`);
-      console.log(`  Total Sections: ${status.index.totalSections}`);
-      console.log(`  Dirty Count: ${status.index.dirtyCount}`);
+      // データベース接続状態を表示
+      console.log('\nDatabase Status:');
+      switch (status.database.connectionState) {
+        case 'disconnected':
+          console.log('  Status: Disconnected');
+          break;
+        case 'connecting':
+          console.log('  Status: Connecting to database...');
+          console.log('  Progress: Starting Python worker and LanceDB connection');
+          break;
+        case 'initializing_model':
+          console.log('  Status: Loading embedding model...');
+          console.log('  Progress: Initializing Ruri embedding model (this may take 5-10 seconds)');
+          break;
+        case 'ready':
+          console.log('  Status: Connected');
+          break;
+        case 'error':
+          console.log('  Status: Error');
+          if (status.database.connectionError) {
+            console.log(`  Error: ${status.database.connectionError}`);
+          }
+          break;
+      }
 
-      console.log('\nWorker Status:');
-      console.log(`  Running: ${status.worker.running ? 'Yes' : 'No'}`);
-      console.log(`  Processing: ${status.worker.processing}`);
-      console.log(`  Queue: ${status.worker.queue}`);
+      // DB接続完了時のみインデックス情報を表示
+      if (status.database.connectionState === 'ready') {
+        console.log('\nIndex Status:');
+        console.log(`  Total Documents: ${status.index.totalDocuments}`);
+        console.log(`  Total Sections: ${status.index.totalSections}`);
+        console.log(`  Dirty Count: ${status.index.dirtyCount}`);
+
+        console.log('\nWorker Status:');
+        console.log(`  Running: ${status.worker.running ? 'Yes' : 'No'}`);
+        console.log(`  Processing: ${status.worker.processing}`);
+        console.log(`  Queue: ${status.worker.queue}`);
+      } else {
+        console.log('\nIndex Status: Waiting for database connection...');
+      }
     } catch (error) {
       console.log('\nFailed to get detailed status:', (error as Error).message);
     }
