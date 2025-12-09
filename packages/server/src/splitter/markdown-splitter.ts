@@ -119,8 +119,22 @@ export class MarkdownSplitter {
             // 親がない場合は直接追加
             nodes.push(currentDepth3);
           }
+        } else {
+          // H4以降（#### ##### ######）は独立したセクションとせず、
+          // 親ノード（最も深いH3/H2/H1）のコンテンツの一部として保存
+          const text = this.tokenToMarkdown(token);
+          const targetNode = currentDepth3 || currentDepth2 || currentDepth1;
+
+          if (text.trim()) {
+            if (targetNode) {
+              targetNode.content.push(text);
+              targetNode.endLine = tokenEndLine;
+            } else {
+              // 見出しのない前文として扱う
+              contentBuffer.push(text);
+            }
+          }
         }
-        // H4以降は無視（親セクションに含める）
       } else {
         // コンテンツを現在のノードに追加
         const text = this.tokenToMarkdown(token);

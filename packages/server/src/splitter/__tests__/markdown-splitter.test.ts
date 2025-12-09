@@ -198,11 +198,12 @@ H5の内容`;
       expect(sections).toHaveLength(2);
       expect(sections[0].depth).toBe(0); // 文書ルート
       expect(sections[1].heading).toBe('H2 Section');
-      // H4, H5の内容が含まれている（見出しテキストと内容）
+      // H4, H5の見出しと内容が含まれている
       expect(sections[1].content).toContain('H2の内容');
+      expect(sections[1].content).toContain('#### H4 Section'); // 見出しも保持される
       expect(sections[1].content).toContain('H4の内容');
+      expect(sections[1].content).toContain('##### H5 Section'); // 見出しも保持される
       expect(sections[1].content).toContain('H5の内容');
-      // Note: markedがH4/H5をHTML化する可能性があるため、見出し文字列のチェックは行わない
     });
   });
 
