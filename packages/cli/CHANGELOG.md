@@ -1,5 +1,20 @@
 # @search-docs/cli
 
+## 1.0.32
+
+### Patch Changes
+
+- fe67c66: 文書構造を表示する get_outline ツールを追加し、ESLint エラーを修正しました。
+
+  - 新機能: get_outline ツールで文書のアウトライン（セクション番号・行数・トークン数）を取得
+  - path/sectionId 両対応、関連プロジェクトサポート
+  - ESLint エラー修正: Python 型インターフェースの追加、未使用変数の修正
+
+- Updated dependencies [fe67c66]
+  - @search-docs/types@1.3.1
+  - @search-docs/server@1.2.8
+  - @search-docs/client@1.0.16
+
 ## 1.0.31
 
 ### Patch Changes
