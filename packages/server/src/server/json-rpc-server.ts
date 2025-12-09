@@ -5,6 +5,7 @@ import type { SearchDocsServer } from './search-docs-server.js';
 import type {
   SearchRequest,
   GetDocumentRequest,
+  GetOutlineRequest,
   IndexDocumentRequest,
   RebuildIndexRequest,
 } from '@search-docs/types';
@@ -174,6 +175,9 @@ export class JsonRpcServer {
 
       case 'getDocument':
         return await this.searchDocsServer.getDocument(params as GetDocumentRequest);
+
+      case 'getOutline':
+        return await this.searchDocsServer.getOutline(params as GetOutlineRequest);
 
       case 'indexDocument':
         return await this.searchDocsServer.indexDocument(params as IndexDocumentRequest);

@@ -6,6 +6,9 @@ import type {
   SearchResponse,
   GetDocumentRequest,
   GetDocumentResponse,
+  GetOutlineRequest,
+  GetOutlineResponse,
+  OutlineItem,
   IndexDocumentRequest,
   IndexDocumentResponse,
   RebuildIndexRequest,
@@ -275,6 +278,53 @@ export class SearchDocsServer {
     }
 
     return { document };
+  }
+
+  /**
+   * 文書アウトライン取得API
+   */
+  async getOutline(request: GetOutlineRequest): Promise<GetOutlineResponse> {
+    // pathとsectionIdのどちらか一方は必須
+    if (!request.path && !request.sectionId) {
+      throw new Error('pathまたはsectionIdのどちらか一方を指定してください');
+    }
+
+    // セクション一覧を取得
+    let sections;
+    if (request.sectionId) {
+      // sectionIdが指定されている場合は、そのセクションを取得
+      const result = await this.dbEngine.getSectionById(request.sectionId);
+      // 指定されたセクション配下のセクションを取得するため、同じdocumentPathで取得
+      const allSections = await this.dbEngine.getSectionsByPath(result.section.documentPath);
+
+      // 指定されたsectionのsectionNumberで始まるセクションのみをフィルタ
+      const targetSectionNumber = result.section.sectionNumber;
+      sections = allSections.sections.filter(s => {
+        // 同じセクション番号で始まり、かつ階層が深いもの（子孫）を含める
+        if (s.sectionNumber.length <= targetSectionNumber.length) {
+          return false;
+        }
+        return targetSectionNumber.every((num, idx) => s.sectionNumber[idx] === num);
+      });
+    } else {
+      // pathが指定されている場合は、その文書全体のセクションを取得
+      const result = await this.dbEngine.getSectionsByPath(request.path!);
+      sections = result.sections;
+    }
+
+    // orderでソート
+    sections.sort((a, b) => a.order - b.order);
+
+    // OutlineItemに変換
+    const items: OutlineItem[] = sections.map(section => ({
+      number: section.sectionNumber.join('.'),
+      heading: section.heading,
+      lines: section.endLine - section.startLine + 1,
+      tokens: section.tokenCount,
+      id: section.id,
+    }));
+
+    return { items };
   }
 
   /**

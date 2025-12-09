@@ -7,6 +7,8 @@ import type {
   SearchResponse,
   GetDocumentRequest,
   GetDocumentResponse,
+  GetOutlineRequest,
+  GetOutlineResponse,
   IndexDocumentRequest,
   IndexDocumentResponse,
   RebuildIndexRequest,
@@ -68,6 +70,13 @@ export class SearchDocsClient {
    */
   async getDocument(request: GetDocumentRequest): Promise<GetDocumentResponse> {
     return this.call<GetDocumentResponse>('getDocument', request);
+  }
+
+  /**
+   * 文書のアウトラインを取得
+   */
+  async getOutline(request: GetOutlineRequest): Promise<GetOutlineResponse> {
+    return this.call<GetOutlineResponse>('getOutline', request);
   }
 
   /**
