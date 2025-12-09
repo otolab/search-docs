@@ -15,7 +15,7 @@ export function isProcessAlive(pid: number): boolean {
     // signal 0 は実際にシグナルを送らず、プロセスの存在確認のみ行う
     process.kill(pid, 0);
     return true;
-  } catch (_error) {
+  } catch (error) {
     return false;
   }
 }

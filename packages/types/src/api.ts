@@ -83,34 +83,6 @@ export interface GetDocumentResponse {
 }
 
 // ========================================
-// GetOutline API
-// ========================================
-
-export interface GetOutlineRequest {
-  /** 文書パス（sectionIdを指定しない場合は必須） */
-  path?: string;
-  /** セクションID（pathを指定しない場合は必須） */
-  sectionId?: string;
-}
-
-export interface OutlineItem {
-  /** セクション番号（例: "1.2.3"） */
-  number: string;
-  /** 見出し */
-  heading: string;
-  /** 行数 */
-  lines: number;
-  /** トークン数 */
-  tokens: number;
-  /** セクションID */
-  id: string;
-}
-
-export interface GetOutlineResponse {
-  items: OutlineItem[];
-}
-
-// ========================================
 // IndexDocument API
 // ========================================
 

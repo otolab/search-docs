@@ -40,7 +40,7 @@ async function waitForServerDown(
 
       // まだ起動中、待機を続ける
       await new Promise((resolve) => setTimeout(resolve, checkInterval));
-    } catch (_error) {
+    } catch (error) {
       // 接続エラー = サーバ停止
       return true;
     }

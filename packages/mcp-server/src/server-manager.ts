@@ -222,7 +222,7 @@ export class ServerManager {
         await cached.client.healthCheck();
         console.error(`[mcp-server] Using cached client for project: ${projectName}`);
         return cached.client;
-      } catch (_error) {
+      } catch (error) {
         // サーバが停止している、キャッシュをクリア
         console.error(`[mcp-server] Cached server for ${projectName} is down, restarting...`);
         this.servers.delete(projectName);
