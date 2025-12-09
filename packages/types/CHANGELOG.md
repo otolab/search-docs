@@ -1,5 +1,13 @@
 # @search-docs/types
 
+## 1.3.2
+
+### Patch Changes
+
+- 6ecd3e6: maxDepth の上限を 3 から 6 に変更
+
+  Markdown の見出しは H6（######）まで存在するため、config.indexing.maxDepth の範囲を 0-6 に拡張しました。これにより、H4/H5/H6 見出しを独立したセクションとして作成できるようになります。
+
 ## 1.3.1
 
 ### Patch Changes
