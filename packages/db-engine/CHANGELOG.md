@@ -1,5 +1,16 @@
 # @search-docs/db-engine
 
+## 1.3.4
+
+### Patch Changes
+
+- 9f54b1a: totalDocuments が 0 になるバグを修正
+
+  get_stats()関数で table.to_lance()を使用していましたが、pylance パッケージへの依存が必要でした。pyproject.toml に pylance>=0.9.0 を追加することで、totalDocuments を正しく取得できるようになりました。
+
+- Updated dependencies [6ecd3e6]
+  - @search-docs/types@1.3.2
+
 ## 1.3.3
 
 ### Patch Changes

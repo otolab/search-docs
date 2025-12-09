@@ -1,5 +1,20 @@
 # @search-docs/server
 
+## 1.2.9
+
+### Patch Changes
+
+- 21322ee: fix: get_outline API の 3 つの問題を修正
+  - セクションの並び順を section_number 辞書順に修正（order フィールドではなく階層順）
+  - YAML frontmatter を除去（メタデータブロックが見出しとして扱われる問題を解消）
+  - document root（depth=0）を結果から除外（常に先頭が"1"になる問題を解消）
+- 21322ee: fix: H4/H5/H6 見出しが保存されない問題を修正（changeset の追加漏れによる再リリース）
+- Updated dependencies [6ecd3e6]
+- Updated dependencies [9f54b1a]
+  - @search-docs/types@1.3.2
+  - @search-docs/db-engine@1.3.4
+  - @search-docs/storage@1.0.15
+
 ## 1.2.8
 
 ### Patch Changes
