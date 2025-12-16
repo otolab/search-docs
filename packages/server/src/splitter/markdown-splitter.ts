@@ -234,8 +234,9 @@ export class MarkdownSplitter {
       // 行番号はHeadingNodeに保存済み
       const startLine = node.startLine;
       const endLine = node.endLine;
-      // セクション番号（階層的な配列、例: [1], [1, 2], [1, 2, 1]）
-      const sectionNumber = [...parentSectionNumber, i + 1];
+      // セクション番号（階層的な配列、例: [], [1], [1, 2], [1, 2, 1]）
+      // document root（depth=0）は空配列、それ以外は親のsectionNumberに連番を追加
+      const sectionNumber = node.depth === 0 ? [] : [...parentSectionNumber, i + 1];
 
       const now = new Date();
       const section: Omit<Section, 'vector'> = {

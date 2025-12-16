@@ -117,7 +117,7 @@ describe('getOutline API', () => {
     await storage.save(doc.path, doc);
 
     // セクションを追加
-    // 注: H1が文書の最初の見出しなので、H1のsectionNumber=[1]、そのH2子のsectionNumber=[1,1], [1,2]
+    // 注: document rootのsectionNumber=[]、H1のsectionNumber=[1]、そのH2子のsectionNumber=[1,1], [1,2]
     await dbEngine.addSections([
       {
         id: 'section-0',
@@ -134,7 +134,7 @@ describe('getOutline API', () => {
         updatedAt: new Date(),
         startLine: 1,
         endLine: 10,
-        sectionNumber: [1],
+        sectionNumber: [],
       },
       {
         id: 'section-1',
@@ -247,7 +247,7 @@ describe('getOutline API', () => {
         updatedAt: new Date(),
         startLine: 1,
         endLine: 1,
-        sectionNumber: [1],
+        sectionNumber: [],
       },
       {
         id: 'section-a',
@@ -342,7 +342,7 @@ describe('getOutline API', () => {
         updatedAt: new Date(),
         startLine: 1,
         endLine: 5,
-        sectionNumber: [1],
+        sectionNumber: [],
       },
       {
         id: 'title',
