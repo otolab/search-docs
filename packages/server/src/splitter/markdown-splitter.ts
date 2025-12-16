@@ -86,14 +86,24 @@ export class MarkdownSplitter {
   }
 
   /**
+   * 最も深い現在のノードを取得
+   */
+  private findDeepestNode(currentNodes: (HeadingNode | null)[], maxDepth: number): HeadingNode | null {
+    for (let d = maxDepth; d >= 1; d--) {
+      if (currentNodes[d]) {
+        return currentNodes[d];
+      }
+    }
+    return null;
+  }
+
+  /**
    * 見出し構造を抽出
    */
   private extractHeadingStructure(tokens: Token[], content: string): HeadingNode[] {
     const nodes: HeadingNode[] = [];
-    let currentDepth0: HeadingNode | null = null;
-    let currentDepth1: HeadingNode | null = null;
-    let currentDepth2: HeadingNode | null = null;
-    let currentDepth3: HeadingNode | null = null;
+    // 各深さレベルの現在のノードをスタックで管理（depth 0-maxDepth）
+    const currentNodes: (HeadingNode | null)[] = new Array(this.config.maxDepth + 1).fill(null);
     const contentBuffer: string[] = [];
     let currentLine = 1;  // 現在の行番号（1-indexed）
 
@@ -103,72 +113,58 @@ export class MarkdownSplitter {
       // トークンの行数を計算
       const tokenLines = tokenRaw.split('\n').length - 1;
       const tokenEndLine = currentLine + tokenLines;
+
       if (token.type === 'heading') {
         // 型ガード: heading型であることを明示
         const headingToken = token as Tokens.Heading;
         const depth = headingToken.depth; // 1-6
         const heading = headingToken.text;
 
-        if (depth === 1) {
-          // H1: 新しいdepth 1ノード
-          currentDepth1 = {
-            depth: 1,
+        // maxDepth以下の見出しはHeadingNodeとして作成
+        if (depth <= this.config.maxDepth) {
+          // 新しいノードを作成
+          const newNode: HeadingNode = {
+            depth,
             heading,
             content: [],
             children: [],
             startLine: tokenStartLine,
             endLine: tokenEndLine,
           };
-          nodes.push(currentDepth1);
-          currentDepth2 = null;
-          currentDepth3 = null;
-        } else if (depth === 2) {
-          // H2: depth 1の子、またはdepth 2として扱う
-          currentDepth2 = {
-            depth: 2,
-            heading,
-            content: [],
-            children: [],
-            startLine: tokenStartLine,
-            endLine: tokenEndLine,
-          };
-          if (currentDepth1) {
-            currentDepth1.children.push(currentDepth2);
-          } else {
-            // H1がない場合は直接追加
-            nodes.push(currentDepth2);
+
+          // 親ノードを探す（depth-1, depth-2, ... depth 1 の順で探す）
+          let parent: HeadingNode | null = null;
+          for (let d = depth - 1; d >= 1; d--) {
+            if (currentNodes[d]) {
+              parent = currentNodes[d];
+              break;
+            }
           }
-          currentDepth3 = null;
-        } else if (depth === 3) {
-          // H3: depth 2の子、またはdepth 3として扱う
-          currentDepth3 = {
-            depth: 3,
-            heading,
-            content: [],
-            children: [],
-            startLine: tokenStartLine,
-            endLine: tokenEndLine,
-          };
-          if (currentDepth2) {
-            currentDepth2.children.push(currentDepth3);
-          } else if (currentDepth1) {
-            currentDepth1.children.push(currentDepth3);
+
+          // 親に追加、または直接ルートに追加
+          if (parent) {
+            parent.children.push(newNode);
           } else {
-            // 親がない場合は直接追加
-            nodes.push(currentDepth3);
+            nodes.push(newNode);
+          }
+
+          // 現在のノードを更新
+          currentNodes[depth] = newNode;
+
+          // それより深いレベルをクリア
+          for (let d = depth + 1; d <= this.config.maxDepth; d++) {
+            currentNodes[d] = null;
           }
         } else {
-          // H4以降（#### ##### ######）は独立したセクションとせず、
-          // 親ノード（最も深いH3/H2/H1）のコンテンツの一部として保存
+          // maxDepthを超える見出しは親ノードのコンテンツの一部として保存
           const text = this.tokenToMarkdown(token);
-          const targetNode = currentDepth3 || currentDepth2 || currentDepth1;
+          const targetNode = this.findDeepestNode(currentNodes, this.config.maxDepth);
 
           if (text.trim()) {
             if (targetNode) {
               targetNode.content.push(text);
               targetNode.endLine = tokenEndLine;
             } else {
-              // 見出しのない前文として扱う
               contentBuffer.push(text);
             }
           }
@@ -178,15 +174,12 @@ export class MarkdownSplitter {
         const text = this.tokenToMarkdown(token);
 
         if (text.trim()) {
-          // 最も深い現在のノードを選択
-          const targetNode = currentDepth3 || currentDepth2 || currentDepth1;
+          const targetNode = this.findDeepestNode(currentNodes, this.config.maxDepth);
 
           if (targetNode) {
             targetNode.content.push(text);
-            // endLineを更新
             targetNode.endLine = tokenEndLine;
           } else {
-            // 見出しのない前文
             contentBuffer.push(text);
           }
         }
@@ -197,18 +190,18 @@ export class MarkdownSplitter {
     }
 
     // depth=0は常に文書全体を表す
-    // 前文（contentBuffer）を持ち、すべてのH1セクション（nodes）を子として持つ
+    // 前文（contentBuffer）を持ち、すべてのトップレベルセクション（nodes）を子として持つ
     const totalLines = content.split('\n').length;
-    currentDepth0 = {
+    const rootNode: HeadingNode = {
       depth: 0,
       heading: '', // 文書ルート
       content: contentBuffer, // 前文（あれば）
-      children: nodes, // すべてのH1セクション
+      children: nodes, // すべてのトップレベルセクション
       startLine: 1,
       endLine: totalLines,
     };
 
-    return [currentDepth0];
+    return [rootNode];
   }
 
   /**
@@ -271,13 +264,15 @@ export class MarkdownSplitter {
 
       // 子セクションを再帰的に処理
       if (node.children.length > 0 && node.depth < this.config.maxDepth) {
+        // depth=0（document root）の場合、子のsectionNumberは親のsectionNumberを継承しない
+        const childSectionNumber = node.depth === 0 ? [] : sectionNumber;
         const childSections = this.buildSections(
           node.children,
           documentPath,
           documentHash,
           id,
           0,
-          sectionNumber
+          childSectionNumber
         );
         sections.push(...childSections);
       }
