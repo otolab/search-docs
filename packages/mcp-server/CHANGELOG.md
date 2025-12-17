@@ -1,5 +1,38 @@
 # @search-docs/mcp-server
 
+## 1.5.0
+
+### Minor Changes
+
+- 59304d6: fix: セクション番号の表示問題を修正 (Issue #30)
+
+  **破壊的変更**: データベース構造の変更により、インデックスの再構築が必要です。
+
+  ## 問題
+
+  get_outline でセクション番号が「1.1: Level 1」のように、H1 が 1.1 から始まっていました。
+
+  ## 原因
+
+  document root (depth=0) と H1 (depth=1) が同じ sectionNumber `[1]`を持っていたため、表示が重複していました。
+
+  ## 修正内容
+
+  - **データ層**: document root の sectionNumber を`[]`（空配列）に変更
+  - **表示層**: 空の sectionNumber を"root"として表示
+  - **テスト**: 包括的な sectionNumber 検証テストを追加
+
+  ## 影響
+
+  - **データベース**: sectionNumber の形式が変更されたため、インデックスの再構築が必要
+  - **表示**: セクション番号が正しく表示されるようになります
+    - 以前: "1.1: Level 1"
+    - 修正後: "1: Level 1"
+
+### Patch Changes
+
+- @search-docs/cli@1.0.34
+
 ## 1.4.5
 
 ### Patch Changes
