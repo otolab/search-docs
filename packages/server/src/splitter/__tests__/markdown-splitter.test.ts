@@ -480,4 +480,183 @@ const foo = "bar";
       expect(sections).toHaveLength(3);
     });
   });
+
+  describe('セクション番号（sectionNumber）', () => {
+    it('document root（depth=0）のsectionNumberは空配列', () => {
+      const md = `前文です。
+
+# H1 Section`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + H1
+      expect(sections).toHaveLength(2);
+      expect(sections[0].depth).toBe(0);
+      expect(sections[0].sectionNumber).toEqual([]);
+    });
+
+    it('H1のsectionNumberは[1]', () => {
+      const md = '# H1 Section';
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + H1
+      expect(sections).toHaveLength(2);
+      expect(sections[1].depth).toBe(1);
+      expect(sections[1].heading).toBe('H1 Section');
+      expect(sections[1].sectionNumber).toEqual([1]);
+    });
+
+    it('H2のsectionNumberは[1, 1]', () => {
+      const md = `# H1
+## H2`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + H1 + H2
+      expect(sections).toHaveLength(3);
+      expect(sections[2].depth).toBe(2);
+      expect(sections[2].heading).toBe('H2');
+      expect(sections[2].sectionNumber).toEqual([1, 1]);
+    });
+
+    it('H3のsectionNumberは[1, 1, 1]', () => {
+      const md = `# H1
+## H2
+### H3`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + H1 + H2 + H3
+      expect(sections).toHaveLength(4);
+      expect(sections[3].depth).toBe(3);
+      expect(sections[3].heading).toBe('H3');
+      expect(sections[3].sectionNumber).toEqual([1, 1, 1]);
+    });
+
+    it('複数のH1は連番になる', () => {
+      const md = `# First H1
+
+## H2 under First
+
+# Second H1
+
+# Third H1`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + 3つのH1 + 1つのH2
+      expect(sections).toHaveLength(5);
+
+      // document root
+      expect(sections[0].sectionNumber).toEqual([]);
+
+      // First H1
+      expect(sections[1].heading).toBe('First H1');
+      expect(sections[1].sectionNumber).toEqual([1]);
+
+      // H2 under First
+      expect(sections[2].heading).toBe('H2 under First');
+      expect(sections[2].sectionNumber).toEqual([1, 1]);
+
+      // Second H1
+      expect(sections[3].heading).toBe('Second H1');
+      expect(sections[3].sectionNumber).toEqual([2]);
+
+      // Third H1
+      expect(sections[4].heading).toBe('Third H1');
+      expect(sections[4].sectionNumber).toEqual([3]);
+    });
+
+    it('同じH1配下の複数H2は連番になる', () => {
+      const md = `# H1
+
+## First H2
+
+## Second H2
+
+## Third H2`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + H1 + 3つのH2
+      expect(sections).toHaveLength(5);
+
+      expect(sections[0].sectionNumber).toEqual([]); // document root
+      expect(sections[1].sectionNumber).toEqual([1]); // H1
+
+      expect(sections[2].heading).toBe('First H2');
+      expect(sections[2].sectionNumber).toEqual([1, 1]);
+
+      expect(sections[3].heading).toBe('Second H2');
+      expect(sections[3].sectionNumber).toEqual([1, 2]);
+
+      expect(sections[4].heading).toBe('Third H2');
+      expect(sections[4].sectionNumber).toEqual([1, 3]);
+    });
+
+    it('複雑な階層構造でsectionNumberが正しく設定される', () => {
+      const md = `# H1-1
+
+## H2-1-1
+
+### H3-1-1-1
+
+## H2-1-2
+
+# H1-2
+
+## H2-2-1`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0 + 2つのH1 + 3つのH2 + 1つのH3 = 7
+      expect(sections).toHaveLength(7);
+
+      expect(sections[0].sectionNumber).toEqual([]); // document root
+
+      expect(sections[1].heading).toBe('H1-1');
+      expect(sections[1].sectionNumber).toEqual([1]);
+
+      expect(sections[2].heading).toBe('H2-1-1');
+      expect(sections[2].sectionNumber).toEqual([1, 1]);
+
+      expect(sections[3].heading).toBe('H3-1-1-1');
+      expect(sections[3].sectionNumber).toEqual([1, 1, 1]);
+
+      expect(sections[4].heading).toBe('H2-1-2');
+      expect(sections[4].sectionNumber).toEqual([1, 2]);
+
+      expect(sections[5].heading).toBe('H1-2');
+      expect(sections[5].sectionNumber).toEqual([2]);
+
+      expect(sections[6].heading).toBe('H2-2-1');
+      expect(sections[6].sectionNumber).toEqual([2, 1]);
+    });
+
+    it('前文がある場合でもdocument rootのsectionNumberは空配列', () => {
+      const md = `これは前文です。
+
+見出しの前にある文章も含まれます。
+
+# H1 Section
+
+H1の内容です。`;
+
+      const sections = splitter.split(md, '/test.md', 'hash123');
+
+      // depth=0（前文あり） + H1
+      expect(sections).toHaveLength(2);
+
+      // document root（前文を含む）
+      expect(sections[0].depth).toBe(0);
+      expect(sections[0].heading).toBe('(document root)');
+      expect(sections[0].sectionNumber).toEqual([]);
+      expect(sections[0].content).toContain('これは前文です');
+
+      // H1
+      expect(sections[1].depth).toBe(1);
+      expect(sections[1].heading).toBe('H1 Section');
+      expect(sections[1].sectionNumber).toEqual([1]);
+    });
+  });
 });

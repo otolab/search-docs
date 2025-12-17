@@ -90,8 +90,8 @@ def validate_section(section_data: dict) -> None:
         raise TypeError("Field 'heading' must be a string")
     if not isinstance(section_data.get('depth'), int):
         raise TypeError("Field 'depth' must be an integer")
-    if section_data.get('depth') < 0 or section_data.get('depth') > 3:
-        raise ValueError("Field 'depth' must be between 0 and 3")
+    if section_data.get('depth') < 0 or section_data.get('depth') > 6:
+        raise ValueError("Field 'depth' must be between 0 and 6 (0=root, 1-6=H1-H6)")
     if not isinstance(section_data.get('is_dirty'), bool):
         raise TypeError("Field 'is_dirty' must be a boolean")
 

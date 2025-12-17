@@ -97,7 +97,9 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
             resultText += `セクション: ${response.section.heading || '(no heading)'}\n`;
             resultText += `文書: ${response.section.documentPath}\n`;
             const depthLabel = getDepthLabel(response.section.depth);
-            const sectionPath = response.section.sectionNumber.join('-');
+            const sectionPath = response.section.sectionNumber.length > 0
+              ? response.section.sectionNumber.join('-')
+              : 'root';
             resultText += `Level: ${depthLabel} | Section: ${sectionPath} | Line: ${response.section.startLine}-${response.section.endLine}\n\n`;
             resultText += `内容:\n${'='.repeat(60)}\n`;
             resultText += response.section.content;
@@ -150,7 +152,9 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
           resultText += `セクション: ${response.section.heading || '(no heading)'}\n`;
           resultText += `文書: ${response.section.documentPath}\n`;
           const depthLabel = getDepthLabel(response.section.depth);
-          const sectionPath = response.section.sectionNumber.join('-');
+          const sectionPath = response.section.sectionNumber.length > 0
+            ? response.section.sectionNumber.join('-')
+            : 'root';
           resultText += `Level: ${depthLabel} | Section: ${sectionPath} | Line: ${response.section.startLine}-${response.section.endLine}\n\n`;
           resultText += `内容:\n${'='.repeat(60)}\n`;
           resultText += response.section.content;
