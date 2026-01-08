@@ -66,9 +66,9 @@ search-docs/
 ### コーディング方針
 
 参考レシピ:
-- **pnpmモノレポ**: `~/Develop/otolab/ai-agent-prompts/recipes/pnpm-workspaces-typescript/`
-- **ドキュメント・コード・テスト同期**: `~/Develop/otolab/ai-agent-prompts/recipes/document-code-test/`
-- **Serena統合**: `~/Develop/otolab/ai-agent-prompts/recipes/serena-integration/`
+- **pnpmモノレポ**: `ai-agent-prompts/recipes/pnpm-workspaces-typescript/`
+- **ドキュメント・コード・テスト同期**: `ai-agent-prompts/recipes/document-code-test/`
+- **Serena統合**: `ai-agent-prompts/recipes/serena-integration/`
 
 ### search-docs利用
 
