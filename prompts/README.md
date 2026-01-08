@@ -10,5 +10,5 @@
 ## 参考
 
 プロジェクト全体の作業方針については、以下を参照してください：
-- 個人作業指針: `~/Develop/otolab/ai-agent-prompts/agent-prompts/prompts/root.md`
-- レシピ集: `~/Develop/otolab/ai-agent-prompts/recipes/`
+- 個人作業指針: `ai-agent-prompts/agent-prompts/prompts/root.md`
+- レシピ集: `ai-agent-prompts/recipes/`
