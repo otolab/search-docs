@@ -1,233 +1,135 @@
 # 🐕️ search-docs
 
-ローカル文書検索システム - Markdown文書に対するVector検索機能を提供します
+**ローカル文書をAIエージェントが検索できるようにする**
 
-## 概要
+プロジェクトのドキュメント、設計書、調査メモ。大量の文書から必要な情報を見つけるのは大変です。
 
-search-docsは、ローカルに保存されたMarkdown文書に対して高度なVector検索を行うサブシステムです。文書全体だけでなく、セクションごとの情報も自動的に分解してインデックス化し、より精緻な検索を可能にします。
+search-docsは、Markdown文書をVector検索可能にし、Claude CodeなどのAIエージェントが自然言語で検索できるようにします。
 
-## 主な機能
+## コンセプト
 
-- **クライアント・サーバ構成**: プロジェクト毎に起動される検索サーバと、複数のクライアント
-- **文書の自動分解**: Markdown文書をセクション単位で自動的に分解（depth 0-3）
-- **Vector検索**: 文書全体とセクションごとに対してVector検索を実行
-- **設定ファイルベース**: ファイル検索ルールを柔軟に設定可能
-- **ローカル実行**: すべての処理をローカル環境で完結
-- **日本語最適化**: 日本語文書に最適化された埋め込みモデルを使用
-- **Claude Code統合**: MCP Serverとして直接利用可能
+- **ローカルファースト**: すべてのデータはローカルに保存、プライバシー重視
+- **エージェント統合**: Claude Codeから自然言語で検索
+- **自動更新**: ファイル変更を自動検知、常に最新の情報を検索可能
+- **セクション分割**: 文書全体だけでなく、関連する章節を精度高く発見
 
-## 技術スタック
+## 仕組み
 
-### メイン言語
-- **TypeScript**: アプリケーションロジック、API、文書処理
+search-docsは、シンプルな3層構造で動作します：
 
-### データベースエンジン
-- **Python**: Vector検索とDB管理
-- **LanceDB**: Vector database
-- **Ruri Embedding Models**: 日本語最適化された埋め込みモデル
-
-## アーキテクチャ
-
-search-docsは、クライアント・サーバ構成で実装されています。
-
-### コンポーネント
-
-- **Server** (`@search-docs/server`): プロジェクト毎に起動される文書管理・検索サーバ
-- **Client Library** (`@search-docs/client`): サーバと通信するTypeScriptクライアント
-- **CLI Tool** (`@search-docs/cli`): コマンドラインインターフェイス
-- **MCP Server** (`@search-docs/mcp-server`): Claude Code統合用のMCPサーバ
-- **DB Engine** (`@search-docs/db-engine`): LanceDB操作のPythonラッパー
-- **Storage** (`@search-docs/storage`): 文書の永続化層
-- **Types** (`@search-docs/types`): 共通の型定義
-
-詳細なアーキテクチャ情報については、以下のドキュメントを参照してください：
-- [クライアント・サーバアーキテクチャ](docs/client-server-architecture.md)
-- [データモデル設計](docs/data-model.md)
-- [システムアーキテクチャ](docs/architecture.md)
-
-## セットアップ
-
-### 前提条件
-
-- Node.js (推奨: v18以上)
-- [uv](https://github.com/astral-sh/uv) (Python パッケージマネージャー)
-
-### インストール
-
-```bash
-# 依存関係のインストール
-pnpm install
-
-# Python環境のセットアップ
-uv sync
-
-# ビルド
-pnpm build
+```
+Markdown文書
+    ↓ (見出しで分割)
+Sections (depth 0-3)
+    ↓ (Vector化)
+LanceDB Index
+    ↓ (自然言語で検索)
+AIエージェント / CLI / API
 ```
 
-### グローバルインストール（本番利用）
+**Document**: プロジェクトの.mdファイル
+**Section**: 見出しごとに分割された意味のある単位
+**Vector Index**: 日本語最適化モデル（Ruri）でVector化
+**Server**: プロジェクトごとに起動、変更を自動検知
+
+詳細: [システムアーキテクチャ](docs/architecture.md)
+
+## 30秒で始める（Claude Code）
+
+```bash
+claude mcp add npx -- -y @search-docs/mcp-server
+```
+
+その後、Claude Codeで：
+1. 「search-docsのセットアップをお願い」と依頼
+2. MCPを再接続（reconnect）
+3. 「このプロジェクトのアーキテクチャについて教えて」と依頼
+
+→ [詳しい手順](docs/mcp-integration.md)
+
+## その他の使い方
+
+### CLIツールとして使う
 
 ```bash
 # グローバルインストール
 npm install -g @search-docs/cli
 
 # またはnpxで直接実行（インストール不要）
-npx @search-docs/cli config init
 npx @search-docs/cli server start
 npx @search-docs/cli search "検索クエリ"
 ```
 
-### GPU対応（オプション）
+→ [ユーザーガイド](docs/user-guide.md)
 
-GPUを使用することで、Vector化処理を大幅に高速化できます（数倍〜数十倍）。
+### プログラムから使う
 
-#### 前提条件
+TypeScript/JavaScript APIとしても利用できます。
 
-- **NVIDIA GPU + CUDA Toolkit**（CUDA 11.8 または 12.1以降）
-- または **AMD GPU + ROCm**
-- または **Apple Silicon Mac**（M1/M2/M3など、MPSバックエンドを自動使用）
+```typescript
+import { SearchClient } from '@search-docs/client';
 
-#### インストール方法
-
-```bash
-# Apple Silicon (M1/M2/M3) の場合
-# 追加のインストール不要 - sentence-transformersの依存関係としてPyTorchが自動的にインストールされます
-
-# CUDA 11.8環境の場合
-cd packages/db-engine
-uv pip install -e ".[gpu]"
-
-# CUDA 12.1環境の場合
-uv pip install -e ".[gpu-cu121]"
-
-# PyTorchインデックスを使用する場合（推奨）
-uv pip install torch --index-url https://download.pytorch.org/whl/cu118
+const client = new SearchClient({ port: 24280 });
+const results = await client.search('検索クエリ');
 ```
 
-#### 動作確認
+→ [クライアントライブラリ](docs/client-library.md)
 
-```bash
-# サーバ起動時のログで確認
-search-docs server start --foreground
+## 主な特徴
 
-# Apple Silicon MPS GPU使用時の例:
-# > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on GPU (Apple Silicon MPS)
+### セクション分割検索
 
-# NVIDIA GPU使用時の例:
-# > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on GPU (NVIDIA GeForce RTX 3090)
+文書全体だけでなく、H1〜H4の見出し単位で検索。関連する章節をピンポイントで発見できます。
 
-# CPU使用時の例:
-# > Ruri model loaded: cl-nagoya/ruri-v3-30m - Small model (120MB, 256d) on CPU
-```
+### リアルタイム更新
 
-コードは自動的にGPUの有無を検出し、利用可能な場合はGPUを使用します。GPU環境でない場合は、通常通りCPUで動作します（追加設定不要）。
+ファイル変更を自動検知、バックグラウンドで再インデックス。常に最新の情報を検索できます。
 
-## 使用方法
+### プロジェクト独立
 
-### 設定ファイルの初期化
+プロジェクトごとに独立したサーバとインデックス。複数プロジェクトを同時に使用できます。
 
-プロジェクトで初めてsearch-docsを使用する場合は、まず設定ファイルを作成します：
+### 日本語最適化
 
-```bash
-# プロジェクトディレクトリに移動
-cd /path/to/your/project
+日本語に最適化された埋め込みモデル（Ruri）を使用。日本語文書の検索精度が高くなっています。
 
-# 設定ファイルを初期化（ランダムポート）
-search-docs config init
+## アーキテクチャ概要
 
-# ポート番号を指定する場合
-search-docs config init --port 12345
-```
+search-docsは**クライアント・サーバ構成**です：
 
-これにより、`.search-docs.json` 設定ファイルが生成されます。ポート番号はエフェメラルポート範囲（49152-65535）からランダムに選択されるため、複数プロジェクトでの衝突を回避できます。
+### Server側
+- **Server** (`@search-docs/server`): プロジェクトごとに起動
+  - DocumentStorage: ファイルの変更検知
+  - SearchIndex: LanceDBによるVector検索
+  - IndexWorker: バックグラウンドでの自動更新
 
-### サーバの起動
+### Client側
+- **MCP Server** (`@search-docs/mcp-server`): Claude Code統合
+- **CLI Tool** (`@search-docs/cli`): コマンドライン
+- **Client Library** (`@search-docs/client`): プログラマティックな利用
 
-```bash
-# プロジェクトディレクトリで起動（デフォルト: バックグラウンド）
-cd /path/to/your/project
-search-docs server start
+### DB Engine
+- **DB Engine** (`@search-docs/db-engine`): Python/LanceDB/Ruri
 
-# フォアグラウンドで起動（開発時）
-search-docs server start --foreground
-
-# 設定ファイルを明示的に指定
-search-docs --config ./custom-config.json server start
-```
-
-### 検索
-
-```bash
-# CLIから検索
-search-docs search "検索クエリ"
-
-# depth指定
-search-docs search "検索クエリ" --depth 1
-
-# 結果数指定
-search-docs search "検索クエリ" --limit 20
-```
-
-### Claude Code統合
-
-MCP Serverとして利用する場合は、Claude Codeの設定ファイルに以下を追加します：
-
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/search-docs/packages/mcp-server/dist/server.js",
-        "--project-dir",
-        "${workspaceFolder}"
-      ]
-    }
-  }
-}
-```
-
-**注意**: `/absolute/path/to/search-docs/` は実際のパスに置き換えてください。
-
-詳細は [MCP統合ガイド](docs/mcp-integration.md) を参照してください。
-
-### 設定ファイル
-
-プロジェクトルートに `.search-docs.json` を配置：
-
-```json
-{
-  "version": "1.0",
-  "files": {
-    "include": ["**/*.md", "docs/**/*.txt"],
-    "exclude": ["**/node_modules/**", "**/.git/**"],
-    "ignoreGitignore": true
-  },
-  "indexing": {
-    "maxTokensPerSection": 2000,
-    "maxDepth": 3
-  }
-}
-```
-
-詳細な設定オプションは [ユーザーガイド](docs/user-guide.md#設定ファイル) を参照してください。
+詳細: [システムアーキテクチャ](docs/architecture.md) | [データモデル](docs/data-model.md)
 
 ## ドキュメント
 
-### ユーザー向けドキュメント
+### 📚 使い始める
+- [クイックスタート](docs/quick-start.md) - 5分で体験
+- [ユーザーガイド](docs/user-guide.md) - 本格的に使う
+- [CLIリファレンス](docs/cli-reference.md) - 全コマンドの詳細
 
-- **[クイックスタート](docs/quick-start.md)** - 5分で試す基本的な使い方
-- **[ユーザーガイド](docs/user-guide.md)** - 包括的な使用方法ガイド
-- **[CLIリファレンス](docs/cli-reference.md)** - 全コマンドの詳細な説明
-- **[MCP統合ガイド](docs/mcp-integration.md)** - Claude Code統合の手順
+### 🔧 詳しく知る
+- [システムアーキテクチャ](docs/architecture.md) - 技術スタックと実装
+- [データモデル](docs/data-model.md) - データ構造の設計
+- [アーキテクチャ決定記録](docs/architecture-decisions.md) - 設計判断の記録
 
-### 開発者向けドキュメント
+### 🤝 統合する
+- [Claude Code統合](docs/mcp-integration.md) - MCP Serverとして使う
+- [クライアントライブラリ](docs/client-library.md) - APIリファレンス
 
-- **[クライアント・サーバアーキテクチャ](docs/client-server-architecture.md)** - システム構成の詳細
-- **[データモデル設計](docs/data-model.md)** - データ構造の設計
-- **[システムアーキテクチャ](docs/architecture.md)** - 技術スタックと実装詳細
-- **[クライアントライブラリ](docs/client-library.md)** - APIリファレンス
-- **[ドキュメント一覧](docs/README.md)** - 全ドキュメントの索引
+→ [全ドキュメント一覧](docs/README.md)
 
 ## ライセンス
 

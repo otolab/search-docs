@@ -105,7 +105,7 @@ interface PidFileContent {
   // サーバ設定
   host: string;               // サーバホスト
   port: number;               // サーバポート
-  configPath: string;         // 設定ファイルの絶対パス
+  configPath: string | null;  // 設定ファイルの絶対パス（デフォルト設定の場合はnull）
 
   // ログ情報（オプション）
   logPath?: string;           // ログファイルパス
@@ -193,29 +193,32 @@ async function deletePidFile(projectRoot: string): Promise<void> {
 ### 起動フロー
 
 ```
-1. プロジェクトルート決定
+1. [CLI] プロジェクトルート決定
    ↓
-2. 設定ファイル読み込み
+2. [CLI] 設定ファイル読み込み
    ↓
-3. 既存プロセスチェック
+3. [CLI] 既存プロセスチェック
    ├─ PIDファイル存在？
    │  ├─ YES → プロセス生存確認
    │  │         ├─ 生存中 → エラー（既に起動中）
    │  │         └─ 死亡 → 古いPIDファイル削除
    │  └─ NO → 続行
    ↓
-4. ポート利用可能性チェック
+4. [CLI] ポート利用可能性チェック
    ├─ 使用中？
    │  ├─ YES → エラー（ポート競合）
    │  └─ NO → 続行
    ↓
-5. サーバプロセス起動
+5. [CLI] サーバプロセス起動
    ├─ デーモンモード: detached spawn
    └─ フォアグラウンド: 通常spawn
    ↓
-6. PIDファイル作成
+6. [Server] 起動時の重複チェックとPIDファイル作成
+   ├─ 既存PIDファイル確認（自分以外のプロセスが起動中でないか）
+   ├─ 古いPIDファイル削除（あれば）
+   └─ PIDファイル作成
    ↓
-7. 起動完了確認
+7. [CLI] 起動完了確認（デーモンモードの場合のみ）
    ├─ ヘルスチェック（/health）
    └─ タイムアウト: 30秒
    ↓
@@ -272,6 +275,19 @@ async function deletePidFile(projectRoot: string): Promise<void> {
        process.kill(pid, 0);
        return true;
      } catch (error) {
+       const err = error as NodeJS.ErrnoException;
+
+       if (err.code === 'ESRCH') {
+         // プロセスが存在しない
+         return false;
+       }
+
+       if (err.code === 'EPERM') {
+         // 権限がないが、プロセスは存在する
+         return true;
+       }
+
+       // その他のエラーは安全側に倒してfalse
        return false;
      }
    }
@@ -434,6 +450,7 @@ function isProcessAlive(pid: number): boolean {
       return true;
     }
 
+    // その他のエラーは安全側に倒してfalse
     return false;
   }
 }
@@ -584,29 +601,27 @@ async function serverStart(options: ServerStartOptions): Promise<void> {
     stdio: options.daemon ? 'ignore' : 'inherit',
     env: {
       ...process.env,
-      SEARCH_DOCS_CONFIG: config.configPath,
+      SEARCH_DOCS_CONFIG: config.configPath || undefined,
     },
+    cwd: projectRoot, // サーバがprocess.cwd()から設定を読み込むため
   });
 
-  // 7. PIDファイル作成
-  await writePidFile({
-    pid: serverProcess.pid!,
-    startedAt: new Date().toISOString(),
-    projectRoot,
-    projectName: config.project.name,
-    host: config.server.host,
-    port,
-    configPath: config.configPath,
-    version: packageJson.version,
-    nodeVersion: process.version,
-  });
-
-  // 8. デーモンモードの場合はunref
+  // 7. デーモンモードの場合はunref
   if (options.daemon) {
     serverProcess.unref();
   }
 
-  console.log(`Server started successfully (PID: ${serverProcess.pid})`);
+  console.log(`Server process spawned (PID: ${serverProcess.pid})`);
+  console.log('Note: Server will create PID file after initialization');
+
+  // 8. 起動確認（デーモンモードの場合のみ）
+  if (options.daemon) {
+    const started = await waitForServerStart(config.server.host, port, 30000);
+    if (!started) {
+      throw new Error('Server startup timeout');
+    }
+    console.log(`✓ Server started successfully`);
+  }
 }
 ```
 
