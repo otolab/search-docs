@@ -4,104 +4,160 @@ search-docsの包括的な使用方法ガイドです。
 
 ## 目次
 
-- [初回セットアップ](#初回セットアップ)
+- [基本的な概念](#基本的な概念)
+- [始め方](#始め方)
 - [基本的な使い方](#基本的な使い方)
 - [設定ファイル](#設定ファイル)
 - [CLIコマンド](#cliコマンド)
-- [Claude Code統合](#claude-code統合)
 - [トラブルシューティング](#トラブルシューティング)
 - [FAQ](#faq)
 
-## 初回セットアップ
+---
 
-### 前提条件
+## 基本的な概念
 
-- **Node.js**: v18以上を推奨
-- **Python**: 3.9以上
-- **uv**: Python パッケージマネージャー
-- **pnpm**: Node.js パッケージマネージャー（開発時）
+search-docsを使う前に、基本的な構成要素を理解しましょう。
+
+### Document（文書）
+
+**Document**は、プロジェクト内の`.md`ファイルです。
+
+- **識別**: ファイルパスで識別
+- **変更検知**: ファイルのハッシュ値で変更を検知
+- **自動インデックス**: ファイルウォッチャーが変更を自動検知
+
+### Section（セクション）
+
+**Section**は、Documentを見出しごとに分割した意味のある単位です。
+
+- **depth 0**: 文書全体
+- **depth 1**: H1見出し単位
+- **depth 2**: H2見出し単位
+- **depth 3**: H3見出し単位
+
+**分割の仕組み**:
+1. 見出し（H1〜H4）で機械的に分割
+2. トークン数が`maxTokensPerSection`を超える場合、再帰的に分割
+3. 最大depth 3まで分割
+
+これにより、「この章のこの節」をピンポイントで検索できます。
+
+### Dirty管理
+
+**Dirty**は、インデックスが最新でないSectionの状態です。
+
+**Dirtyになるタイミング**:
+- ファイルが変更されたとき
+- ファイルが新規作成されたとき
+- 設定ファイルが変更されたとき
+
+**Dirtyの解消**:
+- バックグラウンドワーカーが自動的に再インデックス
+- `index rebuild`コマンドで手動再インデックス
+
+**検索への影響**:
+- デフォルトでは、DirtyなSectionも検索結果に含まれる
+- `--clean-only`オプションで、Clean（最新）なSectionのみ検索可能
+
+### Index（インデックス）
+
+**Index**は、Sectionの Vector検索インデックスです。
+
+- **LanceDB**: Vector databaseとして使用
+- **Ruri Embedding**: 日本語最適化された埋め込みモデル
+- **256次元**: ベクトル次元数（高速かつ高精度）
+
+**インデックス戦略**:
+- **BTREE**: 低カーディナリティ（document_path等）
+- **BITMAP**: 高カーディナリティ（status, is_dirty等）
+- **前方一致検索**: includePaths/excludePathsで効率的に絞り込み
+
+### Server（サーバ）
+
+**Server**は、プロジェクトごとに起動される検索サーバです。
+
+**主な機能**:
+- **DocumentStorage**: ファイルの変更検知と永続化
+- **SearchIndex**: LanceDBによるVector検索
+- **IndexWorker**: バックグラウンドでの自動再インデックス
+- **ファイルウォッチャー**: リアルタイムでファイル変更を検知
+
+**プロジェクト独立性**:
+- 各プロジェクトで独立したサーバとインデックス
+- ポート番号で区別
+- 複数プロジェクトを同時に使用可能
+
+**ファイル監視**:
+- chokidarによるリアルタイム監視
+- debounce処理（デフォルト1秒）で連続変更を効率的に処理
+- 変更検知後、該当Documentを自動的にDirtyにマーク
+
+**バックグラウンド更新**:
+- IndexWorkerが定期的に（デフォルト5秒間隔）Dirtyセクションを処理
+- 古いものから順次更新（created_at昇順）
+- 最大同時処理数（デフォルト3）で負荷を制御
+
+---
+
+## 始め方
+
+search-docsを始める方法は2つあります：
+
+### 🚀 方法1: Claude Codeで使う（推奨）
+
+最も簡単に始められます。
+
+```bash
+claude mcp add npx -- -y @search-docs/mcp-server
+```
+
+詳細: **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)**
+
+### 💻 方法2: CLIツールとして使う
+
+コマンドラインから直接使いたい場合。
+
+詳細: **[クイックスタート - CLI](./quick-start.md#方法2-cliツールで試す5分)**
+
+---
+
+## 初回セットアップ（CLI利用者向け）
 
 ### インストール
 
-#### 開発環境でのセットアップ
+**推奨**: npxで直接実行（インストール不要）
 
 ```bash
-# リポジトリをクローン
-git clone <repository-url>
-cd search-docs
-
-# 依存関係のインストール
-pnpm install
-
-# Python環境のセットアップ
-uv sync
-
-# ビルド
-pnpm build
+# インストール不要
+npx @search-docs/cli server start
 ```
 
-#### グローバルインストール（本番利用）
+または、グローバルインストールする場合：
 
 ```bash
-# グローバルインストール
 npm install -g @search-docs/cli
-
-# またはnpxで直接実行（インストール不要）
-npx @search-docs/cli config init
-npx @search-docs/cli server start
 ```
 
 ### 設定ファイルの作成
 
-プロジェクトルートに `.search-docs.json` を作成します：
-
 ```bash
 cd /path/to/your/project
+npx @search-docs/cli config init
 ```
 
-`.search-docs.json` の例：
+または手動で `.search-docs.json` を作成：
 
 ```json
 {
   "version": "1.0",
-  "project": {
-    "name": "my-project",
-    "root": "."
-  },
   "files": {
-    "include": [
-      "**/*.md",
-      "docs/**/*.txt"
-    ],
-    "exclude": [
-      "**/node_modules/**",
-      "**/.git/**",
-      "**/dist/**",
-      "**/build/**"
-    ],
-    "ignoreGitignore": true
-  },
-  "indexing": {
-    "maxTokensPerSection": 2000,
-    "minTokensForSplit": 100,
-    "maxDepth": 3,
-    "vectorDimension": 256,
-    "embeddingModel": "cl-nagoya/ruri-v3-30m"
-  },
-  "search": {
-    "defaultLimit": 10,
-    "maxLimit": 100,
-    "includeCleanOnly": false
-  },
-  "server": {
-    "host": "localhost",
-    "port": 24280,
-    "protocol": "json-rpc"
+    "include": ["**/*.md"],
+    "exclude": ["**/node_modules/**"]
   }
 }
 ```
 
-詳細は[設定ファイル](#設定ファイル)セクションを参照してください。
+詳細: [設定ファイル](#設定ファイル)セクション
 
 ## 基本的な使い方
 
@@ -409,34 +465,23 @@ search-docs search <query> [options]
 |---------|------|
 | `config init` | 設定ファイルを初期化（未実装） |
 
+---
+
 ## Claude Code統合
 
-詳細は [mcp-integration.md](./mcp-integration.md) を参照してください。
+Claude Codeで使う場合の詳細は以下を参照してください：
 
-### MCP Serverとしての利用
+- **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)** - 30秒で始める
+- **[MCP統合ガイド](./mcp-integration.md)** - 詳しい使い方
 
-プロジェクトルートに `.mcp.json` を配置することで、自動的に利用可能になります：
-
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "node",
-      "args": [
-        "packages/mcp-server/dist/server.js",
-        "--project-dir",
-        "."
-      ]
-    }
-  }
-}
-```
-
-### 利用可能なツール
-
+**利用可能なツール**:
 - `search`: 文書検索
 - `get_document`: 文書取得
+- `get_outline`: 文書のアウトライン取得
 - `index_status`: インデックス状態確認
+- その他 - [MCP統合ガイド](./mcp-integration.md)参照
+
+---
 
 ## トラブルシューティング
 
@@ -536,6 +581,48 @@ search-docs search <query> [options]
    ```
 
 3. サーバを定期的に再起動
+
+---
+
+## 制約事項と注意点
+
+### 現在の制約
+
+- **ファイル形式**: Markdownファイル（`.md`）のみ対応
+- **言語最適化**: 日本語文書に最適化（英語も使用可能だが精度は低下）
+- **実行環境**: ローカル実行のみ（クラウド非対応）
+- **同時起動**: 同じポートで複数サーバは起動不可
+
+### パフォーマンス関連
+
+**メモリ使用量**:
+- 埋め込みモデルがメモリに常駐（約120MB）
+- 大量の文書をインデックス化する場合、メモリ使用量が増加
+- 対策: 不要なファイルを`exclude`パターンで除外
+
+**GPU対応**:
+- GPUを使用することでVector化処理を大幅に高速化（数倍〜数十倍）
+- Apple Silicon（M1/M2/M3）は自動的にMPS GPUを使用
+- NVIDIA GPU: CUDA Toolkit必要
+- 詳細: README.mdのGPU対応セクション参照
+
+**インデックスサイズ**:
+- 通常、元のファイルサイズの1-2倍程度
+- ベクトルデータと検索インデックスを含む
+- SSDの使用を推奨
+
+### セキュリティ関連
+
+**データの保存場所**:
+- すべてのデータはローカルに保存（`.search-docs/`ディレクトリ）
+- 外部への送信は一切なし（初回の埋め込みモデルダウンロードを除く）
+- プライベート文書も安全に扱える
+
+**バージョン管理**:
+- `.search-docs.json`はバージョン管理に含めることを推奨
+- `.search-docs/`ディレクトリは`.gitignore`に追加すること
+
+---
 
 ## FAQ
 

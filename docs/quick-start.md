@@ -1,56 +1,62 @@
 # 🐕️ クイックスタートガイド
 
-5分でsearch-docsを試してみましょう！
+search-docsを試してみましょう！
 
-## ゴール
+## 2つの始め方
 
-このガイドでは以下を実施します：
+### 🚀 Claude Codeで試す（推奨・30秒）
 
-1. ✅ search-docsをセットアップ
-2. ✅ サンプル文書を用意
-3. ✅ サーバを起動
-4. ✅ 文書を検索
-5. ✅ インデックス状態を確認
+Claude Codeをお使いの場合、最も簡単に始められます。
 
-## 前提条件
+### 💻 CLIツールで試す（5分）
 
-- Node.js (v18以上)
-- pnpm（開発環境の場合）
+コマンドラインから直接使いたい場合。
 
-## ステップ1: セットアップ
+---
 
-### 開発環境の場合
+## 🚀 方法1: Claude Codeで試す（30秒）
+
+### ステップ1: MCPサーバを追加
 
 ```bash
-# リポジトリをクローン
-git clone <repository-url>
-cd search-docs
-
-# 依存関係のインストール
-pnpm install
-
-# Python環境のセットアップ
-uv sync
-
-# ビルド
-pnpm build
+claude mcp add npx -- -y @search-docs/mcp-server
 ```
 
-### グローバルインストールの場合
+### ステップ2: Claude Codeで依頼
 
-```bash
-npm install -g @search-docs/cli
-```
+1. **「search-docsのセットアップをお願い」**と依頼
+   - エージェントが設定ファイルを作成してくれます
+   - 設定内容について相談できます
 
-### npxで直接実行する場合（インストール不要）
+2. **MCPを再接続（reconnect）**
+   - Claude Codeを再起動するか、MCPを再接続
 
-```bash
-# インストール不要で直接使用可能
-npx @search-docs/cli config init
-npx @search-docs/cli server start
-```
+3. **「サーバを起動してください」**と依頼
+   - エージェントがサーバを起動してくれます
 
-## ステップ2: テストプロジェクトを作成
+4. **インデックス生成を待つ**
+   - バックグラウンドで文書をインデックス化（数秒〜数分）
+
+5. **「このプロジェクトのアーキテクチャについて教えて」**と依頼
+   - エージェントが文書を検索して回答してくれます
+
+### 完了！
+
+これで、Claude Codeからプロジェクトの文書を検索できるようになりました。
+
+**次のステップ**: [Claude Code統合ガイド](./mcp-integration.md)で詳しい使い方を確認
+
+---
+
+## 💻 方法2: CLIツールで試す（5分）
+
+### ゴール
+
+- サンプルプロジェクトを作成
+- サーバを起動
+- 文書を検索
+
+### ステップ1: テストプロジェクトを作成
 
 ```bash
 # テストディレクトリを作成
@@ -104,101 +110,45 @@ search-docsは以下の手順で使用します：
 より精度の高い結果が得られます。
 ```
 
-## ステップ3: 設定ファイルを作成
+### ステップ2: 設定ファイルを作成
 
-`.search-docs.json` を作成：
+```bash
+# npxで設定ファイルを初期化
+npx @search-docs/cli config init
+```
+
+または手動で `.search-docs.json` を作成：
 
 ```json
 {
   "version": "1.0",
-  "project": {
-    "name": "test-project",
-    "root": "."
-  },
   "files": {
     "include": ["**/*.md"],
-    "exclude": ["**/node_modules/**"],
-    "ignoreGitignore": true
-  },
-  "indexing": {
-    "maxTokensPerSection": 2000,
-    "maxDepth": 3
+    "exclude": ["**/node_modules/**"]
   }
 }
 ```
 
-## ステップ4: サーバを起動
-
-### 開発環境の場合
+### ステップ3: サーバを起動
 
 ```bash
-node /path/to/search-docs/packages/cli/dist/index.js server start
-```
-
-### グローバルインストールまたはnpxの場合
-
-```bash
-# グローバルインストールした場合
-search-docs server start
-
-# npxで実行する場合
+# npxで実行（インストール不要）
 npx @search-docs/cli server start
 ```
 
-**注意**: v1.0.1以降、サーバはデフォルトでバックグラウンドで起動します。
-
-### 起動確認
-
-```bash
-# 開発環境
-node /path/to/search-docs/packages/cli/dist/index.js server status
-
-# グローバルインストール
-search-docs server status
-```
-
 出力例：
 ```
-Server Status
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Status:  Running
-PID:     12345
-Port:    24280
-Project: test-project
-Started: 2025-01-30T12:00:00.000Z
+✓ Server started successfully
+  PID:     12345
+  Port:    50123
+  Project: search-docs-test
 ```
 
-## ステップ5: インデックスを作成
+### ステップ4: 文書を検索
 
 ```bash
-# 開発環境
-node /path/to/search-docs/packages/cli/dist/index.js index rebuild
-
-# グローバルインストール
-search-docs index rebuild
-```
-
-出力例：
-```
-Rebuilding index...
-Target: All documents
-Mode: Smart rebuild (skip unchanged files)
-
-✓ Index rebuild completed
-  Documents processed: 2
-  Sections created: 8
-```
-
-## ステップ6: 文書を検索
-
-### 基本的な検索
-
-```bash
-# 開発環境
-node /path/to/search-docs/packages/cli/dist/index.js search "Vector検索"
-
-# グローバルインストール
-search-docs search "Vector検索"
+# 基本的な検索
+npx @search-docs/cli search "Vector検索"
 ```
 
 出力例：
@@ -210,7 +160,6 @@ search-docs search "Vector検索"
    見出し: Vector検索とは
    深度: 2
    スコア: 0.95
-   状態: Clean
 
    Vector検索は、文書をベクトル空間に埋め込み、
    意味的な類似性に基づいて検索する技術です。
@@ -219,90 +168,59 @@ search-docs search "Vector検索"
    見出し: LanceDBについて
    深度: 2
    スコア: 0.82
-   状態: Clean
 
    LanceDBは高速なVector databaseです。
    ローカル環境で動作し、大規模なデータも扱えます。
-
 ...
 ```
 
-### depth指定で検索
+### ステップ5: サーバを停止
 
 ```bash
-# depth 2のみ検索
-search-docs search "検索" --depth 2
+npx @search-docs/cli server stop
 ```
 
-### JSON形式で検索
+### 完了！
+
+基本的な使い方をマスターしました。
+
+**次のステップ**: [ユーザーガイド](./user-guide.md)で本格的に使う方法を確認
+
+---
+
+## クリーンアップ
+
+テストが終わったら：
 
 ```bash
-search-docs search "LanceDB" --format json
+# サーバを停止
+npx @search-docs/cli server stop
+
+# テストディレクトリを削除
+cd ~
+rm -rf search-docs-test
 ```
 
-## ステップ7: インデックス状態を確認
-
-```bash
-# 開発環境
-node /path/to/search-docs/packages/cli/dist/index.js index status
-
-# グローバルインストール
-search-docs index status
-```
-
-出力例：
-```
-Index Status
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Server:
-  Version:    0.1.0
-  Uptime:     5m 23s
-  PID:        12345
-
-Index:
-  Documents:  2
-  Sections:   8
-  Dirty:      0
-
-Worker:
-  Running:    Yes
-  Processing: 0
-  Queue:      0
-```
-
-## ステップ8: ファイル変更の自動反映を試す
-
-1. `docs/README.md`を編集して保存
-
-2. 少し待つ（デフォルト5秒間隔でIndexWorkerが処理）
-
-3. 再度検索してみる
-
-```bash
-search-docs search "追加したキーワード"
-```
-
-## ステップ9: サーバを停止
-
-```bash
-# 開発環境
-node /path/to/search-docs/packages/cli/dist/index.js server stop
-
-# グローバルインストール
-search-docs server stop
-```
+---
 
 ## 次のステップ
 
-おめでとうございます！🎉 基本的な使い方をマスターしました。
+### 本格的に使う
 
-さらに詳しく学ぶには：
-
-- **[ユーザーガイド](./user-guide.md)** - 全機能の詳細な説明
+- **[ユーザーガイド](./user-guide.md)** - 実際のプロジェクトでの使い方
 - **[CLIリファレンス](./cli-reference.md)** - 全コマンドの詳細
-- **[MCP統合ガイド](./mcp-integration.md)** - Claude Codeとの統合
-- **[設定ファイルリファレンス](./user-guide.md#設定ファイル)** - 詳細な設定方法
+
+### 詳しく知る
+
+- **[システムアーキテクチャ](./architecture.md)** - 仕組みを理解する
+- **[データモデル](./data-model.md)** - Document, Section, Indexの詳細
+
+### 統合する
+
+- **[Claude Code統合](./mcp-integration.md)** - エージェントと使う
+- **[クライアントライブラリ](./client-library.md)** - プログラムから使う
+
+---
 
 ## トラブルシューティング
 
@@ -313,56 +231,17 @@ search-docs server stop
 lsof -i :24280
 
 # 別のポートで起動
-search-docs server start --port 24281
+npx @search-docs/cli server start --port 24281
 ```
 
 ### 検索結果が0件
 
 ```bash
 # インデックス状態を確認
-search-docs index status
+npx @search-docs/cli index status
 
 # 再インデックス
-search-docs index rebuild --force
+npx @search-docs/cli index rebuild
 ```
 
-### ログを確認したい
-
-```bash
-# ログファイルを指定して起動
-search-docs server start --log search-docs.log
-
-# ログを確認
-tail -f search-docs.log
-```
-
-## クリーンアップ
-
-テストが終わったら、以下でクリーンアップできます：
-
-```bash
-# サーバを停止
-search-docs server stop
-
-# テストディレクトリを削除
-cd ~
-rm -rf search-docs-test
-```
-
-## 実際のプロジェクトで使う
-
-実際のプロジェクトで使用する場合：
-
-1. プロジェクトルートに移動
-2. `.search-docs.json`を作成（上記の例を参考）
-3. `files.include`と`files.exclude`を調整
-4. サーバを起動
-
-```bash
-cd /path/to/your/project
-# .search-docs.jsonを作成・編集
-search-docs server start
-search-docs index rebuild
-```
-
-これで、プロジェクトの文書を検索できるようになります！
+詳細: [ユーザーガイド - トラブルシューティング](./user-guide.md#トラブルシューティング)
