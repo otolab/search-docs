@@ -10,7 +10,7 @@ Claude Codeから直接search-docsを利用するためのMCP Serverです。
 
 ### 動的ツール登録
 
-v1.1.6以降、MCP Serverはシステム状態に応じて利用可能なツールを動的に変更します。
+MCP Serverはシステム状態に応じて利用可能なツールを動的に変更します。
 
 **システム状態とツールの対応**:
 
@@ -99,7 +99,7 @@ path: "docs/architecture.md"
 
 ### サーバ自動起動機能
 
-v1.0.1以降、MCP Serverは自動的にsearch-docsサーバを起動します。
+MCP Serverは自動的にsearch-docsサーバを起動します。
 
 **動作**:
 1. MCP Server起動時にサーバへの接続を試みる
