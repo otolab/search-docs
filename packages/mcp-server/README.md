@@ -32,8 +32,8 @@ MCP Serverはシステム状態に応じて利用可能なツールを動的に�
 **利用可能条件**: 常時
 
 **パラメータ**:
-- `port` (number, オプション): サーバポート番号
-- `force` (boolean, オプション): 既存設定を上書き
+- `port` (number, オプション): サーバポート番号（省略時はランダムなポート番号が割り当てられます）
+- `force` (boolean, オプション): 既存設定を上書き（デフォルト: false）
 
 #### 2. `server_start`
 search-docsサーバを起動します。
@@ -41,7 +41,7 @@ search-docsサーバを起動します。
 **利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
 
 **パラメータ**:
-- `foreground` (boolean, オプション): フォアグラウンド起動
+- `foreground` (boolean, オプション): フォアグラウンド起動（デフォルト: false、バックグラウンド起動）
 
 #### 3. `server_stop`
 search-docsサーバを停止します。
@@ -51,72 +51,53 @@ search-docsサーバを停止します。
 **パラメータ**: なし
 
 #### 4. `get_system_status`
-システムの状態を取得します。
+システムの状態を取得します。設定ファイルの有無、サーバの起動状態、インデックス情報を確認できます。
 
 **利用可能条件**: 常時
 
 **パラメータ**: なし
 
 #### 5. `search`
-文書を検索します。
+文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**:
 - `query` (string, 必須): 検索クエリ
-- `depth` (number | number[], オプション): 検索深度（0-3）
+- `project` (string, オプション): 検索対象のプロジェクト名。未指定の場合はメインプロジェクトを検索します
+- `depth` (number, オプション): 最大深度（0-3）。0=文書全体のみ、1=章まで、2=節まで、3=項まで。省略時は全階層を検索
 - `limit` (number, オプション): 結果数制限（デフォルト: 10）
-- `includeCleanOnly` (boolean, オプション): Clean状態のみ検索
-
-**例**:
-```
-query: "Vector検索"
-depth: 1
-limit: 5
-```
+- `includeCleanOnly` (boolean, オプション): 最新の文書内容のみを検索対象とする（デフォルト: false）
+- `includePaths` (array of string, オプション): 包含するドキュメントパス（前方一致）。例: ["docs/", "README.md"]
+- `excludePaths` (array of string, オプション): 除外するドキュメントパス（前方一致）。例: ["docs/internal/", "temp/"]
+- `previewLines` (number, オプション): プレビュー行数（デフォルト: 5）
 
 #### 6. `get_document`
-文書の内容を取得します。
+文書の内容を取得します。パス指定で文書全体、またはセクションIDで特定セクションを取得できます。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**:
-- `path` (string): 文書パス（sectionIdを指定しない場合は必須）
-- `sectionId` (string, オプション): セクションID（検索結果から取得、指定した場合は特定セクションを取得）
+- `path` (string, オプション): 文書パス（sectionIdを指定しない場合は必須）
+- `sectionId` (string, オプション): セクションID（検索結果から取得、pathを指定しない場合は必須）
 - `project` (string, オプション): 取得対象のプロジェクト名
 
-**例**:
-```
-path: "docs/architecture.md"
-```
+**注意**: pathとsectionIdのどちらか一方は必須です。
 
 #### 7. `get_outline`
-文書の構造（アウトライン）を取得します。
+文書の構造（アウトライン）を取得します。セクション番号、見出し、行数、トークン数、セクションIDを一覧表示します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**:
-- `path` (string): 文書パス（sectionIdを指定しない場合は必須）
+- `path` (string, オプション): 文書パス（sectionIdを指定しない場合は必須）
 - `sectionId` (string, オプション): セクションID（指定した場合、そのセクション配下のみ表示）
 - `project` (string, オプション): 取得対象のプロジェクト名
 
-**例**:
-```
-path: "docs/architecture.md"
-```
-
-**出力形式**:
-```
-文書: docs/architecture.md
-
-1. "# アーキテクチャ" (lines: 10, tokens: 150, id: section-1)
-1.1. "## 概要" (lines: 5, tokens: 80, id: section-1-1)
-1.2. "## システム構成" (lines: 8, tokens: 120, id: section-1-2)
-...
-```
+**注意**: pathとsectionIdのどちらか一方は必須です。
 
 #### 8. `index_status`
-インデックスの状態を確認します。
+インデックスの状態を確認します。総文書数、セクション数、Dirtyセクション数などを表示します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
 
