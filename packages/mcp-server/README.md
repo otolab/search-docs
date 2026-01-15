@@ -14,10 +14,10 @@ MCP Serverはシステム状態に応じて利用可能なツールを動的に�
 
 **システム状態とツールの対応**:
 
-| 状態 | init | server_start | server_stop | get_system_status | search | get_document | index_status |
-|------|------|--------------|-------------|-------------------|--------|--------------|--------------|
-| NOT_CONFIGURED（未設定） | ✓ | - | - | ✓ | - | - | - |
-| CONFIGURED（設定済み） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 状態 | init | server_start | server_stop | get_system_status | search | get_document | get_outline | index_status |
+|------|------|--------------|-------------|-------------------|--------|--------------|-------------|--------------|
+| NOT_CONFIGURED（未設定） | ✓ | - | - | ✓ | - | - | - | - |
+| CONFIGURED（設定済み） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 **注意**:
 - `init`実行後、全てのツールが利用可能になります
@@ -81,14 +81,40 @@ limit: 5
 **利用可能条件**: サーバ稼働中（RUNNING）
 
 **パラメータ**:
-- `path` (string, 必須): 文書パス
+- `path` (string): 文書パス（sectionIdを指定しない場合は必須）
+- `sectionId` (string, オプション): セクションID（検索結果から取得、指定した場合は特定セクションを取得）
+- `project` (string, オプション): 取得対象のプロジェクト名
 
 **例**:
 ```
 path: "docs/architecture.md"
 ```
 
-#### 7. `index_status`
+#### 7. `get_outline`
+文書の構造（アウトライン）を取得します。
+
+**利用可能条件**: サーバ稼働中（RUNNING）
+
+**パラメータ**:
+- `path` (string): 文書パス（sectionIdを指定しない場合は必須）
+- `sectionId` (string, オプション): セクションID（指定した場合、そのセクション配下のみ表示）
+- `project` (string, オプション): 取得対象のプロジェクト名
+
+**例**:
+```
+path: "docs/architecture.md"
+```
+
+**出力形式**:
+```
+文書: docs/architecture.md
+
+1. "概要" (lines: 10, tokens: 150, id: abc123)
+1.1. "システム構成" (lines: 5, tokens: 80, id: def456)
+...
+```
+
+#### 8. `index_status`
 インデックスの状態を確認します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
