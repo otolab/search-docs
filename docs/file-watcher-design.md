@@ -1,69 +1,22 @@
-# ファイル監視機能の設計と実装
+# ファイル監視機能
 
 ## 概要
 
 Markdownファイルの変更を監視し、自動的にインデックスを更新する機能です。ファイルの追加・変更・削除を検出し、バックグラウンドで再インデックスを実行します。
 
-## 実装の経緯
+## 採用技術
 
-### Phase 1: chokidarによる初期実装（2025-10-27）
+**@parcel/watcher** を使用しています。
 
-**採用ライブラリ**: `chokidar@^4.0.3`
+**採用理由**:
+- **大規模プロジェクト対応**: ネイティブC++実装により、10万ファイル規模でも効率的
+- **Node.jsへの負荷が低い**: イベントスロットリングをネイティブスレッドで実行
+- **簡単セットアップ**: プリビルドバイナリで追加の依存なし
+- **実績**: Parcel, Nuxt.js, Viteで採用済み
 
-**実装内容**:
-- Node.jsファイル監視のデファクトスタンダードとして採用
-- ファイル追加・変更・削除の検出
-- 除外パターンのフィルタリング
-- デバウンス機能（300ms）
+他の選択肢（chokidar、Watchman直接利用）と比較した詳細は [ADR-017](./architecture-decisions.md#adr-017-parcelwatcherによるファイル監視) を参照。
 
-**発見された問題**:
-1. **chokidar 4.xの制約**: Globパターン（`**/*.md`）を直接渡すとイベントが発火しない
-2. **ワークアラウンド**: `rootDir`全体を監視し、`ignored`コールバックでフィルタリング
-3. **大規模プロジェクトでの限界**:
-   - EMFILE（too many open files）エラーが発生
-   - 10万ファイル規模で **1GB RAM + 50% CPU** を継続消費
-   - イベントスロットリングをJavaScriptスレッドで実行（ボトルネック）
-
-**暫定対策**: `usePolling`オプションを追加（CPU使用率が高く、根本的解決にならず）
-
-### Phase 2: 根本的改善の検討（2025-11-04）
-
-**調査内容**:
-- chokidar最新版の確認 → 4.0.3が最新、更新の余地なし
-- 代替案の検討:
-  - **glob-watcher**: chokidar 3.xベース、問題解決せず → 却下
-  - **Watchman直接利用**: 別途デーモン必須、セットアップ複雑 → 却下
-  - **@parcel/watcher**: ネイティブC++実装、実績あり → 採用決定
-
-**@parcel/watcherの優位性**:
-1. ネイティブC++実装でイベントスロットリングを実行
-2. Node.jsメインプロセスを圧迫しない
-3. Watchman連携（オプション）による高速化
-4. プリビルドバイナリで簡単インストール
-5. Parcel, Nuxt.js, Viteで採用実績
-
-### Phase 3: @parcel/watcherへの完全移行（2025-11-04）
-
-**移行内容**:
-```diff
-  "dependencies": {
--   "chokidar": "^4.0.3",
-+   "@parcel/watcher": "^2.5.1",
-  }
-```
-
-**実装の書き換え**:
-- `chokidar.watch()` → `watcher.subscribe()`
-- イベントタイプの変換: `create`→`add`, `update`→`change`, `delete`→`unlink`
-- ignoreパターンベースのフィルタリング
-- includeパターンの二重チェック（minimatch使用）
-
-**削除された機能**:
-- `usePolling`オプション（@parcel/watcherはネイティブ実装のため不要）
-
-**テスト結果**: 全69テスト（file-watcher: 7テスト）がパス
-
-## 現在の実装
+## 実装
 
 ### アーキテクチャ
 
@@ -255,12 +208,6 @@ SearchDocsServer.deleteDocument(path)
 
 ## 関連ドキュメント
 
-- **アーキテクチャ決定記録**: [ADR-017](./architecture-decisions.md#adr-017-parcelwatcherによるファイル監視)
-- **実装履歴**: `prompts/tasks/task18.file-watch-improvement.v3.md`
-- **コミット**: f6d527e (2025-11-04)
-
----
-
-**作成日**: 2025-01-27
-**最終更新**: 2026-01-15
-**状態**: 実装完了（@parcel/watcher採用）
+- **アーキテクチャ決定記録**: [ADR-017](./architecture-decisions.md#adr-017-parcelwatcherによるファイル監視) - 技術選定の詳細
+- **実装ファイル**: `packages/server/src/discovery/file-watcher.ts`
+- **テストファイル**: `packages/server/src/discovery/__tests__/file-watcher.test.ts`
