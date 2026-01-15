@@ -1,212 +1,198 @@
-# Claude Code 統合ガイド（MCP Server）
+# Claude Code 統合ガイド（MCP）
 
-search-docsをClaude Codeから直接利用するためのガイドです。
+search-docsをClaude Codeから使う際の、MCPツールリファレンスです。
 
-## 目次
+## 始め方
 
-- [概要](#概要)
-- [セットアップ](#セットアップ)
-- [利用可能なツール](#利用可能なツール)
-- [使用例](#使用例)
-- [プロジェクトスコープ設定](#プロジェクトスコープ設定)
-- [トラブルシューティング](#トラブルシューティング)
+セットアップ方法は **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)** を参照してください。
 
-## 概要
+このドキュメントでは、MCPから利用できるツールの詳細を説明します。
 
-search-docsは、Model Context Protocol (MCP) Serverとして実装されており、Claude Codeから直接ドキュメント検索を実行できます。
-
-### MCPとは
-
-Model Context Protocol (MCP)は、AI アシスタントが外部ツールやデータソースと連携するための標準プロトコルです。search-docsのMCP Serverを使用すると、Claude Codeが会話の中でプロジェクトのドキュメントを検索できます。
-
-### できること
-
-- 💬 会話中に自然言語でドキュメント検索
-- 📄 特定の文書の内容を取得
-- 📊 インデックスの状態を確認
-- 🔄 プロジェクト固有の設定を自動読み込み
-
-## セットアップ
-
-### 前提条件
-
-1. **search-docsサーバが起動していること**
-   ```bash
-   # グローバルインストールの場合
-   search-docs server start
-
-   # またはnpxの場合
-   npx @search-docs/cli server start
-   ```
-
-2. **プロジェクトに設定ファイルがあること**
-   - `.search-docs.json` (推奨) または `search-docs.json`
-
-### 方法1: プロジェクトスコープ設定（推奨）
-
-プロジェクトルートに `.mcp.json` を配置すると、そのプロジェクトで自動的にMCP Serverが利用可能になります。
-
-`.mcp.json` の例：
-
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "node",
-      "args": [
-        "packages/mcp-server/dist/server.js",
-        "--project-dir",
-        "."
-      ]
-    }
-  }
-}
-```
-
-**開発環境での絶対パス指定**:
-
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/search-docs/packages/mcp-server/dist/server.js",
-        "--project-dir",
-        "${workspaceFolder}"
-      ]
-    }
-  }
-}
-```
-
-**注意**:
-- `${workspaceFolder}` は自動的に現在のワークスペースフォルダに置換されます
-- 絶対パスを使用する場合は、実際のパスに置き換えてください
-
-### 方法2: グローバル設定
-
-Claude Codeのグローバル設定ファイルに追加します。
-
-**設定ファイルの場所**:
-- **Cline**: `~/.cline/cline_mcp_settings.json`
-- **Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-**設定例**:
-
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "search-docs-mcp",
-      "args": [
-        "--project-dir",
-        "${workspaceFolder}"
-      ]
-    }
-  }
-}
-```
-
-**注意**: グローバルインストール（`npm install -g @search-docs/mcp-server`）が必要です。
-
-または、npxを使用する場合：
-
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "npx",
-      "args": [
-        "@search-docs/mcp-server",
-        "--project-dir",
-        "${workspaceFolder}"
-      ]
-    }
-  }
-}
-```
+---
 
 ## 利用可能なツール
 
-MCP Serverは以下のツールを提供します。
+search-docsのMCP Serverは以下のツールを提供します。
 
-### 1. search
+### 1. `search` - 文書検索
 
-文書を検索します。
-
-**パラメータ**:
-
-| パラメータ | 型 | 必須 | 説明 |
-|-----------|-----|------|------|
-| `query` | string | ✓ | 検索クエリ |
-| `depth` | number \| number[] | - | 検索深度（0-3） |
-| `limit` | number | - | 結果数制限（デフォルト: 10） |
-| `includeCleanOnly` | boolean | - | Clean状態のみ検索 |
-
-**使用例**（Claude Codeでの会話）:
-
-```
-ユーザー: Vector検索に関するドキュメントを探して
-Claude: [searchツールを使用]
-        query: "Vector検索"
-        limit: 5
-```
-
-**レスポンス**:
-
-```
-検索結果: 5件
-処理時間: 45ms
-
-1. docs/README.md - Vector検索とは
-   深度: 2, スコア: 0.95
-
-   Vector検索は、文書をベクトル空間に埋め込み、
-   意味的な類似性に基づいて検索する技術です。
-
-2. docs/architecture.md - Vector検索エンジン
-   ...
-```
-
-### 2. get_document
-
-特定の文書の内容を取得します。
+自然言語のクエリで文書を検索します。
 
 **パラメータ**:
 
-| パラメータ | 型 | 必須 | 説明 |
-|-----------|-----|------|------|
-| `path` | string | ✓ | 文書パス |
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|-----------|-----|------|-----------|------|
+| `query` | string | ✓ | - | 検索クエリ（自然言語） |
+| `limit` | number | - | 10 | 最大結果数 |
+| `previewLines` | number | - | 5 | プレビュー行数 |
+| `depth` | number \| number[] | - | - | 検索深度フィルタ（0-3）<br>例: `2` または `[1, 2]` |
+| `includeCleanOnly` | boolean | - | false | Clean（最新）なSectionのみ検索 |
+| `includePaths` | string[] | - | - | 含めるパス（前方一致）<br>例: `["docs/", "README.md"]` |
+| `excludePaths` | string[] | - | - | 除外するパス（前方一致）<br>例: `["docs/internal/"]` |
 
 **使用例**:
 
 ```
-ユーザー: docs/architecture.mdの内容を見せて
+ユーザー: Vector検索の実装について教えて
+
+Claude: [searchツールを使用]
+        query: "Vector検索 実装"
+        limit: 5
+        depth: [1, 2]
+```
+
+**レスポンス例**:
+
+```
+検索結果: 3件
+
+1. docs/architecture.md (行42-68)
+   セクション: 1.2.1 Vector検索エンジン
+   深度: 2, スコア: 0.95
+
+   Vector検索は、LanceDBとRuri Embeddingを使用して実装されています。
+   日本語に最適化された埋め込みモデルにより、高精度な検索が可能です。
+   ...
+```
+
+**depth パラメータの使い方**:
+
+- `depth: 0` - 文書全体のみ検索
+- `depth: 2` - H2見出し単位のみ検索
+- `depth: [1, 2]` - H1とH2見出し単位を検索（配列で複数指定）
+
+---
+
+### 2. `get_document` - 文書取得
+
+特定の文書またはセクションの内容を取得します。
+
+**パラメータ**:
+
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `path` | string | - | 文書パス<br>例: `"docs/architecture.md"` |
+| `sectionId` | string | - | セクションID（検索結果から取得）|
+
+**注意**: `path` と `sectionId` のどちらか一方は必須
+
+**使用例1: パス指定**:
+
+```
+ユーザー: architecture.mdの内容を見せて
+
 Claude: [get_documentツールを使用]
         path: "docs/architecture.md"
 ```
 
-**レスポンス**:
+**使用例2: セクションID指定**:
+
+```
+Claude: [searchツールで取得したsectionIdを使用]
+        sectionId: "section-uuid-12345"
+```
+
+**レスポンス例**:
 
 ```
 文書: docs/architecture.md
-タイトル: アーキテクチャ
-作成日: 2025-01-27T10:00:00.000Z
-更新日: 2025-01-30T12:00:00.000Z
+セクション: Vector検索エンジン
+深度: 2
 
-# アーキテクチャ
+# Vector検索エンジン
 
-## 概要
+LanceDBとRuri Embeddingを使用したVector検索エンジンです。
 
-search-docsは、ローカル文書のVector検索を実現するための
-多層アーキテクチャを採用しています。
+## 主要技術スタック
+
+- LanceDB: Vector database
+- Ruri Embedding: 日本語最適化モデル
 ...
 ```
 
-### 3. index_status
+---
 
-インデックスの状態を確認します。
+### 3. `get_outline` - 文書のアウトライン取得
+
+文書の構造（目次）を取得します。長い文書の全体像を把握するのに便利です。
+
+**パラメータ**:
+
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `path` | string | - | 文書パス |
+| `sectionId` | string | - | セクションID（そのセクション配下のアウトライン）|
+
+**注意**: `path` と `sectionId` のどちらか一方は必須
+
+**使用例**:
+
+```
+ユーザー: user-guide.mdの構成を教えて
+
+Claude: [get_outlineツールを使用]
+        path: "docs/user-guide.md"
+```
+
+**レスポンス例**:
+
+```
+文書: docs/user-guide.md
+総セクション数: 24
+
+アウトライン:
+
+0. user-guide.md (depth 0)
+   行: 1-594, トークン: 2150, Section ID: abc123
+
+1. 基本的な概念 (depth 1)
+   行: 17-99, トークン: 450, Section ID: def456
+
+  1.1 Document（文書） (depth 2)
+      行: 21-27, トークン: 80, Section ID: ghi789
+
+  1.2 Section（セクション） (depth 2)
+      行: 29-53, トークン: 180, Section ID: jkl012
+
+  1.3 Dirty管理 (depth 2)
+      行: 55-60, トークン: 90, Section ID: mno345
+
+2. 始め方 (depth 1)
+   行: 102-121, トークン: 120, Section ID: pqr678
+   ...
+```
+
+**活用方法**:
+
+1. **文書の全体像を把握**: 長い文書を読む前に構造を確認
+2. **目的のセクションを特定**: アウトラインからSection IDを取得
+3. **特定セクションを取得**: Section IDで`get_document`を実行
+
+**実践例**:
+
+```
+ユーザー: user-guide.mdのDirty管理について詳しく教えて
+
+Claude: まず文書の構造を確認します。
+        [get_outlineツールを使用: path="docs/user-guide.md"]
+
+        アウトラインから、「1.3 Dirty管理」のセクションを見つけました。
+        Section ID: mno345
+
+        では詳細を取得します。
+        [get_documentツールを使用: sectionId="mno345"]
+
+        Dirty管理について説明します：
+
+        Dirtyは、インデックスが最新でないSectionの状態です。
+        ...
+```
+
+---
+
+### 4. `index_status` - インデックス状態確認
+
+インデックスの統計情報を取得します。
 
 **パラメータ**: なし
 
@@ -214,23 +200,24 @@ search-docsは、ローカル文書のVector検索を実現するための
 
 ```
 ユーザー: インデックスの状態を確認して
+
 Claude: [index_statusツールを使用]
 ```
 
-**レスポンス**:
+**レスポンス例**:
 
 ```
 インデックス状態
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 サーバ情報:
-  バージョン: 0.1.0
+  バージョン: 1.0.0
   稼働時間: 2h 15m 30s
   PID: 12345
 
 インデックス統計:
   総文書数: 152
-  総セクション数: 1018
+  総セクション数: 1,018
   Dirty: 0
 
 ワーカー状態:
@@ -239,260 +226,122 @@ Claude: [index_statusツールを使用]
   キュー: 0
 ```
 
-## 使用例
+---
 
-### ドキュメントの検索
+## 実践的な使用例
 
-```
-ユーザー: LanceDBに関するドキュメントを検索して
-
-Claude: LanceDBに関するドキュメントを検索しますね。
-
-[searchツールを使用: query="LanceDB", limit=10]
-
-検索結果から、以下の関連ドキュメントが見つかりました：
-
-1. **docs/architecture.md - Vector検索エンジン**
-   LanceDBは高速なVector databaseです。
-   ローカルファイルベースストレージで、高速なVector検索を実現...
-
-2. **docs/data-model.md - SearchIndex**
-   LanceDBのテーブルとして実装...
-
-詳しく知りたい内容があれば、お知らせください。
-```
-
-### 特定の文書の内容確認
+### 例1: 特定トピックの調査
 
 ```
-ユーザー: architecture.mdのVector検索エンジンの部分を詳しく見せて
+ユーザー: LanceDBのインデックス戦略について調べて
 
-Claude: architecture.mdの内容を取得します。
+Claude: LanceDBのインデックス戦略について検索します。
 
-[get_documentツールを使用: path="docs/architecture.md"]
+[searchツール: query="LanceDB インデックス戦略", limit=5]
 
-Vector検索エンジンの部分は以下です：
+検索結果から以下が見つかりました：
 
-## Vector検索エンジン (Python)
+1. docs/architecture-decisions.md - ADR-016: LanceDBインデックス戦略
 
-sebas-chanのアーキテクチャを参考にした、LanceDBベースの
-Vector検索エンジンです。
+   カーディナリティベースのインデックスタイプ選択について説明されています。
+   詳細を確認しますか？
 
-主要技術スタック:
-- LanceDB: Vector database
-  - ローカルファイルベースストレージ
-  - 高速なVector検索
-  ...
+ユーザー: はい
+
+Claude: [get_documentツール: 検索結果のsectionIdを使用]
+
+詳細は以下です：
+
+# ADR-016: LanceDBインデックス戦略
+
+## 決定内容
+
+カーディナリティに基づいてインデックスタイプを選択：
+- 低カーディナリティ: BTREE (document_path, document_hash)
+- 高カーディナリティ: BITMAP (status, is_dirty)
+...
 ```
 
-### インデックス状態の確認
+### 例2: 長い文書の効率的な探索
 
 ```
-ユーザー: インデックスの状態を確認して
+ユーザー: user-guide.mdから設定ファイルの説明を探して
 
-Claude: インデックスの状態を確認します。
+Claude: user-guide.mdの構造を確認します。
 
-[index_statusツールを使用]
+[get_outlineツール: path="docs/user-guide.md"]
 
-現在のインデックス状態：
+アウトラインから「設定ファイル」セクションを発見しました（Section ID: xyz789）
 
-- 総文書数: 152
-- 総セクション数: 1018
-- Dirty: 0（全てクリーン状態です）
+[get_documentツール: sectionId="xyz789"]
 
-ワーカーは正常に動作しており、現在処理中のタスクはありません。
+設定ファイルの詳細は以下です：
+...
 ```
 
-## プロジェクトスコープ設定
+### 例3: 関連情報の横断検索
 
-search-docsプロジェクト自身でMCP Serverを使用する例です。
+```
+ユーザー: Dirty管理に関する全ての情報をまとめて
 
-### プロジェクトの `.mcp.json`
+Claude: Dirty管理に関する文書を検索します。
 
-```json
-{
-  "mcpServers": {
-    "search-docs": {
-      "command": "node",
-      "args": [
-        "packages/mcp-server/dist/server.js",
-        "--project-dir",
-        "."
-      ]
-    }
-  }
-}
+[searchツール: query="Dirty管理", limit=10]
+
+複数の文書で言及されています：
+
+1. user-guide.md - 基本的な概念 > Dirty管理
+2. architecture.md - IndexWorker > Dirty処理
+3. data-model.md - Section状態管理
+
+それぞれの詳細を確認して統合しますね。
+
+[get_documentツール × 3回: 各sectionIdで取得]
+
+Dirty管理について、3つの観点からまとめます：
+...
 ```
 
-### 動作確認
-
-1. **Claude Codeを再起動**
-
-2. **検索を試す**
-   ```
-   ユーザー: このプロジェクトのアーキテクチャについて教えて
-   ```
-
-3. **成功の確認**
-   - Claude Codeがsearchツールを使用
-   - プロジェクトのドキュメントから情報を取得
-   - 回答に反映される
+---
 
 ## トラブルシューティング
-
-### サーバに接続できない
-
-**エラー**: `Failed to connect to search-docs server`
-
-**原因**:
-- サーバが起動していない
-- ポートが異なる
-
-**解決方法**:
-
-1. サーバの状態を確認
-   ```bash
-   search-docs server status
-   ```
-
-2. サーバを起動
-   ```bash
-   search-docs server start
-   ```
-
-3. 設定ファイルのポート番号を確認
-   ```json
-   {
-     "server": {
-       "port": 24280
-     }
-   }
-   ```
 
 ### 検索結果が0件
 
 **原因**:
-- インデックスが作成されていない
-- 検索クエリが適切でない
+- インデックスがまだ作成されていない
+- クエリが適切でない
 
-**解決方法**:
+**確認方法**:
 
-1. インデックスを確認
-   ```bash
-   search-docs index status
-   ```
+```
+ユーザー: インデックスの状態を確認して
 
-2. インデックスを再構築
-   ```bash
-   search-docs index rebuild
-   ```
-
-### MCP Serverが起動しない
-
-**エラー**: MCP Serverのプロセスが起動しない
-
-**解決方法**:
-
-1. **パスを確認**
-   - `.mcp.json`のパスが正しいか確認
-   - 絶対パスを使用する
-
-2. **ビルドを確認**
-   ```bash
-   pnpm build
-   ```
-
-3. **手動で起動して確認**
-   ```bash
-   node packages/mcp-server/dist/server.js --project-dir .
-   ```
-
-### Claude Codeがツールを認識しない
-
-**解決方法**:
-
-1. **Claude Codeを再起動**
-
-2. **設定ファイルの構文を確認**
-   - JSONが正しいか確認
-   - カンマやブラケットの漏れをチェック
-
-3. **ログを確認**（Claude Code側）
-
-## パフォーマンスの最適化
-
-### レスポンス速度の改善
-
-1. **サーバを常時起動**
-   ```bash
-   search-docs server start
-   ```
-
-2. **不要なファイルを除外**
-   `.search-docs.json`の`files.exclude`を調整
-
-3. **depth を制限**
-   深い階層の検索を避ける
-
-### メモリ使用量の削減
-
-1. **maxDepth を下げる**
-   ```json
-   {
-     "indexing": {
-       "maxDepth": 1
-     }
-   }
-   ```
-
-2. **対象ファイルを絞る**
-   ```json
-   {
-     "files": {
-       "include": ["docs/**/*.md"]
-     }
-   }
-   ```
-
-## 高度な設定
-
-### カスタムポート
-
-```json
-{
-  "server": {
-    "port": 24281
-  }
-}
+Claude: [index_statusツール]
+        総セクション数: 0  ← インデックスが空
 ```
 
-MCP Serverは設定ファイルのポート番号を自動的に読み込みます。
+**解決**: サーバが起動してインデックス生成が完了するまで待つ（通常数秒〜数分）
 
-### 複数プロジェクトでの使用
+### 文書が見つからない
 
-各プロジェクトで異なるポートを使用：
+**原因**:
+- パスが間違っている
+- ファイルが設定で除外されている
 
-**プロジェクトA**:
-```json
-{
-  "server": {
-    "port": 24280
-  }
-}
+**確認方法**:
+
+```
+ユーザー: プロジェクトにどんな文書があるか検索して
+
+Claude: [searchツール: query="", limit=50]
+        ← 空クエリで全文書を確認
 ```
 
-**プロジェクトB**:
-```json
-{
-  "server": {
-    "port": 24281
-  }
-}
-```
+---
 
 ## 関連ドキュメント
 
-- [ユーザーガイド](./user-guide.md) - 基本的な使い方
-- [CLIリファレンス](./cli-reference.md) - CLIコマンドの詳細
-- [クイックスタート](./quick-start.md) - 5分で試す
-- [MCP Server README](../packages/mcp-server/README.md) - 開発者向け情報
+- **[クイックスタート](./quick-start.md)** - セットアップ方法
+- **[ユーザーガイド](./user-guide.md)** - 基本的な概念
+- **[CLIリファレンス](./cli-reference.md)** - コマンドライン操作
