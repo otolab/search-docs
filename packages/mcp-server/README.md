@@ -109,8 +109,9 @@ path: "docs/architecture.md"
 ```
 文書: docs/architecture.md
 
-1. "概要" (lines: 10, tokens: 150, id: abc123)
-1.1. "システム構成" (lines: 5, tokens: 80, id: def456)
+1. "# アーキテクチャ" (lines: 10, tokens: 150, id: section-1)
+1.1. "## 概要" (lines: 5, tokens: 80, id: section-1-1)
+1.2. "## システム構成" (lines: 8, tokens: 120, id: section-1-2)
 ...
 ```
 
