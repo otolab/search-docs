@@ -1,429 +1,266 @@
-# ファイル監視機能の設計
+# ファイル監視機能の設計と実装
 
 ## 概要
 
-Markdownファイルの変更を監視し、自動的にインデックスを更新する機能を実装します。
+Markdownファイルの変更を監視し、自動的にインデックスを更新する機能です。ファイルの追加・変更・削除を検出し、バックグラウンドで再インデックスを実行します。
 
-## 要件
+## 実装の経緯
 
-1. **ファイル変更の検出**
-   - 新規作成
-   - 更新
-   - 削除
-   - リネーム/移動
+### Phase 1: chokidarによる初期実装（2025-10-27）
 
-2. **効率的な更新**
-   - 変更されたファイルのみ処理
-   - デバウンス（短時間の連続変更をまとめる）
-   - バックグラウンド処理
+**採用ライブラリ**: `chokidar@^4.0.3`
 
-3. **除外パターン対応**
-   - `.gitignore`の尊重
-   - 設定の`exclude`パターン適用
+**実装内容**:
+- Node.jsファイル監視のデファクトスタンダードとして採用
+- ファイル追加・変更・削除の検出
+- 除外パターンのフィルタリング
+- デバウンス機能（300ms）
 
-## 実装方針
+**発見された問題**:
+1. **chokidar 4.xの制約**: Globパターン（`**/*.md`）を直接渡すとイベントが発火しない
+2. **ワークアラウンド**: `rootDir`全体を監視し、`ignored`コールバックでフィルタリング
+3. **大規模プロジェクトでの限界**:
+   - EMFILE（too many open files）エラーが発生
+   - 10万ファイル規模で **1GB RAM + 50% CPU** を継続消費
+   - イベントスロットリングをJavaScriptスレッドで実行（ボトルネック）
 
-### 使用ライブラリ
+**暫定対策**: `usePolling`オプションを追加（CPU使用率が高く、根本的解決にならず）
 
-#### chokidar（推奨）
+### Phase 2: 根本的改善の検討（2025-11-04）
 
-**理由**:
-- Node.jsのファイル監視デファクトスタンダード
-- クロスプラットフォーム対応（Windows/macOS/Linux）
-- `.gitignore`対応可能
-- 高パフォーマンス
-- 安定性が高い
+**調査内容**:
+- chokidar最新版の確認 → 4.0.3が最新、更新の余地なし
+- 代替案の検討:
+  - **glob-watcher**: chokidar 3.xベース、問題解決せず → 却下
+  - **Watchman直接利用**: 別途デーモン必須、セットアップ複雑 → 却下
+  - **@parcel/watcher**: ネイティブC++実装、実績あり → 採用決定
 
-**機能**:
-```typescript
-import chokidar from 'chokidar';
+**@parcel/watcherの優位性**:
+1. ネイティブC++実装でイベントスロットリングを実行
+2. Node.jsメインプロセスを圧迫しない
+3. Watchman連携（オプション）による高速化
+4. プリビルドバイナリで簡単インストール
+5. Parcel, Nuxt.js, Viteで採用実績
 
-const watcher = chokidar.watch('**/*.md', {
-  ignored: /(^|[\/\\])\../, // dotfilesを除外
-  persistent: true,
-  ignoreInitial: true,
-});
+### Phase 3: @parcel/watcherへの完全移行（2025-11-04）
 
-watcher
-  .on('add', path => console.log(`File ${path} has been added`))
-  .on('change', path => console.log(`File ${path} has been changed`))
-  .on('unlink', path => console.log(`File ${path} has been removed`));
+**移行内容**:
+```diff
+  "dependencies": {
+-   "chokidar": "^4.0.3",
++   "@parcel/watcher": "^2.5.1",
+  }
 ```
+
+**実装の書き換え**:
+- `chokidar.watch()` → `watcher.subscribe()`
+- イベントタイプの変換: `create`→`add`, `update`→`change`, `delete`→`unlink`
+- ignoreパターンベースのフィルタリング
+- includeパターンの二重チェック（minimatch使用）
+
+**削除された機能**:
+- `usePolling`オプション（@parcel/watcherはネイティブ実装のため不要）
+
+**テスト結果**: 全69テスト（file-watcher: 7テスト）がパス
+
+## 現在の実装
 
 ### アーキテクチャ
 
 ```
-FileWatcher
-  ├─ chokidar (ファイル監視)
-  ├─ Debouncer (変更イベントの集約)
-  ├─ EventQueue (処理キュー)
-  └─ Handler (実際の処理)
-       ├─ markDirty() (変更検出時)
-       └─ deleteSections() (削除検出時)
+FileWatcher (@parcel/watcher)
+  ├─ subscription (ネイティブC++監視)
+  ├─ ignoreパターン (除外フィルタ)
+  ├─ shouldProcessFile (includeパターンチェック)
+  └─ デバウンス (300ms)
+       ↓
+  FileChangeEvent発火
+       ↓
+  SearchDocsServer
+       ├─ add/change → markDirty()
+       └─ unlink → deleteDocument()
 ```
 
-## 実装例
+### 実装ファイル
 
-### FileWatcherクラス
+**場所**: `packages/server/src/discovery/file-watcher.ts`
+
+**主要クラス**: `FileWatcher`
 
 ```typescript
-import chokidar, { FSWatcher } from 'chokidar';
-import { EventEmitter } from 'events';
-import ignore, { Ignore } from 'ignore';
-import * as fs from 'fs/promises';
-
-export interface FileWatcherOptions {
-  /** 監視するディレクトリ */
-  rootDir: string;
-  /** 含めるパターン */
-  include: string[];
-  /** 除外するパターン */
-  exclude: string[];
-  /** .gitignoreを尊重するか */
-  ignoreGitignore: boolean;
-  /** デバウンス時間（ミリ秒） */
-  debounceMs?: number;
-}
-
-export interface FileChangeEvent {
-  type: 'add' | 'change' | 'unlink';
-  path: string;
-  timestamp: Date;
-}
-
 export class FileWatcher extends EventEmitter {
-  private watcher: FSWatcher | null = null;
-  private ignoreFilter: Ignore | null = null;
+  private subscription: watcher.AsyncSubscription | null = null;
   private debounceTimers = new Map<string, NodeJS.Timeout>();
-  private options: Required<FileWatcherOptions>;
 
-  constructor(options: FileWatcherOptions) {
-    super();
-    this.options = {
-      ...options,
-      debounceMs: options.debounceMs ?? 300, // デフォルト300ms
-    };
-  }
-
-  /**
-   * 監視を開始
-   */
   async start(): Promise<void> {
-    // .gitignoreの読み込み
-    if (this.options.ignoreGitignore) {
-      await this.loadGitignore();
-    }
+    const ignorePatterns = this.buildIgnorePatterns();
 
-    // chokidarの設定
-    const watchPatterns = this.options.include.map(
-      pattern => `${this.options.rootDir}/${pattern}`
-    );
-
-    this.watcher = chokidar.watch(watchPatterns, {
-      ignored: (path: string) => this.shouldIgnore(path),
-      persistent: true,
-      ignoreInitial: true, // 既存ファイルは無視（初回インデックスは別途実行）
-      awaitWriteFinish: {
-        stabilityThreshold: 200, // ファイル書き込み完了を200ms待つ
-        pollInterval: 100,
+    this.subscription = await watcher.subscribe(
+      this.rootDir,
+      (err, events) => {
+        for (const event of events) {
+          const eventType = this.convertEventType(event.type);
+          if (this.shouldProcessFile(event.path)) {
+            this.handleFileEvent(eventType, event.path);
+          }
+        }
       },
-    });
-
-    // イベントハンドラ登録
-    this.watcher
-      .on('add', (path) => this.handleFileEvent('add', path))
-      .on('change', (path) => this.handleFileEvent('change', path))
-      .on('unlink', (path) => this.handleFileEvent('unlink', path))
-      .on('error', (error) => this.emit('error', error));
-
-    this.emit('ready');
+      { ignore: ignorePatterns }
+    );
   }
 
-  /**
-   * 監視を停止
-   */
   async stop(): Promise<void> {
-    // デバウンスタイマーをクリア
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.debounceTimers.clear();
-
-    // watcherを停止
-    if (this.watcher) {
-      await this.watcher.close();
-      this.watcher = null;
-    }
-  }
-
-  /**
-   * ファイルイベントを処理（デバウンス付き）
-   */
-  private handleFileEvent(type: 'add' | 'change' | 'unlink', path: string): void {
-    // 既存のタイマーをクリア
-    const existingTimer = this.debounceTimers.get(path);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-
-    // 新しいタイマーを設定
-    const timer = setTimeout(() => {
-      this.debounceTimers.delete(path);
-
-      const event: FileChangeEvent = {
-        type,
-        path: path.replace(this.options.rootDir + '/', ''), // 相対パスに変換
-        timestamp: new Date(),
-      };
-
-      this.emit('change', event);
-    }, this.options.debounceMs);
-
-    this.debounceTimers.set(path, timer);
-  }
-
-  /**
-   * .gitignoreを読み込む
-   */
-  private async loadGitignore(): Promise<void> {
-    try {
-      const gitignorePath = `${this.options.rootDir}/.gitignore`;
-      const content = await fs.readFile(gitignorePath, 'utf-8');
-      this.ignoreFilter = ignore().add(content);
-    } catch (error) {
-      // .gitignoreが存在しない場合は無視
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * パスを除外すべきか判定
-   */
-  private shouldIgnore(path: string): boolean {
-    // 絶対パスから相対パスに変換
-    const relativePath = path.replace(this.options.rootDir + '/', '');
-
-    // 除外パターンチェック
-    for (const pattern of this.options.exclude) {
-      // 簡易的なglobマッチング（node_modules, .gitなど）
-      if (relativePath.includes(pattern.replace(/\*\*/g, ''))) {
-        return true;
-      }
-    }
-
-    // .gitignoreチェック
-    if (this.ignoreFilter) {
-      return this.ignoreFilter.ignores(relativePath);
-    }
-
-    return false;
+    await this.subscription?.unsubscribe();
   }
 }
 ```
 
-### 使用例
+### 主な機能
+
+1. **ファイル変更の検出**
+   - 追加（`add`）: 新規Markdownファイルの作成
+   - 変更（`change`）: 既存ファイルの更新
+   - 削除（`unlink`）: ファイルの削除
+
+2. **除外パターン**
+   ```typescript
+   const commonIgnores = [
+     '**/node_modules/**',
+     '**/.git/**',
+     '**/.venv/**',
+     '**/dist/**',
+     '**/build/**',
+     '**/.search-docs/**',
+   ];
+   ```
+
+3. **includeパターンのフィルタリング**
+   - `filesConfig.include`に基づいて監視対象を絞り込み
+   - `minimatch`による柔軟なパターンマッチング
+
+4. **デバウンス機能**
+   - デフォルト300ms
+   - 短時間の連続変更をまとめて1回の処理に
+
+### 設定
+
+**WatcherConfig**（`packages/types/src/config.ts`）:
 
 ```typescript
-import { FileWatcher } from './file-watcher.js';
-import { SearchDocsServer } from './server.js';
+export interface WatcherConfig {
+  enabled: boolean;        // ファイル監視を有効にするか
+  debounceMs: number;      // デバウンス時間（ミリ秒）
+  awaitWriteFinishMs: number;  // （@parcel/watcherでは未使用）
+}
+```
 
-// サーバとwatcherの連携
-const watcher = new FileWatcher({
-  rootDir: process.cwd(),
-  include: ['**/*.md'],
-  exclude: ['**/node_modules/**', '**/.git/**'],
-  ignoreGitignore: true,
+**デフォルト値**:
+
+```typescript
+watcher: {
+  enabled: true,
   debounceMs: 300,
-});
-
-watcher.on('change', async (event) => {
-  console.log(`File ${event.type}: ${event.path}`);
-
-  switch (event.type) {
-    case 'add':
-    case 'change':
-      // ファイルをDirtyにマーク
-      await server.markDirty(event.path);
-      break;
-
-    case 'unlink':
-      // セクションを削除
-      await server.deleteDocument(event.path);
-      break;
-  }
-});
-
-watcher.on('ready', () => {
-  console.log('File watcher is ready');
-});
-
-watcher.on('error', (error) => {
-  console.error('Watcher error:', error);
-});
-
-await watcher.start();
+  awaitWriteFinishMs: 200,  // 互換性のため残存、実際は使用されない
+}
 ```
 
 ## 処理フロー
 
-### 1. ファイル追加/変更時
+### ファイル追加/変更時
 
 ```
 ファイル保存
   ↓
-chokidarがイベント検出
+@parcel/watcher (ネイティブC++)がイベント検出
   ↓
-awaitWriteFinish（書き込み完了待機）
+ignoreパターンでフィルタリング
+  ↓
+shouldProcessFile() (includeパターン・拡張子チェック)
   ↓
 デバウンス（300ms）
   ↓
 'change'イベント発火
   ↓
-markDirty(path) 実行
+SearchDocsServer.markDirty(path)
   ↓
-DirtyWorkerがバックグラウンドで再インデックス
+IndexWorkerがバックグラウンドで再インデックス
 ```
 
-### 2. ファイル削除時
+### ファイル削除時
 
 ```
 ファイル削除
   ↓
-chokidarがunlinkイベント検出
+@parcel/watcherがunlinkイベント検出
   ↓
 デバウンス（300ms）
   ↓
 'change'イベント発火（type: 'unlink'）
   ↓
-deleteSectionsByPath(path) 実行
+SearchDocsServer.deleteDocument(path)
 ```
 
-## 設定項目
+## パフォーマンス特性
 
-### SearchDocsConfigへの追加
+### @parcel/watcherの利点
 
-```typescript
-export interface WatcherConfig {
-  /** ファイル監視を有効にするか */
-  enabled: boolean;
-  /** デバウンス時間（ミリ秒） */
-  debounceMs: number;
-  /** ファイル書き込み完了の待機時間 */
-  awaitWriteFinishMs: number;
-}
+1. **ネイティブC++実装**
+   - イベントスロットリングをネイティブスレッドで実行
+   - Node.jsメインプロセスを圧迫しない
 
-export interface SearchDocsConfig {
-  // ... 既存の設定
-  watcher: WatcherConfig;
-}
+2. **大規模プロジェクトに強い**
+   - 10万ファイル規模でも効率的
+   - 大量ファイル変更（npm install, git checkout）に耐性あり
+
+3. **Watchman連携（オプション）**
+   - システムにWatchmanがあれば自動的に利用
+   - 常駐デーモンがファイルシステム変更をメモリ保持
+   - **必須ではない**: Watchmanなしでも十分に動作
+
+4. **プリビルドバイナリ**
+   - 13種類のプラットフォーム対応
+   - 通常のnpm installでビルド不要
+   - Python等の依存なし
+
+### デバウンスの効果
+
+短時間の連続変更をまとめて1回の処理にする：
+
+```
+保存 → 300ms以内 → 保存 → 300ms以内 → 保存 → 300ms後に1回処理
 ```
 
-### デフォルト値
+## テスト
 
-```typescript
-export const DEFAULT_CONFIG: SearchDocsConfig = {
-  // ... 既存の設定
-  watcher: {
-    enabled: true,
-    debounceMs: 300,
-    awaitWriteFinishMs: 200,
-  },
-};
-```
+**テストファイル**: `packages/server/src/discovery/__tests__/file-watcher.test.ts`
 
-## パフォーマンス最適化
+**テストケース**（全7テスト）:
+- ✅ ファイル追加を検出できる
+- ✅ ファイル変更を検出できる
+- ✅ ファイル削除を検出できる
+- ✅ 除外パターンのファイルは検出しない
+- ✅ デバウンスが機能する
+- ✅ サブディレクトリのファイルも検出できる
+- ✅ 停止後はイベントを検出しない
 
-### 1. デバウンス
-短時間の連続変更をまとめて1回の処理にする。
+## 今後の検討事項
 
-```typescript
-// 保存を3回繰り返しても、最後の1回だけ処理
-save() -> 300ms以内 -> save() -> 300ms以内 -> save() -> 300ms後に処理
-```
+1. **Watchmanの推奨**
+   - ドキュメントにWatchmanインストールのメリットを記載
+   - ただし必須とはしない
 
-### 2. awaitWriteFinish
-大きなファイルの書き込み完了を待つ。
+2. **パフォーマンスモニタリング**
+   - 大規模プロジェクトでの実際のメモリ使用量・CPU使用率の測定
+   - 必要に応じてログ追加
 
-```typescript
-{
-  awaitWriteFinish: {
-    stabilityThreshold: 200, // 200ms変更がなければ完了と見なす
-    pollInterval: 100,        // 100msごとにチェック
-  }
-}
-```
+## 関連ドキュメント
 
-### 3. ignoreInitial
-既存ファイルのイベントを無視（初回インデックスは別途実行）。
-
-## エラーハンドリング
-
-### 1. ファイルアクセスエラー
-```typescript
-watcher.on('error', (error) => {
-  console.error('Watcher error:', error);
-  // 必要に応じて再起動
-});
-```
-
-### 2. パーミッションエラー
-`.gitignore`が読めない場合は警告を出して続行。
-
-### 3. パスが長すぎる
-Windowsの260文字制限に注意（chokidarが対応）。
-
-## テスト戦略
-
-### 単体テスト
-```typescript
-describe('FileWatcher', () => {
-  it('ファイル追加を検出できる', async () => {
-    const events: FileChangeEvent[] = [];
-    watcher.on('change', (event) => events.push(event));
-
-    await fs.writeFile('test.md', '# Test');
-    await wait(500); // デバウンス待ち
-
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('add');
-  });
-});
-```
-
-### 統合テスト
-実際のMarkdownファイルで変更検出→再インデックスの流れをテスト。
-
-## 依存パッケージ
-
-```json
-{
-  "dependencies": {
-    "chokidar": "^4.0.3",
-    "ignore": "^6.0.2"
-  }
-}
-```
-
-## メリット
-
-1. **リアルタイム更新**: ファイル保存後すぐに検索可能
-2. **効率的**: 変更されたファイルのみ処理
-3. **ユーザーフレンドリー**: 手動での再インデックス不要
-4. **安定性**: chokidarの実績ある実装
-
-## 注意点
-
-1. **リソース消費**: 大量のファイルを監視するとメモリ/CPU使用量増加
-2. **デバウンス調整**: プロジェクトサイズに応じて調整が必要
-3. **エディタ互換性**: 一部のエディタは一時ファイルを作成（除外が必要）
-
-## 実装タイミング
-
-- Phase 2.2（ファイル検索）の後に実装
-- Phase 2.4（サーバコア）で統合
+- **アーキテクチャ決定記録**: [ADR-017](./architecture-decisions.md#adr-017-parcelwatcherによるファイル監視)
+- **実装履歴**: `prompts/tasks/task18.file-watch-improvement.v3.md`
+- **コミット**: f6d527e (2025-11-04)
 
 ---
 
-**結論**: ファイル監視機能は`chokidar`を使用して実現可能で、実装の価値も高いです。
+**作成日**: 2025-01-27
+**最終更新**: 2026-01-15
+**状態**: 実装完了（@parcel/watcher採用）
