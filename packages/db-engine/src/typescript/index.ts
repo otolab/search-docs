@@ -207,6 +207,7 @@ export class DBEngine extends EventEmitter {
   private memoryCheckInterval: NodeJS.Timeout | null = null;
   private pythonMaxMemoryMB: number | null = null;
   private memoryCheckIntervalMs: number = 30000;
+  private lastReportedRssMB: number | null = null;
 
   // 接続状態管理
   private connectionState: 'disconnected' | 'connecting' | 'initializing_model' | 'ready' | 'error' = 'disconnected';
@@ -624,6 +625,9 @@ export class DBEngine extends EventEmitter {
    * パフォーマンスログを処理
    */
   private handlePerformanceLog(log: PerformanceLog): void {
+    // メモリ監視用にRSSを保持（CSV記録の有無に関わらず）
+    this.lastReportedRssMB = log.rss_mb;
+
     if (!this.performanceCsvStream) {
       return; // 記録が開始されていない
     }
@@ -704,34 +708,24 @@ export class DBEngine extends EventEmitter {
 
   /**
    * メモリ使用量をチェックし、必要に応じて再起動
+   * Python PerformanceLoggerが報告するRSSを参照する
    */
   private async checkMemoryUsage(): Promise<void> {
     if (!this.worker || !this.pythonMaxMemoryMB) {
       return;
     }
 
-    try {
-      const pid = this.worker.pid;
-      if (!pid) {
-        return;
-      }
+    const rssMB = this.lastReportedRssMB;
+    if (rssMB === null) {
+      return; // まだPerformanceLoggerからの報告がない
+    }
 
-      // psコマンドでメモリ使用量を取得（RSS: 常駐メモリ、KB単位）
-      const { execSync } = await import('child_process');
-      const output = execSync(`ps -o rss= -p ${pid}`, { encoding: 'utf-8' });
-      const rssKB = parseInt(output.trim(), 10);
-      const rssMB = rssKB / 1024;
+    if (rssMB > this.pythonMaxMemoryMB) {
+      console.warn(`[DBEngine] Python worker memory exceeded limit: ${rssMB.toFixed(0)}MB > ${this.pythonMaxMemoryMB}MB`);
+      console.warn('[DBEngine] Restarting Python worker...');
 
-      if (rssMB > this.pythonMaxMemoryMB) {
-        console.warn(`[DBEngine] Python worker memory exceeded limit: ${rssMB.toFixed(0)}MB > ${this.pythonMaxMemoryMB}MB`);
-        console.warn('[DBEngine] Restarting Python worker...');
-
-        // ワーカーを再起動
-        await this.restartWorker();
-      }
-    } catch (error) {
-      // メモリチェックのエラーは警告レベルでログ（監視処理は継続）
-      console.warn('[DBEngine] Failed to check memory usage:', error);
+      // ワーカーを再起動
+      await this.restartWorker();
     }
   }
 
