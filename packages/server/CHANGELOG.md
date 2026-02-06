@@ -1,5 +1,12 @@
 # @search-docs/server
 
+## 1.3.2
+
+### Patch Changes
+
+- Updated dependencies [59f3c82]
+  - @search-docs/db-engine@1.4.2
+
 ## 1.3.1
 
 ### Patch Changes
