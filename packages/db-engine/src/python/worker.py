@@ -195,6 +195,9 @@ class SearchDocsWorker:
         # メモリ管理用カウンタ
         self._add_count = 0  # add_sections()の呼び出し回数
 
+        # optimize呼び出し頻度管理
+        self._write_counts = {"sections": 0, "index_requests": 0}
+
         # パフォーマンスロガー
         self.perf_logger = PerformanceLogger(interval=1.0)
         self.perf_logger.start()
@@ -466,13 +469,17 @@ class SearchDocsWorker:
             sys.stderr.flush()
             raise
 
-    def _optimize_table(self, table, table_name: str) -> None:
-        """スカラーインデックスの増分更新"""
-        try:
-            table.optimize()
-        except Exception as e:
-            sys.stderr.write(f"[Optimize] Warning: {table_name} optimize failed: {e}\n")
-            sys.stderr.flush()
+    OPTIMIZE_INTERVAL = 20
+
+    def _maybe_optimize(self, table, table_name: str) -> None:
+        """書き込み回数に応じてスカラーインデックスを増分更新"""
+        self._write_counts[table_name] = self._write_counts.get(table_name, 0) + 1
+        if self._write_counts[table_name] % self.OPTIMIZE_INTERVAL == 0:
+            try:
+                table.optimize(cleanup_older_than=timedelta(days=0))
+            except Exception as e:
+                sys.stderr.write(f"[Optimize] Warning: {table_name} optimize failed: {e}\n")
+                sys.stderr.flush()
 
     def _get_sections_table(self):
         """SECTIONSテーブルを取得（キャッシュ付き）
@@ -774,7 +781,7 @@ class SearchDocsWorker:
         # table.add実行
         table = self._get_sections_table()
         table.add(sections)
-        self._optimize_table(table, "sections")
+        self._maybe_optimize(table,"sections")
 
         # スレッド情報（table.add後）
         self.log_thread_info("AFTER table.add()")
@@ -916,7 +923,7 @@ class SearchDocsWorker:
 
         table = self._get_sections_table()
         table.delete(f"document_path = '{document_path}'")
-        self._optimize_table(table, "sections")
+        self._maybe_optimize(table,"sections")
 
         return {"deleted": True}
 
@@ -960,7 +967,7 @@ class SearchDocsWorker:
 
         # 指定したhash以外を削除
         table.delete(f"document_path = '{document_path}' AND document_hash != '{document_hash}'")
-        self._optimize_table(table, "sections")
+        self._maybe_optimize(table,"sections")
 
         return {"deleted": True}
 
@@ -976,7 +983,7 @@ class SearchDocsWorker:
             where=f"document_path = '{document_path}'",
             values={"is_dirty": True}
         )
-        self._optimize_table(table, "sections")
+        self._maybe_optimize(table,"sections")
 
         return {"marked": True}
 
@@ -1057,7 +1064,7 @@ class SearchDocsWorker:
 
         # データを追加
         table.add([request_data])
-        self._optimize_table(table, "index_requests")
+        self._maybe_optimize(table,"index_requests")
 
         # 完全なリクエストオブジェクトを返す（camelCaseに変換）
         return {
@@ -1187,7 +1194,7 @@ class SearchDocsWorker:
             where=f"id = '{request_id}'",
             values=updates
         )
-        self._optimize_table(table, "index_requests")
+        self._maybe_optimize(table,"index_requests")
 
         # 更新後のオブジェクトを取得して返す
         df = table.search().where(f"id = '{request_id}'").limit(1).to_pandas()
@@ -1250,7 +1257,7 @@ class SearchDocsWorker:
             where=where_str,
             values=updates
         )
-        self._optimize_table(table, "index_requests")
+        self._maybe_optimize(table,"index_requests")
 
         return {"updated": True, "count": count}
 
