@@ -1,5 +1,21 @@
 # @search-docs/mcp-server
 
+## 1.5.1
+
+### Patch Changes
+
+- 2ce035d: ドキュメント改善: README.md の作成と更新
+
+  - packages/cli: README.md を新規作成。インストール方法、基本的な使い方、全コマンドの説明を追加
+  - packages/mcp-server: README.md を全面的に改善
+    - バージョン指定（v1.x.x 以降）を削除
+    - get_outline ツールの説明を追加
+    - 全ツールの出力例を削除し、パラメータと機能説明に集中
+    - 実装に基づいて全パラメータを正確に記述
+
+- Updated dependencies [2ce035d]
+  - @search-docs/cli@1.0.35
+
 ## 1.5.0
 
 ### Minor Changes
