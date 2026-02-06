@@ -1,5 +1,14 @@
 # @search-docs/db-engine
 
+## 1.4.1
+
+### Patch Changes
+
+- 0ea87be: メモリ監視の統一とスカラーインデックスの増分更新
+
+  - メモリ監視を Python PerformanceLogger に統一し、execSync による CPU スパイクを解消
+  - データ書き込み後に table.optimize()を呼び、スカラーインデックスを増分更新するよう修正
+
 ## 1.4.0
 
 ### Minor Changes
