@@ -1,5 +1,11 @@
 # @search-docs/db-engine
 
+## 1.4.2
+
+### Patch Changes
+
+- 59f3c82: optimize()の呼び出し頻度を 20 回ごとに適正化し、インデックスファイルの肥大化を防止
+
 ## 1.4.1
 
 ### Patch Changes
