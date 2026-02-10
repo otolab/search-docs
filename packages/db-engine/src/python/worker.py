@@ -166,6 +166,64 @@ class PerformanceLogger:
             sys.stderr.flush()
 
 
+def _safe_timestamp(value) -> Optional[str]:
+    """pandas Timestamp/NaT を安全にISO文字列またはNoneに変換"""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    if pd.isna(value):
+        return None
+    try:
+        return value.isoformat()
+    except (AttributeError, ValueError):
+        return None
+
+
+def _json_default(obj):
+    """json.dumpsのdefaultハンドラ: pandas/numpy型をJSON互換に変換"""
+    try:
+        if pd.isna(obj):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(obj, (pd.Timestamp, datetime)):
+        return obj.isoformat()
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return None if np.isnan(obj) else float(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _sanitize_for_json(obj):
+    """レスポンスオブジェクトからNaN/NaTを再帰的にNoneに変換"""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, float) and np.isnan(obj):
+        return None
+    try:
+        if pd.isna(obj):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return obj
+
+
+def _safe_value(value) -> Any:
+    """pandas NaN/NaT を安全にNoneに変換"""
+    if value is None:
+        return None
+    if isinstance(value, float) and np.isnan(value):
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 class SearchDocsWorker:
     def __init__(self, db_path: str = "./.search-docs/index"):
         """search-docs LanceDBワーカーの初期化"""
@@ -1131,10 +1189,10 @@ class SearchDocsWorker:
                 "documentPath": req["document_path"],
                 "documentHash": req["document_hash"],
                 "status": req["status"],
-                "createdAt": req["created_at"].isoformat() if req.get("created_at") else None,
-                "startedAt": req["started_at"].isoformat() if req.get("started_at") else None,
-                "completedAt": req["completed_at"].isoformat() if req.get("completed_at") else None,
-                "error": req.get("error"),
+                "createdAt": _safe_timestamp(req.get("created_at")),
+                "startedAt": _safe_timestamp(req.get("started_at")),
+                "completedAt": _safe_timestamp(req.get("completed_at")),
+                "error": _safe_value(req.get("error")),
             }
             formatted_requests.append(formatted_req)
 
@@ -1207,10 +1265,10 @@ class SearchDocsWorker:
             "documentPath": req["document_path"],
             "documentHash": req["document_hash"],
             "status": req["status"],
-            "createdAt": req["created_at"].isoformat() if req.get("created_at") else None,
-            "startedAt": req["started_at"].isoformat() if req.get("started_at") else None,
-            "completedAt": req["completed_at"].isoformat() if req.get("completed_at") else None,
-            "error": req.get("error"),
+            "createdAt": _safe_timestamp(req.get("created_at")),
+            "startedAt": _safe_timestamp(req.get("started_at")),
+            "completedAt": _safe_timestamp(req.get("completed_at")),
+            "error": _safe_value(req.get("error")),
         }
 
     def update_many_index_requests(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1296,7 +1354,8 @@ def main():
         try:
             request = json.loads(line)
             response = worker.handle_request(request)
-            print(json.dumps(response, ensure_ascii=False), flush=True)
+            response = _sanitize_for_json(response)
+            print(json.dumps(response, ensure_ascii=False, default=_json_default), flush=True)
         except json.JSONDecodeError as e:
             sys.stderr.write(f"Invalid JSON: {e}\n")
             sys.stderr.flush()
