@@ -1,5 +1,11 @@
 # @search-docs/db-engine
 
+## 1.4.3
+
+### Patch Changes
+
+- 7320ad1: JSON-RPC レスポンスで pandas の NaT/NaN がそのまま出力され JSON.parse が失敗する問題を修正
+
 ## 1.4.2
 
 ### Patch Changes
