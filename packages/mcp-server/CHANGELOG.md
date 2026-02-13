@@ -1,5 +1,15 @@
 # @search-docs/mcp-server
 
+## 1.5.5
+
+### Patch Changes
+
+- 3c063c5: 関連プロジェクトのサーバを server_start/server_stop で明示的に制御可能に
+
+  - server_start/server_stop に project パラメータを追加
+  - search/get_document/get_outline での関連プロジェクトサーバの自動起動を削除
+  - ServerManager に getServer/stopRelatedServer メソッドを追加
+
 ## 1.5.4
 
 ### Patch Changes
