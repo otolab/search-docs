@@ -12,5 +12,6 @@ export { registerIndexStatusTool } from './index-status.js';
 export { registerInitTool } from './init.js';
 export { registerServerStartTool, registerServerStopTool } from './server-control.js';
 export { registerSystemStatusTool } from './system-status.js';
+export { registerListRelatedProjectsTool } from './list-related-projects.js';
 
 export type { ToolRegistrationContext, RegisteredTool } from './types.js';
