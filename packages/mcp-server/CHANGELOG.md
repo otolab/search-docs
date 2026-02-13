@@ -1,5 +1,14 @@
 # @search-docs/mcp-server
 
+## 1.5.4
+
+### Patch Changes
+
+- 78dfe04: 関連プロジェクト一覧を表示する list_related_projects ツールを追加
+
+  - 設定ファイルで定義された関連プロジェクトの名前、説明、ディレクトリ、サーバ起動状態を一覧表示
+  - search、get_document、get_outline の project パラメータ説明に list_related_projects への導線を追加
+
 ## 1.5.3
 
 ### Patch Changes
