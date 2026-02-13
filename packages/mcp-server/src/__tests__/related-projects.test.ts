@@ -126,19 +126,6 @@ describe('関連プロジェクト機能', () => {
         '# Test Document for E2E\n\nThis document contains a very specific unique phrase: XYZ999TestRelatedProject\n'
       );
 
-      // 関連プロジェクトのサーバを起動してインデックスを作成
-      await relatedEnv.tester.callTool('server_start', {});
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // インデックスを再構築
-      const relatedClient = new SearchDocsClient({
-        baseUrl: `http://localhost:${relatedEnv.port}`,
-      });
-      await relatedClient.rebuildIndex();
-
-      // インデックス作成を十分待つ
-      await new Promise((resolve) => setTimeout(resolve, 8000));
-
       // メインプロジェクトの設定に関連プロジェクトを追加
       const mainConfigPath = path.join(mainEnv.testDir, '.search-docs.json');
       const mainConfig = JSON.parse(await fs.readFile(mainConfigPath, 'utf-8'));
@@ -153,6 +140,19 @@ describe('関連プロジェクト機能', () => {
       // メインサーバを起動
       await mainEnv.tester.callTool('server_start', {});
       await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // メインプロジェクト経由で関連プロジェクトのサーバを起動
+      await mainEnv.tester.callTool('server_start', { project: 'related-search-sub' });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // インデックスを再構築
+      const relatedClient = new SearchDocsClient({
+        baseUrl: `http://localhost:${relatedEnv.port}`,
+      });
+      await relatedClient.rebuildIndex();
+
+      // インデックス作成を十分待つ
+      await new Promise((resolve) => setTimeout(resolve, 8000));
 
       // 関連プロジェクトを指定して検索
       const searchResult = await mainEnv.tester.callTool('search', {

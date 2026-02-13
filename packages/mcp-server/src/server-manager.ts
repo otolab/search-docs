@@ -251,6 +251,50 @@ export class ServerManager {
   }
 
   /**
+   * 起動済みプロジェクトのサーバクライアントを取得
+   * @param projectName プロジェクト名
+   * @returns クライアント（未起動またはダウンの場合はnull）
+   */
+  async getServer(projectName: string): Promise<SearchDocsClient | null> {
+    const cached = this.servers.get(projectName);
+    if (!cached) {
+      return null;
+    }
+
+    try {
+      await cached.client.healthCheck();
+      return cached.client;
+    } catch {
+      // サーバが停止している、キャッシュをクリア
+      this.servers.delete(projectName);
+      return null;
+    }
+  }
+
+  /**
+   * 関連プロジェクトのサーバを停止
+   * @param projectName プロジェクト名
+   */
+  async stopRelatedServer(projectName: string): Promise<void> {
+    const serverInfo = this.servers.get(projectName);
+    if (!serverInfo) {
+      throw new Error(`プロジェクト "${projectName}" のサーバは起動していません。`);
+    }
+
+    // CLIのstopServer経由で停止
+    const { stopServer } = await import('@search-docs/cli/commands/server/stop');
+    const configPath = path.join(serverInfo.projectRoot, '.search-docs.json');
+    await stopServer({
+      config: configPath,
+      cwd: serverInfo.projectRoot,
+    });
+
+    // キャッシュから削除
+    this.servers.delete(projectName);
+    console.error(`[mcp-server] Stopped server for project: ${projectName}`);
+  }
+
+  /**
    * すべてのサーバ情報を取得
    */
   getAllServers(): Map<string, ServerInfo> {

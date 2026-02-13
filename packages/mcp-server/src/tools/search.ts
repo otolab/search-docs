@@ -4,7 +4,6 @@
  */
 
 import { z } from 'zod';
-import { ConfigLoader } from '@search-docs/types';
 import { getStateErrorMessage } from '../state.js';
 import { formatSectionNumber, getPreviewContent } from '../utils.js';
 import type { ToolRegistrationContext, RegisteredTool } from './types.js';
@@ -59,49 +58,15 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
 
       // プロジェクト指定がある場合は関連プロジェクトを検索
       if (project) {
-        // メインプロジェクトの設定が必要
-        if (systemState.state === 'NOT_CONFIGURED') {
+        // 関連プロジェクトのサーバを取得（起動済みのみ）
+        const relatedClient = await context.serverManager.getServer(project);
+        if (!relatedClient) {
           throw new Error(
-            '関連プロジェクトを検索するには、まずメインプロジェクトの設定ファイルが必要です。\n\n' +
-            '設定ファイルを作成してください:\n' +
-            '  ツール: init'
+            `関連プロジェクト "${project}" のサーバが起動していません。\n\n` +
+            `サーバを起動してください:\n` +
+            `  server_start(project: "${project}")`
           );
         }
-
-        if (!systemState.config || !systemState.configPath) {
-          throw new Error('設定ファイルが見つかりません。');
-        }
-
-        // 関連プロジェクトの設定を確認
-        if (!systemState.config.relatedProjects || !systemState.config.relatedProjects[project]) {
-          const availableProjects = systemState.config.relatedProjects
-            ? Object.keys(systemState.config.relatedProjects).join(', ')
-            : '(なし)';
-          throw new Error(
-            `関連プロジェクト "${project}" が設定ファイルに見つかりません。\n\n` +
-            `利用可能なプロジェクト: ${availableProjects}\n\n` +
-            '設定ファイルの relatedProjects セクションを確認してください。'
-          );
-        }
-
-        // 関連プロジェクトの設定を解決
-        const relatedProjectConfig = await ConfigLoader.resolveRelatedProject(
-          project,
-          systemState.configPath,
-          systemState.config.relatedProjects
-        );
-
-        if (!relatedProjectConfig) {
-          throw new Error(`関連プロジェクト "${project}" の設定を解決できませんでした。`);
-        }
-
-        // 関連プロジェクトのサーバを取得または起動
-        const relatedClient = await context.serverManager.getOrStartServer(
-          project,
-          relatedProjectConfig.projectRoot,
-          relatedProjectConfig.config.server.port,
-          relatedProjectConfig.configPath || undefined
-        );
 
         // 関連プロジェクトで検索を実行
         try {

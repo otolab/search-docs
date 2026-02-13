@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { startServer } from '@search-docs/cli/commands/server/start';
 import { stopServer } from '@search-docs/cli/commands/server/stop';
+import { ConfigLoader } from '@search-docs/types';
 import { getStateErrorMessage } from '../state.js';
 import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
@@ -19,15 +20,94 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
     'server_start',
     {
       description:
-        'search-docsサーバを起動します。設定ファイルが作成済みであることが必要です。デフォルトではバックグラウンドで起動します。',
+        'search-docsサーバを起動します。設定ファイルが作成済みであることが必要です。デフォルトではバックグラウンドで起動します。projectパラメータで関連プロジェクトのサーバを起動できます。',
       inputSchema: {
         foreground: z
           .boolean()
           .optional()
           .describe('フォアグラウンド起動（デフォルト: false、バックグラウンド起動）'),
+        project: z
+          .string()
+          .optional()
+          .describe('起動対象のプロジェクト名。未指定の場合はメインプロジェクトを起動します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
       },
     },
-    async (args: { foreground?: boolean }) => {
+    async (args: { foreground?: boolean; project?: string }) => {
+      const { foreground = false, project } = args;
+
+      if (project) {
+        // 関連プロジェクトのサーバを起動
+        if (systemState.state === 'NOT_CONFIGURED') {
+          throw new Error(
+            '関連プロジェクトのサーバを起動するには、まずメインプロジェクトの設定ファイルが必要です。\n\n' +
+            '設定ファイルを作成してください:\n' +
+            '  ツール: init'
+          );
+        }
+
+        if (!systemState.config || !systemState.configPath) {
+          throw new Error('設定ファイルが見つかりません。');
+        }
+
+        if (!systemState.config.relatedProjects || !systemState.config.relatedProjects[project]) {
+          const availableProjects = systemState.config.relatedProjects
+            ? Object.keys(systemState.config.relatedProjects).join(', ')
+            : '(なし)';
+          throw new Error(
+            `関連プロジェクト "${project}" が設定ファイルに見つかりません。\n\n` +
+            `利用可能なプロジェクト: ${availableProjects}\n\n` +
+            '設定ファイルの relatedProjects セクションを確認してください。'
+          );
+        }
+
+        // 既に起動しているか確認
+        const existingClient = await context.serverManager.getServer(project);
+        if (existingClient) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `関連プロジェクト "${project}" のサーバは既に起動しています。`,
+              },
+            ],
+          };
+        }
+
+        // 設定を解決
+        const relatedProjectConfig = await ConfigLoader.resolveRelatedProject(
+          project,
+          systemState.configPath,
+          systemState.config.relatedProjects
+        );
+
+        if (!relatedProjectConfig) {
+          throw new Error(`関連プロジェクト "${project}" の設定を解決できませんでした。`);
+        }
+
+        try {
+          await context.serverManager.getOrStartServer(
+            project,
+            relatedProjectConfig.projectRoot,
+            relatedProjectConfig.config.server.port,
+            relatedProjectConfig.configPath || undefined
+          );
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ 関連プロジェクト "${project}" のサーバを起動しました。\n\n` +
+                  '次のステップ:\n' +
+                  `  - 文書を検索: search(query: "...", project: "${project}")\n` +
+                  `  - サーバを停止: server_stop(project: "${project}")`,
+              },
+            ],
+          };
+        } catch (error) {
+          throw new Error(`関連プロジェクト "${project}" のサーバ起動に失敗しました: ${(error as Error).message}`);
+        }
+      }
+
       // 状態チェック
       if (systemState.state === 'NOT_CONFIGURED') {
         throw new Error(getStateErrorMessage(systemState.state, 'サーバの起動'));
@@ -43,8 +123,6 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
           ],
         };
       }
-
-      const { foreground = false } = args;
 
       try {
         // CLIのstartServer関数を呼び出し
@@ -95,10 +173,43 @@ export function registerServerStopTool(context: ToolRegistrationContext): Regist
   return server.registerTool(
     'server_stop',
     {
-      description: 'search-docsサーバを停止します。起動中のサーバを安全に終了します。',
-      inputSchema: {},
+      description: 'search-docsサーバを停止します。起動中のサーバを安全に終了します。projectパラメータで関連プロジェクトのサーバを停止できます。',
+      inputSchema: {
+        project: z
+          .string()
+          .optional()
+          .describe('停止対象のプロジェクト名。未指定の場合はメインプロジェクトを停止します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+      },
     },
-    async () => {
+    async (args: { project?: string }) => {
+      const { project } = args;
+
+      if (project) {
+        // 関連プロジェクトのサーバを停止
+        if (systemState.state === 'NOT_CONFIGURED') {
+          throw new Error(
+            '関連プロジェクトのサーバを停止するには、まずメインプロジェクトの設定ファイルが必要です。'
+          );
+        }
+
+        try {
+          await context.serverManager.stopRelatedServer(project);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ 関連プロジェクト "${project}" のサーバを停止しました。\n\n` +
+                  '次のステップ:\n' +
+                  `  - サーバを再起動: server_start(project: "${project}")`,
+              },
+            ],
+          };
+        } catch (error) {
+          throw new Error(`関連プロジェクト "${project}" のサーバ停止に失敗しました: ${(error as Error).message}`);
+        }
+      }
+
       // 状態チェック
       if (systemState.state === 'NOT_CONFIGURED') {
         throw new Error(getStateErrorMessage(systemState.state, 'サーバの停止'));
