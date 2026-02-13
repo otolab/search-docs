@@ -24,7 +24,7 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
         project: z
           .string()
           .optional()
-          .describe('取得対象のプロジェクト名。未指定の場合はメインプロジェクトから取得します。関連プロジェクトから取得する場合は、設定ファイルのrelatedProjectsで定義されたプロジェクト名を指定してください。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+          .describe('取得対象のプロジェクト名。未指定の場合はメインプロジェクトから取得します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
       },
     },
     async (args: { path?: string; sectionId?: string; project?: string }) => {

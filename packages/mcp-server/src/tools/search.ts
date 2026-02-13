@@ -24,7 +24,7 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
         project: z
           .string()
           .optional()
-          .describe('検索対象のプロジェクト名。未指定の場合はメインプロジェクトを検索します。関連プロジェクトを検索する場合は、設定ファイルのrelatedProjectsで定義されたプロジェクト名を指定してください。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+          .describe('検索対象のプロジェクト名。未指定の場合はメインプロジェクトを検索します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
         depth: z
           .number()
           .optional()
