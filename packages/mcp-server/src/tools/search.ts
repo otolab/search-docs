@@ -17,22 +17,23 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
   return server.registerTool(
     'search',
     {
-      description: '文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。検索結果には行番号とセクションIDが含まれます。続きを見るにはget_document(sectionId)を使用してください。limitとpreviewLinesで表示内容を調整できます。projectパラメータで関連プロジェクトを検索できます。',
+      description:
+        'プロジェクトのドキュメントから情報を効率的に探せます。Markdown等のインデックス済みファイルからVector検索で関連するセクションが関連性順で返されます。各結果には見出し、セクションID、ファイルパス、行範囲、プレビューが含まれます。',
       inputSchema: {
         query: z.string().describe('検索クエリ'),
         project: z
           .string()
           .optional()
-          .describe('検索対象のプロジェクト名。未指定の場合はメインプロジェクトを検索します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+          .describe('関連プロジェクト名（未指定時はメインプロジェクト）'),
         depth: z
           .number()
           .optional()
           .describe('最大深度（0-3）。この深度まで検索します。0=文書全体のみ、1=章まで、2=節まで、3=項まで。省略時は全階層を検索'),
         limit: z.number().optional().describe('結果数制限（デフォルト: 10）'),
-        includeCleanOnly: z
+        syncedOnly: z
           .boolean()
           .optional()
-          .describe('最新の文書内容のみを検索対象とする。falseの場合、文書が更新されていても古いインデックスも含めて検索します（デフォルト: false）'),
+          .describe('インデックスがドキュメントと同期済みのセクションのみを検索対象にする（デフォルト: false、未同期のセクションも含めて検索）'),
         includePaths: z
           .array(z.string())
           .optional()
@@ -49,12 +50,12 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
       project?: string;
       depth?: number;
       limit?: number;
-      includeCleanOnly?: boolean;
+      syncedOnly?: boolean;
       includePaths?: string[];
       excludePaths?: string[];
       previewLines?: number;
     }) => {
-      const { query, project, depth, limit, includeCleanOnly, includePaths, excludePaths, previewLines = 5 } = args;
+      const { query, project, depth, limit, syncedOnly: includeCleanOnly, includePaths, excludePaths, previewLines = 5 } = args;
 
       // プロジェクト指定がある場合は関連プロジェクトを検索
       if (project) {

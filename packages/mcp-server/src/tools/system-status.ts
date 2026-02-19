@@ -15,7 +15,7 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
     'get_system_status',
     {
       description:
-        'search-docsシステムの状態を取得します。設定ファイルの有無、サーバの起動状態、インデックス情報を確認できます。',
+        'search-docsの全体状態を確認します。初回セットアップ時や動作確認に使用してください。設定状態、サーバ起動状態、インデックス情報、関連プロジェクト一覧が返されます。',
       inputSchema: {},
     },
     async () => {

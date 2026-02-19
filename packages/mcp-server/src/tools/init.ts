@@ -17,7 +17,7 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
     'init',
     {
       description:
-        'search-docsの設定ファイルを初期化します。プロジェクトで初めてsearch-docsを使用する場合に実行してください。既存の設定ファイルがある場合、forceオプションを指定しない限り上書きしません。',
+        'search-docsの設定ファイルを初期化します。プロジェクトで初めてsearch-docsを使用する際に実行してください。主要な設定項目の説明と次のステップが返されます。',
       inputSchema: {
         port: z
           .number()
