@@ -16,14 +16,15 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
   return server.registerTool(
     'get_outline',
     {
-      description: '文書の構造（アウトライン）を取得します。セクション番号、見出し、行数、トークン数、セクションIDを一覧表示します。pathとsectionIdのどちらか一方は必須です。projectパラメータで関連プロジェクトのドキュメントを取得できます。',
+      description:
+        '文書の目次構造をトークン数付きで一覧表示します。少ないトークン消費で文書の全体像を把握でき、記述量バランスの確認や読むべきセクションの特定に使えます。各セクションの見出し、行範囲、トークン数、セクションIDが返されます。',
       inputSchema: {
         path: z.string().optional().describe('文書パス（sectionIdを指定しない場合は必須）'),
         sectionId: z.string().optional().describe('セクションID（指定した場合、そのセクション配下のみ表示）'),
         project: z
           .string()
           .optional()
-          .describe('取得対象のプロジェクト名。未指定の場合はメインプロジェクトから取得します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+          .describe('関連プロジェクト名（未指定時はメインプロジェクト）'),
       },
     },
     async (args: { path?: string; sectionId?: string; project?: string }) => {

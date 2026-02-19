@@ -20,7 +20,7 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
     'server_start',
     {
       description:
-        'search-docsサーバを起動します。設定ファイルが作成済みであることが必要です。デフォルトではバックグラウンドで起動します。projectパラメータで関連プロジェクトのサーバを起動できます。',
+        'search-docsサーバを起動します。検索・文書取得を行う前に必要です。起動結果と次のステップが返されます。',
       inputSchema: {
         foreground: z
           .boolean()
@@ -29,7 +29,7 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
         project: z
           .string()
           .optional()
-          .describe('起動対象のプロジェクト名。未指定の場合はメインプロジェクトを起動します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+          .describe('関連プロジェクト名（未指定時はメインプロジェクト）'),
       },
     },
     async (args: { foreground?: boolean; project?: string }) => {
@@ -173,12 +173,13 @@ export function registerServerStopTool(context: ToolRegistrationContext): Regist
   return server.registerTool(
     'server_stop',
     {
-      description: 'search-docsサーバを停止します。起動中のサーバを安全に終了します。projectパラメータで関連プロジェクトのサーバを停止できます。',
+      description:
+        'search-docsサーバを停止します。サーバのリソースを解放したいときに使用します。',
       inputSchema: {
         project: z
           .string()
           .optional()
-          .describe('停止対象のプロジェクト名。未指定の場合はメインプロジェクトを停止します。利用可能なプロジェクト名はlist_related_projectsで確認できます。'),
+          .describe('関連プロジェクト名（未指定時はメインプロジェクト）'),
       },
     },
     async (args: { project?: string }) => {

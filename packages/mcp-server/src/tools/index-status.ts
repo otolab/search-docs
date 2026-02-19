@@ -15,7 +15,8 @@ export function registerIndexStatusTool(context: ToolRegistrationContext): Regis
   return server.registerTool(
     'index_status',
     {
-      description: 'インデックスの状態を確認します。総文書数、セクション数、Dirtyセクション数などを表示します。',
+      description:
+        'インデックスの詳細な状態を確認します。文書の更新反映を待っているときや、ワーカーの動作状況を確認したいときに使用します。文書数、セクション数、Dirty数、ワーカー状態が返されます。',
       inputSchema: {},
     },
     async () => {
