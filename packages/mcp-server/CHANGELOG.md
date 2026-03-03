@@ -1,5 +1,16 @@
 # @search-docs/mcp-server
 
+## 1.5.6
+
+### Patch Changes
+
+- a7f4920: MCP ツールの description とパラメータ説明を改善
+
+  - ツール description にユースケースと返り値の情報を追加
+  - オプションパラメータの説明を description から除外しパラメータ側に集約
+  - project パラメータの冗長な説明を簡潔に統一
+  - includeCleanOnly パラメータを syncedOnly にリネーム
+
 ## 1.5.5
 
 ### Patch Changes
