@@ -77,7 +77,7 @@ async function main() {
     });
 
     // SearchDocsサーバ初期化
-    const searchDocsServer = new SearchDocsServer(config, storage, dbEngine);
+    const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
 
     // JSON-RPCサーバ初期化
     const jsonRpcServer = new JsonRpcServer(
