@@ -45,7 +45,8 @@ export class SearchDocsServer {
   constructor(
     private config: SearchDocsConfig,
     private storage: FileStorage,
-    private dbEngine: DBEngine
+    private dbEngine: DBEngine,
+    private version: string = 'unknown'
   ) {
     this.splitter = new MarkdownSplitter(config.indexing);
     this.discovery = new FileDiscovery({
@@ -501,7 +502,7 @@ export class SearchDocsServer {
 
     return {
       server: {
-        version: '0.1.0',
+        version: this.version,
         uptime: Date.now() - this.startTime,
         pid: process.pid,
         syncing: this.startupSyncWorker?.isSyncInProgress() ?? false,
