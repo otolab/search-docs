@@ -20,6 +20,7 @@ export type {
   StorageConfig,
   WorkerConfig,
   WatcherConfig,
+  RelatedProjectConfig,
 } from './config.js';
 export { DEFAULT_CONFIG } from './config.js';
 export {

@@ -49,9 +49,10 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
           throw new Error('設定ファイルが見つかりません。');
         }
 
-        if (!systemState.config.relatedProjects || !systemState.config.relatedProjects[project]) {
-          const availableProjects = systemState.config.relatedProjects
-            ? Object.keys(systemState.config.relatedProjects).join(', ')
+        const allRelated = context.serverManager.getAllRelatedProjects(systemState.config.relatedProjects);
+        if (!allRelated[project]) {
+          const availableProjects = Object.keys(allRelated).length > 0
+            ? Object.keys(allRelated).join(', ')
             : '(なし)';
           throw new Error(
             `関連プロジェクト "${project}" が設定ファイルに見つかりません。\n\n` +
@@ -77,7 +78,7 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
         const relatedProjectConfig = await ConfigLoader.resolveRelatedProject(
           project,
           systemState.configPath,
-          systemState.config.relatedProjects
+          allRelated
         );
 
         if (!relatedProjectConfig) {

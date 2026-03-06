@@ -100,15 +100,16 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
           }
 
           // 関連プロジェクト情報を表示
-          if (systemState.config?.relatedProjects) {
-            const relatedProjects = Object.keys(systemState.config.relatedProjects);
-            if (relatedProjects.length > 0) {
+          {
+            const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
+            const relatedProjectNames = Object.keys(allRelatedProjects);
+            if (relatedProjectNames.length > 0) {
               statusText += '\n関連プロジェクト:\n';
 
               const allServers = context.serverManager.getAllServers();
 
-              for (const projectName of relatedProjects) {
-                const projectConfig = systemState.config.relatedProjects[projectName];
+              for (const projectName of relatedProjectNames) {
+                const projectConfig = allRelatedProjects[projectName];
                 const serverInfo = allServers.get(projectName);
 
                 statusText += `  • ${projectName}`;

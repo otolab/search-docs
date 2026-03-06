@@ -23,6 +23,7 @@ import {
   registerGetOutlineTool,
   registerIndexStatusTool,
   registerListRelatedProjectsTool,
+  registerAddRelatedProjectTool,
   type RegisteredTool,
 } from './tools/index.js';
 
@@ -99,6 +100,7 @@ interface ToolHandles {
   getOutline: RegisteredTool;
   indexStatus: RegisteredTool;
   listRelatedProjects: RegisteredTool;
+  addRelatedProject: RegisteredTool;
 }
 
 /**
@@ -124,6 +126,7 @@ function updateToolAvailability(state: SystemState, handles: ToolHandles): void 
     handles.getOutline.disable();
     handles.indexStatus.disable();
     handles.listRelatedProjects.disable();
+    handles.addRelatedProject.disable();
     debugLog('Tools enabled: init, systemStatus');
   } else {
     // 設定済み（サーバ起動状態に関わらず全ツール有効）
@@ -137,6 +140,7 @@ function updateToolAvailability(state: SystemState, handles: ToolHandles): void 
     handles.getOutline.enable();
     handles.indexStatus.enable();
     handles.listRelatedProjects.enable();
+    handles.addRelatedProject.enable();
     debugLog('All tools enabled (configured state)');
   }
 }
@@ -249,6 +253,7 @@ async function main() {
     getOutline: registerGetOutlineTool(context),
     indexStatus: registerIndexStatusTool(context),
     listRelatedProjects: registerListRelatedProjectsTool(context),
+    addRelatedProject: registerAddRelatedProjectTool(context),
   };
 
   // 初期状態に応じてツールの有効/無効を設定
