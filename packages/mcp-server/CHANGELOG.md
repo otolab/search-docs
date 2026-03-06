@@ -1,5 +1,16 @@
 # @search-docs/mcp-server
 
+## 1.7.0
+
+### Minor Changes
+
+- c69292e: NOT_CONFIGURED 状態でも関連プロジェクト経由で検索可能に
+
+  - メインプロジェクト未設定でも add_related_project で関連プロジェクトを追加・検索可能
+  - getAllRelatedProjects で config 由来の dir も絶対パスに解決し、パス解決を一本化
+  - 全ツールを常時有効化し、各ツール内で状態に応じたエラーメッセージを表示
+  - index_status に project 指定パラメータを追加
+
 ## 1.6.0
 
 ### Minor Changes
