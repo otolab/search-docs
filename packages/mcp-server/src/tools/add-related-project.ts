@@ -28,18 +28,10 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
     async (args: { name: string; dir: string; description?: string }) => {
       const { name, dir, description } = args;
 
-      // メインプロジェクトの設定が必要
-      if (systemState.state === 'NOT_CONFIGURED') {
-        throw new Error(
-          '関連プロジェクトを追加するには、まずメインプロジェクトの設定ファイルが必要です。\n\n' +
-          '設定ファイルを作成してください:\n' +
-          '  ツール: init'
-        );
-      }
-
       // 名前の重複チェック（設定ファイル + 一時追加分）
       const allRelated = serverManager.getAllRelatedProjects(
-        systemState.config?.relatedProjects
+        systemState.config?.relatedProjects,
+        systemState.configPath
       );
       if (allRelated[name]) {
         throw new Error(

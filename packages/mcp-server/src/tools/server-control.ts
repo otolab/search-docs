@@ -37,27 +37,18 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
 
       if (project) {
         // 関連プロジェクトのサーバを起動
-        if (systemState.state === 'NOT_CONFIGURED') {
-          throw new Error(
-            '関連プロジェクトのサーバを起動するには、まずメインプロジェクトの設定ファイルが必要です。\n\n' +
-            '設定ファイルを作成してください:\n' +
-            '  ツール: init'
-          );
-        }
-
-        if (!systemState.config || !systemState.configPath) {
-          throw new Error('設定ファイルが見つかりません。');
-        }
-
-        const allRelated = context.serverManager.getAllRelatedProjects(systemState.config.relatedProjects);
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
         if (!allRelated[project]) {
           const availableProjects = Object.keys(allRelated).length > 0
             ? Object.keys(allRelated).join(', ')
             : '(なし)';
           throw new Error(
-            `関連プロジェクト "${project}" が設定ファイルに見つかりません。\n\n` +
+            `関連プロジェクト "${project}" が見つかりません。\n\n` +
             `利用可能なプロジェクト: ${availableProjects}\n\n` +
-            '設定ファイルの relatedProjects セクションを確認してください。'
+            '設定ファイルの relatedProjects セクションを確認するか、add_related_project で追加してください。'
           );
         }
 
@@ -74,14 +65,15 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
           };
         }
 
-        // 設定を解決
-        const relatedProjectConfig = await ConfigLoader.resolveRelatedProject(
-          project,
-          systemState.configPath,
-          allRelated
-        );
+        // 設定を解決（allRelatedのdirは絶対パスに解決済み）
+        const projectDir = allRelated[project].dir;
+        const relatedProjectConfig = await ConfigLoader.resolve({
+          cwd: projectDir,
+          traverseUp: false,
+          requireConfig: false,
+        });
 
-        if (!relatedProjectConfig) {
+        if (!relatedProjectConfig.config) {
           throw new Error(`関連プロジェクト "${project}" の設定を解決できませんでした。`);
         }
 
@@ -111,7 +103,12 @@ export function registerServerStartTool(context: ToolRegistrationContext): Regis
 
       // 状態チェック
       if (systemState.state === 'NOT_CONFIGURED') {
-        throw new Error(getStateErrorMessage(systemState.state, 'サーバの起動'));
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
+        const relatedNames = Object.keys(allRelated);
+        throw new Error(getStateErrorMessage(systemState.state, 'サーバの起動', relatedNames));
       }
 
       if (systemState.state === 'RUNNING') {
@@ -188,12 +185,6 @@ export function registerServerStopTool(context: ToolRegistrationContext): Regist
 
       if (project) {
         // 関連プロジェクトのサーバを停止
-        if (systemState.state === 'NOT_CONFIGURED') {
-          throw new Error(
-            '関連プロジェクトのサーバを停止するには、まずメインプロジェクトの設定ファイルが必要です。'
-          );
-        }
-
         try {
           await context.serverManager.stopRelatedServer(project);
 
@@ -214,7 +205,12 @@ export function registerServerStopTool(context: ToolRegistrationContext): Regist
 
       // 状態チェック
       if (systemState.state === 'NOT_CONFIGURED') {
-        throw new Error(getStateErrorMessage(systemState.state, 'サーバの停止'));
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
+        const relatedNames = Object.keys(allRelated);
+        throw new Error(getStateErrorMessage(systemState.state, 'サーバの停止', relatedNames));
       }
 
       if (systemState.state === 'CONFIGURED_SERVER_DOWN') {

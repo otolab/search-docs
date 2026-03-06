@@ -77,7 +77,12 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
       // メインプロジェクトから取得
       // 状態チェック
       if (systemState.state !== 'RUNNING') {
-        throw new Error(getStateErrorMessage(systemState.state, '文書構造の取得'));
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
+        const relatedNames = Object.keys(allRelated);
+        throw new Error(getStateErrorMessage(systemState.state, '文書構造の取得', relatedNames));
       }
 
       const client = systemState.client!;

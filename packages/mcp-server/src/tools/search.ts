@@ -146,7 +146,12 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
       // メインプロジェクトの検索（既存の実装）
       // 状態チェック
       if (systemState.state !== 'RUNNING') {
-        throw new Error(getStateErrorMessage(systemState.state, '文書の検索'));
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
+        const relatedNames = Object.keys(allRelated);
+        throw new Error(getStateErrorMessage(systemState.state, '文書の検索', relatedNames));
       }
 
       const client = systemState.client!;

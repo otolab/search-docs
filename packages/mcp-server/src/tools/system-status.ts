@@ -22,14 +22,44 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
       let statusText = '📊 search-docs システム状態\n\n';
 
       switch (systemState.state) {
-        case 'NOT_CONFIGURED':
+        case 'NOT_CONFIGURED': {
           statusText += '状態: 未設定\n\n';
           statusText += 'search-docsがまだセットアップされていません。\n\n';
-          statusText += 'まず、設定ファイルを作成してください:\n';
-          statusText += '  ツール: init\n\n';
-          statusText += '設定作成後、サーバを起動してください:\n';
-          statusText += '  ツール: server_start\n';
+          statusText += 'セットアップ方法:\n';
+          statusText += '  - 設定ファイルを作成: init\n';
+          statusText += '  - 関連プロジェクトを追加: add_related_project\n';
+
+          // 一時追加の関連プロジェクトがあれば表示
+          const notConfiguredRelated = context.serverManager.getAllRelatedProjects();
+          const notConfiguredRelatedNames = Object.keys(notConfiguredRelated);
+          if (notConfiguredRelatedNames.length > 0) {
+            statusText += '\n関連プロジェクト:\n';
+            const allServers = context.serverManager.getAllServers();
+            for (const projectName of notConfiguredRelatedNames) {
+              const projectConfig = notConfiguredRelated[projectName];
+              const serverInfo = allServers.get(projectName);
+              statusText += `  • ${projectName}`;
+              if (projectConfig.description) {
+                statusText += ` - ${projectConfig.description}`;
+              }
+              statusText += '\n';
+              statusText += `    ディレクトリ: ${projectConfig.dir}\n`;
+              if (serverInfo) {
+                try {
+                  await serverInfo.client.healthCheck();
+                  statusText += `    状態: 稼働中 ✅\n`;
+                  statusText += `    ポート: ${serverInfo.port}\n`;
+                } catch {
+                  statusText += `    状態: 停止中\n`;
+                }
+              } else {
+                statusText += `    状態: 未起動\n`;
+              }
+            }
+          }
+
           break;
+        }
 
         case 'CONFIGURED_SERVER_DOWN':
           statusText += '状態: 設定済み・サーバ停止中\n\n';
@@ -101,7 +131,7 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
 
           // 関連プロジェクト情報を表示
           {
-            const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
+            const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects, systemState.configPath);
             const relatedProjectNames = Object.keys(allRelatedProjects);
             if (relatedProjectNames.length > 0) {
               statusText += '\n関連プロジェクト:\n';

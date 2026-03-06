@@ -106,43 +106,30 @@ interface ToolHandles {
 /**
  * ツールの有効/無効を更新
  *
- * シンプルな2状態モデル:
- * - NOT_CONFIGURED: init, get_system_status のみ
- * - CONFIGURED (SERVER_DOWN/RUNNING): 全ツール有効
+ * 現在は全ツールを常時有効にし、各ツール内で状態チェックを行う。
+ * NOT_CONFIGURED状態でもadd_related_projectで関連プロジェクトを追加し、
+ * 検索等を利用できるようにするため。
  *
- * 各ツール内で状態チェックを行い、適切なエラーメッセージを返す
+ * TODO: Claude Codeがnotifications/tools/list_changed に対応した場合、
+ * 状態に応じたenable/disable制御を有効化する。
+ * 現在はClaude Codeが未対応のため、disableしてもツールリストに反映されない。
  */
-function updateToolAvailability(state: SystemState, handles: ToolHandles): void {
-  debugLog(`Updating tool availability for state: ${state}`);
+function updateToolAvailability(_state: SystemState, handles: ToolHandles): void {
+  debugLog(`Updating tool availability for state: ${_state}`);
 
-  if (state === 'NOT_CONFIGURED') {
-    // 未設定状態: init, get_system_status のみ
-    handles.init.enable();
-    handles.systemStatus.enable();
-    handles.serverStart.disable();
-    handles.serverStop.disable();
-    handles.search.disable();
-    handles.getDocument.disable();
-    handles.getOutline.disable();
-    handles.indexStatus.disable();
-    handles.listRelatedProjects.disable();
-    handles.addRelatedProject.disable();
-    debugLog('Tools enabled: init, systemStatus');
-  } else {
-    // 設定済み（サーバ起動状態に関わらず全ツール有効）
-    // 各ツール内で状態チェックを行う
-    handles.init.enable();
-    handles.serverStart.enable();
-    handles.serverStop.enable();
-    handles.systemStatus.enable();
-    handles.search.enable();
-    handles.getDocument.enable();
-    handles.getOutline.enable();
-    handles.indexStatus.enable();
-    handles.listRelatedProjects.enable();
-    handles.addRelatedProject.enable();
-    debugLog('All tools enabled (configured state)');
-  }
+  // 全ツールを常時有効にする
+  // 各ツール内で状態チェックを行い、適切なエラーメッセージを返す
+  handles.init.enable();
+  handles.serverStart.enable();
+  handles.serverStop.enable();
+  handles.systemStatus.enable();
+  handles.search.enable();
+  handles.getDocument.enable();
+  handles.getOutline.enable();
+  handles.indexStatus.enable();
+  handles.listRelatedProjects.enable();
+  handles.addRelatedProject.enable();
+  debugLog('All tools enabled (state check delegated to each tool)');
 }
 
 /**
