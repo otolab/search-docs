@@ -34,6 +34,9 @@ describe('index_status tool', () => {
         uptime: 123456,
         pid: 12345,
       },
+      database: {
+        connectionState: 'ready' as const,
+      },
       index: {
         totalDocuments: 10,
         totalSections: 50,
@@ -72,13 +75,13 @@ describe('index_status tool', () => {
     expect(mockServer.registerTool).toHaveBeenCalledWith(
       'index_status',
       expect.objectContaining({
-        description: expect.stringContaining('インデックスの状態'),
+        description: expect.stringContaining('インデックス'),
       }),
       expect.any(Function)
     );
 
     // ツールハンドラを実行
-    const result = await registeredTool.handler();
+    const result = await registeredTool.handler({});
 
     expect(mockClient.getStatus).toHaveBeenCalled();
     expect(result.content[0].text).toContain('📊 インデックス状態');
@@ -106,7 +109,7 @@ describe('index_status tool', () => {
     registerIndexStatusTool(context);
 
     // ツールハンドラを実行
-    await expect(registeredTool.handler()).rejects.toThrow('セットアップされていません');
+    await expect(registeredTool.handler({})).rejects.toThrow('セットアップされていません');
   });
 
   it('CONFIGURED_SERVER_DOWN状態の場合、エラーを返す', async () => {
@@ -129,7 +132,7 @@ describe('index_status tool', () => {
     registerIndexStatusTool(context);
 
     // ツールハンドラを実行
-    await expect(registeredTool.handler()).rejects.toThrow('起動していません');
+    await expect(registeredTool.handler({})).rejects.toThrow('起動していません');
   });
 
   it('client.getStatus()がエラーの場合、エラーを返す', async () => {
@@ -157,6 +160,6 @@ describe('index_status tool', () => {
     registerIndexStatusTool(context);
 
     // ツールハンドラを実行
-    await expect(registeredTool.handler()).rejects.toThrow('ステータス取得エラー');
+    await expect(registeredTool.handler({})).rejects.toThrow('ステータス取得エラー');
   });
 });

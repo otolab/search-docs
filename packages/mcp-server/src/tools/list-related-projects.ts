@@ -21,24 +21,8 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
     async () => {
       let resultText = '';
 
-      // 設定ファイルが必要
-      if (systemState.state === 'NOT_CONFIGURED') {
-        resultText += '⚠️  関連プロジェクトを確認するには、まず設定ファイルが必要です。\n\n';
-        resultText += '設定ファイルを作成してください:\n';
-        resultText += '  ツール: init\n';
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: resultText,
-            },
-          ],
-        };
-      }
-
       // 関連プロジェクトの存在確認
-      const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
+      const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects, systemState.configPath);
       if (Object.keys(allRelatedProjects).length === 0) {
         resultText += '📋 関連プロジェクト\n\n';
         resultText += '関連プロジェクトは設定されていません。\n\n';

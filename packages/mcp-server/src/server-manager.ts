@@ -314,18 +314,26 @@ export class ServerManager {
 
   /**
    * 設定ファイルと一時追加分をマージした関連プロジェクト一覧を取得
+   * 返却値のdirは全て絶対パスに解決済み
    */
   getAllRelatedProjects(
-    configRelated?: Record<string, RelatedProjectConfig>
+    configRelated?: Record<string, RelatedProjectConfig>,
+    configPath?: string
   ): Record<string, RelatedProjectConfig> {
     const merged: Record<string, RelatedProjectConfig> = {};
 
-    // 設定ファイルからの関連プロジェクト
-    if (configRelated) {
-      Object.assign(merged, configRelated);
+    // 設定ファイルからの関連プロジェクト（相対パスを絶対パスに解決）
+    if (configRelated && configPath) {
+      const baseDir = path.dirname(configPath);
+      for (const [name, config] of Object.entries(configRelated)) {
+        merged[name] = {
+          ...config,
+          dir: path.resolve(baseDir, config.dir),
+        };
+      }
     }
 
-    // 一時追加分（同名がある場合は一時追加分が優先）
+    // 一時追加分（既に絶対パス、同名がある場合は一時追加分が優先）
     for (const [name, config] of this.temporaryRelatedProjects) {
       merged[name] = config;
     }

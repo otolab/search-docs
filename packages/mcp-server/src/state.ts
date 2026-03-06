@@ -104,25 +104,36 @@ export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
  * @param action - 実行しようとしたアクション名
  * @returns エラーメッセージ
  */
-export function getStateErrorMessage(state: SystemState, action: string): string {
+export function getStateErrorMessage(state: SystemState, action: string, relatedProjectNames?: string[]): string {
   switch (state) {
-    case 'NOT_CONFIGURED':
-      return (
+    case 'NOT_CONFIGURED': {
+      let message =
         `${action}を実行できません。search-docsがまだセットアップされていません。\n\n` +
-        'まず、設定ファイルを作成してください:\n' +
-        '  ツール: init\n\n' +
-        '設定作成後、サーバを起動してください:\n' +
-        '  ツール: server_start'
-      );
+        'セットアップ方法:\n' +
+        '  - 設定ファイルを作成: init\n' +
+        '  - 関連プロジェクトを追加: add_related_project\n';
 
-    case 'CONFIGURED_SERVER_DOWN':
-      return (
+      if (relatedProjectNames && relatedProjectNames.length > 0) {
+        message += `\n利用可能な関連プロジェクト: ${relatedProjectNames.join(', ')}\n`;
+        message += '関連プロジェクトを検索するには project パラメータを指定してください。\n';
+      }
+
+      return message;
+    }
+
+    case 'CONFIGURED_SERVER_DOWN': {
+      let message =
         `${action}を実行できません。search-docsサーバが起動していません。\n\n` +
         'サーバを起動してください:\n' +
-        '  ツール: server_start\n\n' +
-        'または、設定を再作成する場合:\n' +
-        '  ツール: init (--force オプション付き)'
-      );
+        '  ツール: server_start\n';
+
+      if (relatedProjectNames && relatedProjectNames.length > 0) {
+        message += `\n利用可能な関連プロジェクト: ${relatedProjectNames.join(', ')}\n`;
+        message += '関連プロジェクトを検索するには project パラメータを指定してください。\n';
+      }
+
+      return message;
+    }
 
     case 'RUNNING':
       // サーバ稼働中は通常エラーにならないが、念のため

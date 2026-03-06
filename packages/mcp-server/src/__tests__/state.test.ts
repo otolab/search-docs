@@ -124,7 +124,7 @@ describe('state', () => {
       expect(message).toContain('検索を実行できません');
       expect(message).toContain('セットアップされていません');
       expect(message).toContain('init');
-      expect(message).toContain('server_start');
+      expect(message).toContain('add_related_project');
     });
 
     it('CONFIGURED_SERVER_DOWN状態のエラーメッセージを返す', () => {
@@ -140,6 +140,28 @@ describe('state', () => {
 
       expect(message).toContain('検索を実行できません');
       expect(message).toContain('予期しないエラー');
+    });
+
+    it('NOT_CONFIGURED状態で関連プロジェクト名を表示する', () => {
+      const message = getStateErrorMessage('NOT_CONFIGURED', '検索', ['project-a', 'project-b']);
+
+      expect(message).toContain('検索を実行できません');
+      expect(message).toContain('add_related_project');
+      expect(message).toContain('project-a, project-b');
+    });
+
+    it('NOT_CONFIGURED状態で関連プロジェクトが空の場合はプロジェクト名を表示しない', () => {
+      const message = getStateErrorMessage('NOT_CONFIGURED', '検索', []);
+
+      expect(message).toContain('検索を実行できません');
+      expect(message).not.toContain('利用可能な関連プロジェクト');
+    });
+
+    it('CONFIGURED_SERVER_DOWN状態で関連プロジェクト名を表示する', () => {
+      const message = getStateErrorMessage('CONFIGURED_SERVER_DOWN', '検索', ['my-project']);
+
+      expect(message).toContain('検索を実行できません');
+      expect(message).toContain('my-project');
     });
   });
 });
