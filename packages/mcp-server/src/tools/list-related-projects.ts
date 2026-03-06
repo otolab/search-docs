@@ -38,7 +38,8 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
       }
 
       // 関連プロジェクトの存在確認
-      if (!systemState.config?.relatedProjects || Object.keys(systemState.config.relatedProjects).length === 0) {
+      const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
+      if (Object.keys(allRelatedProjects).length === 0) {
         resultText += '📋 関連プロジェクト\n\n';
         resultText += '関連プロジェクトは設定されていません。\n\n';
         resultText += '設定ファイルで関連プロジェクトを定義することで、複数のプロジェクトを検索できます。\n';
@@ -56,11 +57,11 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
       // 関連プロジェクト一覧を表示
       resultText += '📋 関連プロジェクト一覧\n\n';
 
-      const relatedProjects = Object.keys(systemState.config.relatedProjects);
+      const relatedProjectNames = Object.keys(allRelatedProjects);
       const allServers = context.serverManager.getAllServers();
 
-      for (const projectName of relatedProjects) {
-        const projectConfig = systemState.config.relatedProjects[projectName];
+      for (const projectName of relatedProjectNames) {
+        const projectConfig = allRelatedProjects[projectName];
         const serverInfo = allServers.get(projectName);
 
         resultText += `• ${projectName}`;

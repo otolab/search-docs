@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { SearchDocsClient } from '@search-docs/client';
+import type { RelatedProjectConfig } from '@search-docs/types';
 
 /**
  * サーバプロセス情報
@@ -33,6 +34,9 @@ export class ServerManager {
 
   // 複数プロジェクトのサーバを管理
   private servers: Map<string, ServerInfo> = new Map();
+
+  // 一時的な関連プロジェクト（設定ファイル未保存）
+  private temporaryRelatedProjects: Map<string, RelatedProjectConfig> = new Map();
 
   /**
    * @search-docs/cliパッケージのエントリポイントを解決
@@ -299,5 +303,33 @@ export class ServerManager {
    */
   getAllServers(): Map<string, ServerInfo> {
     return this.servers;
+  }
+
+  /**
+   * 一時的な関連プロジェクトを追加
+   */
+  addTemporaryRelatedProject(name: string, config: RelatedProjectConfig): void {
+    this.temporaryRelatedProjects.set(name, config);
+  }
+
+  /**
+   * 設定ファイルと一時追加分をマージした関連プロジェクト一覧を取得
+   */
+  getAllRelatedProjects(
+    configRelated?: Record<string, RelatedProjectConfig>
+  ): Record<string, RelatedProjectConfig> {
+    const merged: Record<string, RelatedProjectConfig> = {};
+
+    // 設定ファイルからの関連プロジェクト
+    if (configRelated) {
+      Object.assign(merged, configRelated);
+    }
+
+    // 一時追加分（同名がある場合は一時追加分が優先）
+    for (const [name, config] of this.temporaryRelatedProjects) {
+      merged[name] = config;
+    }
+
+    return merged;
   }
 }

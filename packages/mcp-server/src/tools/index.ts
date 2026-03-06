@@ -13,5 +13,6 @@ export { registerInitTool } from './init.js';
 export { registerServerStartTool, registerServerStopTool } from './server-control.js';
 export { registerSystemStatusTool } from './system-status.js';
 export { registerListRelatedProjectsTool } from './list-related-projects.js';
+export { registerAddRelatedProjectTool } from './add-related-project.js';
 
 export type { ToolRegistrationContext, RegisteredTool } from './types.js';
