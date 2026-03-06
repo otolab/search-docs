@@ -1,5 +1,19 @@
 # @search-docs/server
 
+## 1.3.4
+
+### Patch Changes
+
+- e027884: サーバのバージョン表示を修正
+
+  - getStatus()のバージョンが 0.1.0 固定だった問題を修正
+  - package.json のバージョンをコンストラクタ経由で注入するように変更
+
+- Updated dependencies [f836ac2]
+  - @search-docs/types@1.3.3
+  - @search-docs/db-engine@1.4.4
+  - @search-docs/storage@1.0.16
+
 ## 1.3.3
 
 ### Patch Changes

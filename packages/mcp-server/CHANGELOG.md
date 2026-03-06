@@ -1,5 +1,23 @@
 # @search-docs/mcp-server
 
+## 1.6.0
+
+### Minor Changes
+
+- f836ac2: add_related_project MCP ツールを追加
+
+  - 関連プロジェクトを一時的にメモリ上で追加するツールを実装
+  - 指定ディレクトリの .search-docs.json 存在チェックと名前重複チェックを実施
+  - 既存ツール（list_related_projects, server_start, system_status）で一時追加分も参照するよう統合
+  - RelatedProjectConfig 型をエクスポートに追加
+
+### Patch Changes
+
+- Updated dependencies [f836ac2]
+  - @search-docs/types@1.3.3
+  - @search-docs/cli@1.0.38
+  - @search-docs/client@1.0.18
+
 ## 1.5.6
 
 ### Patch Changes

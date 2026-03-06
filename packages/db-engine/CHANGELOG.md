@@ -1,5 +1,12 @@
 # @search-docs/db-engine
 
+## 1.4.4
+
+### Patch Changes
+
+- Updated dependencies [f836ac2]
+  - @search-docs/types@1.3.3
+
 ## 1.4.3
 
 ### Patch Changes
