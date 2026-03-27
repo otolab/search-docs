@@ -35,6 +35,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
       include: ['**/*.md'],
       exclude: [],
       ignoreGitignore: false,
+      maxFileSize: 10 * 1024 * 1024,
     },
     indexing: {
       maxTokensPerSection: 2000,

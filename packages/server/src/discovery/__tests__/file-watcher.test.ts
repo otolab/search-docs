@@ -51,6 +51,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,
@@ -88,6 +89,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,
@@ -124,6 +126,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,
@@ -156,6 +159,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: ['**/node_modules/**'],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,
@@ -188,6 +192,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,
@@ -224,6 +229,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,
@@ -260,6 +266,7 @@ describe('FileWatcher', () => {
         include: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       watcherConfig: {
         enabled: true,

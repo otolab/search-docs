@@ -33,6 +33,7 @@ describe('getOutline API', () => {
       include: ['**/*.md'],
       exclude: [],
       ignoreGitignore: false,
+      maxFileSize: 10 * 1024 * 1024,
     },
     indexing: {
       maxTokensPerSection: 2000,
@@ -472,6 +473,7 @@ describe('maxDepth検証: Issue #30', () => {
       include: ['**/*.md'],
       exclude: [],
       ignoreGitignore: false,
+      maxFileSize: 10 * 1024 * 1024,
     },
     indexing: {
       maxTokensPerSection: 2000,

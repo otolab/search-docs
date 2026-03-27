@@ -41,6 +41,7 @@ describe('CLI server start/stop 基本動作', () => {
         include: ['**/*.md'],
         exclude: ['**/node_modules/**'],
         ignoreGitignore: true,
+        maxFileSize: 10 * 1024 * 1024,
       },
       indexing: {
         maxTokensPerSection: 2000,

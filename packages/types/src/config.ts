@@ -36,6 +36,8 @@ export interface FilesConfig {
   exclude: string[];
   /** .gitignoreを尊重するか */
   ignoreGitignore: boolean;
+  /** 読み込み対象の最大ファイルサイズ（バイト）。超過時はスキップ */
+  maxFileSize: number;
 }
 
 export interface IndexingConfig {
@@ -115,6 +117,7 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     include: ['**/*.md'],
     exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'],
     ignoreGitignore: true,
+    maxFileSize: 10 * 1024 * 1024, // 10MB
   },
   indexing: {
     maxTokensPerSection: 2000,

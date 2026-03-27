@@ -2,9 +2,8 @@
  * プロセス管理ユーティリティ
  */
 
-import { spawn, type ChildProcess, type StdioOptions, type SpawnOptions } from 'child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'child_process';
 import * as net from 'net';
-import { openSync } from 'fs';
 
 /**
  * プロセスが生存しているか確認
@@ -212,17 +211,14 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
     cwd: options.projectRoot,
   };
 
-  // デーモンモードの場合、stdioをログファイルまたはignoreに設定
+  // デーモンモードの場合、stdioをignoreに設定
+  // ログ出力はサーバプロセス側のRotatingWriteStreamが管理する
   if (options.daemon) {
-    if (options.logPath) {
-      // ログファイルにリダイレクト（ファイルディスクリプタを直接使用）
-      const logFd = openSync(options.logPath, 'a');
+    spawnOptions.stdio = ['ignore', 'ignore', 'ignore'];
 
-      // stdin: ignore, stdout/stderr: ログファイル
-      spawnOptions.stdio = ['ignore', logFd, logFd] as StdioOptions;
-    } else {
-      // ログファイルが指定されていない場合はignore
-      spawnOptions.stdio = ['ignore', 'ignore', 'ignore'];
+    // ログパスをサーバプロセスに環境変数で伝達
+    if (options.logPath) {
+      env.SEARCH_DOCS_LOG_PATH = options.logPath;
     }
   }
 

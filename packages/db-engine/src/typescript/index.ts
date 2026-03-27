@@ -363,13 +363,12 @@ export class DBEngine extends EventEmitter {
       }
     });
 
-    // stderrの内容を蓄積
+    // stderrの内容を蓄積（パフォーマンスログは除外）
     let stderrBuffer = '';
     let stderrLineBuffer = '';
 
     this.worker.stderr?.on('data', (data: Buffer) => {
       const output = data.toString('utf-8');
-      stderrBuffer += output;
       stderrLineBuffer += output;
 
       // 行単位で処理
@@ -384,12 +383,13 @@ export class DBEngine extends EventEmitter {
           const parsed = JSON.parse(line) as PerformanceLog;
           if (parsed.type === 'performance') {
             this.handlePerformanceLog(parsed);
-            continue; // パフォーマンスログは標準エラー出力しない
+            continue; // パフォーマンスログはバッファ蓄積・標準エラー出力しない
           }
         } catch {
           // JSONでない行は通常のstderr出力として扱う
         }
 
+        stderrBuffer += line + '\n';
         console.error('Python stderr:', line);
       }
     });

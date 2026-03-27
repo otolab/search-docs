@@ -37,6 +37,7 @@ describe('server start - ログ記録', () => {
         include: ['**/*.md'],
         exclude: ['**/node_modules/**'],
         ignoreGitignore: true,
+        maxFileSize: 10 * 1024 * 1024,
       },
       indexing: {
         maxTokensPerSection: 2000,

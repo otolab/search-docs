@@ -53,6 +53,7 @@ function createDefaultConfig(options: {
         '**/build/**',
       ],
       ignoreGitignore: true,
+      maxFileSize: 10 * 1024 * 1024,
     },
     indexing: {
       maxTokensPerSection: 2000,
