@@ -106,6 +106,7 @@ Vector検索機能をテストします。
         include: ['**/*.md'],
         exclude: ['**/node_modules/**'],
         ignoreGitignore: false,
+        maxFileSize: 10 * 1024 * 1024,
       },
       indexing: {
         maxTokensPerSection: 2000,

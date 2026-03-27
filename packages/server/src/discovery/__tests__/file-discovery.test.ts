@@ -37,6 +37,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: [],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -52,6 +53,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -67,6 +69,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: [],
           ignoreGitignore: true,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -82,6 +85,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md', '**/*.mdx'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -98,6 +102,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -114,6 +119,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: [],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -129,6 +135,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -145,6 +152,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -160,6 +168,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: [],
           ignoreGitignore: true,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 
@@ -179,6 +188,7 @@ describe('FileDiscovery', () => {
           include: ['**/*.md'],
           exclude: [],
           ignoreGitignore: false,
+          maxFileSize: 10 * 1024 * 1024,
         },
       });
 

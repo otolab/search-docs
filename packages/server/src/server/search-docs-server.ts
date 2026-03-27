@@ -167,6 +167,14 @@ export class SearchDocsServer {
       case 'change': {
         // 1. ファイルを読み込み（event.pathは相対パスなので絶対パスに変換）
         const absolutePath = path.join(this.config.project.root, event.path);
+
+        // ファイルサイズチェック
+        const stat = await fs.stat(absolutePath);
+        if (stat.size > this.config.files.maxFileSize) {
+          console.warn(`Skipping oversized file (${(stat.size / 1024 / 1024).toFixed(1)}MB > ${(this.config.files.maxFileSize / 1024 / 1024).toFixed(0)}MB limit): ${event.path}`);
+          return;
+        }
+
         const content = await fs.readFile(absolutePath, 'utf-8');
 
         // 2. ハッシュ計算
@@ -390,7 +398,12 @@ export class SearchDocsServer {
     this.requestStats.indexDocument++;
     const { path, force = false } = request;
 
-    // 1. ファイル読み込み
+    // 1. ファイルサイズチェック＋読み込み
+    const stat = await fs.stat(path);
+    if (stat.size > this.config.files.maxFileSize) {
+      console.warn(`Skipping oversized file (${(stat.size / 1024 / 1024).toFixed(1)}MB > ${(this.config.files.maxFileSize / 1024 / 1024).toFixed(0)}MB limit): ${path}`);
+      return { success: false, sectionsCreated: 0 };
+    }
     const content = await fs.readFile(path, 'utf-8');
 
     // 2. ハッシュ計算

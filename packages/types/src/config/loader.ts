@@ -274,6 +274,7 @@ export class ConfigLoader {
         include: config.files?.include ?? DEFAULT_CONFIG.files.include,
         exclude: config.files?.exclude ?? DEFAULT_CONFIG.files.exclude,
         ignoreGitignore: config.files?.ignoreGitignore ?? DEFAULT_CONFIG.files.ignoreGitignore,
+        maxFileSize: config.files?.maxFileSize ?? DEFAULT_CONFIG.files.maxFileSize,
       },
       indexing: {
         maxTokensPerSection:
