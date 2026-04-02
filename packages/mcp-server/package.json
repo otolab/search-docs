@@ -25,16 +25,16 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@modelcontextprotocol/sdk": "1.20.2",
     "@search-docs/cli": "workspace:*",
     "@search-docs/client": "workspace:*",
     "@search-docs/types": "workspace:*",
-    "commander": "^12.0.0",
-    "zod": "^3.22.0"
+    "commander": "12.1.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "@coeiro-operator/mcp-debug": "^1.0.0",
-    "@types/node": "^22.0.0"
+    "@coeiro-operator/mcp-debug": "1.1.0",
+    "@types/node": "22.18.12"
   },
   "keywords": [
     "mcp",

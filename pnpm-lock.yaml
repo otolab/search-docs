@@ -9,28 +9,28 @@ importers:
   .:
     devDependencies:
       '@changesets/cli':
-        specifier: ^2.29.7
+        specifier: 2.29.7
         version: 2.29.7(@types/node@22.18.12)
       '@eslint/js':
-        specifier: ^9.0.0
+        specifier: 9.38.0
         version: 9.38.0
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
       eslint:
-        specifier: ^9.0.0
+        specifier: 9.38.0
         version: 9.38.0
       typescript:
-        specifier: ^5.7.0
+        specifier: 5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.0.0
+        specifier: 8.46.2
         version: 8.46.2(eslint@9.38.0)(typescript@5.9.3)
       vite:
-        specifier: ^7.1.12
+        specifier: 7.1.12
         version: 7.1.12(@types/node@22.18.12)
       vitest:
-        specifier: ^4.0.5
+        specifier: 4.0.5
         version: 4.0.5(@types/node@22.18.12)
 
   packages/cli:
@@ -45,11 +45,11 @@ importers:
         specifier: workspace:*
         version: link:../types
       commander:
-        specifier: ^12.0.0
+        specifier: 12.1.0
         version: 12.1.0
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
 
   packages/client:
@@ -59,7 +59,7 @@ importers:
         version: link:../types
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
 
   packages/db-engine:
@@ -69,16 +69,16 @@ importers:
         version: link:../types
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
       vitest:
-        specifier: ^4.0.5
+        specifier: 4.0.5
         version: 4.0.5(@types/node@22.18.12)
 
   packages/mcp-server:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.17.0
+        specifier: 1.20.2
         version: 1.20.2
       '@search-docs/cli':
         specifier: workspace:*
@@ -90,23 +90,23 @@ importers:
         specifier: workspace:*
         version: link:../types
       commander:
-        specifier: ^12.0.0
+        specifier: 12.1.0
         version: 12.1.0
       zod:
-        specifier: ^3.22.0
+        specifier: 3.25.76
         version: 3.25.76
     devDependencies:
       '@coeiro-operator/mcp-debug':
-        specifier: ^1.0.0
+        specifier: 1.1.0
         version: 1.1.0
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
 
   packages/server:
     dependencies:
       '@parcel/watcher':
-        specifier: ^2.5.1
+        specifier: 2.5.1
         version: 2.5.1
       '@search-docs/db-engine':
         specifier: workspace:*
@@ -118,41 +118,41 @@ importers:
         specifier: workspace:*
         version: link:../types
       cors:
-        specifier: ^2.8.5
+        specifier: 2.8.5
         version: 2.8.5
       express:
-        specifier: ^5.1.0
+        specifier: 5.1.0
         version: 5.1.0
       fast-glob:
-        specifier: ^3.3.2
+        specifier: 3.3.3
         version: 3.3.3
       gpt-tokenizer:
-        specifier: ^2.6.1
+        specifier: 2.9.0
         version: 2.9.0
       ignore:
-        specifier: ^6.0.2
+        specifier: 6.0.2
         version: 6.0.2
       marked:
-        specifier: ^16.0.0
+        specifier: 16.4.1
         version: 16.4.1
       minimatch:
-        specifier: ^10.0.3
+        specifier: 10.0.3
         version: 10.0.3
       nanoid:
-        specifier: ^5.0.11
+        specifier: 5.1.6
         version: 5.1.6
     devDependencies:
       '@types/cors':
-        specifier: ^2.8.19
+        specifier: 2.8.19
         version: 2.8.19
       '@types/express':
-        specifier: ^5.0.4
+        specifier: 5.0.4
         version: 5.0.4
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.18.12)
 
   packages/storage:
@@ -162,7 +162,7 @@ importers:
         version: link:../types
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
+        specifier: 22.18.12
         version: 22.18.12
 
   packages/types: {}
@@ -230,6 +230,7 @@ packages:
 
   '@coeiro-operator/mcp-debug@1.1.0':
     resolution: {integrity: sha512-foeP/Kl9Q0ByM004c+Zpxv3vXMmYk05S8hYAOTLPqL4EhkBkBV/21KWz8MvFAVgsNqEXpS7KcwN1jJdym+ADeQ==}
+    cpu: [x64, arm64, ia32]
     os: [darwin, linux, win32]
     hasBin: true
 
