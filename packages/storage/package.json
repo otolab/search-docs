@@ -22,7 +22,7 @@
     "@search-docs/types": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "22.18.12"
   },
   "keywords": [
     "storage",

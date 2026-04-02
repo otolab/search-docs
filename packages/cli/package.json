@@ -30,10 +30,10 @@
     "@search-docs/client": "workspace:*",
     "@search-docs/server": "workspace:*",
     "@search-docs/types": "workspace:*",
-    "commander": "^12.0.0"
+    "commander": "12.1.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "22.18.12"
   },
   "publishConfig": {
     "access": "public"
