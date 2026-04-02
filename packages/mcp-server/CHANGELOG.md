@@ -1,5 +1,16 @@
 # @search-docs/mcp-server
 
+## 1.7.1
+
+### Patch Changes
+
+- 3361c2e: 全依存パッケージのバージョンを固定（Node.js/Python）
+- Updated dependencies [3361c2e]
+- Updated dependencies [49e53ea]
+  - @search-docs/cli@1.0.39
+  - @search-docs/client@1.0.19
+  - @search-docs/types@1.3.4
+
 ## 1.7.0
 
 ### Minor Changes

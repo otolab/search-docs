@@ -1,5 +1,20 @@
 # @search-docs/db-engine
 
+## 1.4.5
+
+### Patch Changes
+
+- 3361c2e: 全依存パッケージのバージョンを固定（Node.js/Python）
+- 49e53ea: server.log ローテーション導入と巨大ファイル読み込み防止
+
+  - RotatingWriteStream によるログローテーション（1MB/3 世代）を導入
+  - パフォーマンスログの stderrBuffer 蓄積を停止しメモリリーク防止
+  - FilesConfig に maxFileSize（デフォルト 10MB）を追加し、超過ファイルの読み込みをスキップ
+
+- Updated dependencies [3361c2e]
+- Updated dependencies [49e53ea]
+  - @search-docs/types@1.3.4
+
 ## 1.4.4
 
 ### Patch Changes
