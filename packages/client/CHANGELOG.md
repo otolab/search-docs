@@ -1,5 +1,14 @@
 # @search-docs/client
 
+## 1.0.19
+
+### Patch Changes
+
+- 3361c2e: 全依存パッケージのバージョンを固定（Node.js/Python）
+- Updated dependencies [3361c2e]
+- Updated dependencies [49e53ea]
+  - @search-docs/types@1.3.4
+
 ## 1.0.18
 
 ### Patch Changes

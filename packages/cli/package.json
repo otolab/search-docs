@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/cli",
-  "version": "1.0.38",
+  "version": "1.0.39",
   "description": "search-docs コマンドラインツール",
   "type": "module",
   "bin": {
