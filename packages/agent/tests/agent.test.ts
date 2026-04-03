@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { TestDriver } from '@modular-prompt/driver';
 import { toolAgentProcess } from '@modular-prompt/process';
-import { createSearchTools } from '../../src/tools.js';
-import { searchAgentModule } from '../../src/prompt.js';
-import { parseSearchAgentOutput } from '../../src/parse.js';
-import type { SearchAgentContext } from '../../src/context.js';
+import { createSearchTools } from '../src/tools.js';
+import { searchAgentModule } from '../src/prompt.js';
+import { parseSearchAgentOutput } from '../src/parse.js';
+import type { SearchAgentContext } from '../src/context.js';
 
 /**
  * search-docs clientのモック
@@ -60,7 +60,7 @@ function mockClient() {
   } as any;
 }
 
-describe('agent integration test', () => {
+describe('agent unit test (TestDriver)', () => {
   it('ツール呼び出し→最終出力の完全なフローが動く', async () => {
     // TestDriver: 1ターン目でsearchツールを呼び、2ターン目で最終出力
     const driver = new TestDriver({
