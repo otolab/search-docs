@@ -1,0 +1,47 @@
+{
+  "name": "@search-docs/agent",
+  "version": "0.1.0",
+  "description": "Context-1ベースの検索エージェント",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build --force",
+    "clean": "tsc --build --clean",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "build:fast": "tsc --build",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@modular-prompt/core": "0.2.2",
+    "@modular-prompt/driver": "0.11.0",
+    "@modular-prompt/process": "0.4.0",
+    "@search-docs/client": "workspace:*",
+    "@search-docs/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.12"
+  },
+  "keywords": [
+    "search-agent",
+    "context-1",
+    "vector-search",
+    "retrieval-agent"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/agent"
+  }
+}
