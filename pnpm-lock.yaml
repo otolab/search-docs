@@ -39,11 +39,11 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
       '@modular-prompt/driver':
-        specifier: 0.11.0
-        version: 0.11.0(ws@8.20.0)(zod@3.25.76)
+        specifier: 0.11.4
+        version: 0.11.4(ws@8.20.0)(zod@3.25.76)
       '@modular-prompt/process':
-        specifier: 0.4.0
-        version: 0.4.0(ws@8.20.0)(zod@3.25.76)
+        specifier: 0.4.4
+        version: 0.4.4(ws@8.20.0)(zod@3.25.76)
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
@@ -657,11 +657,11 @@ packages:
     resolution: {integrity: sha512-sn9O+mmd5bQy8XiRVD10f0KbzuGYdU/Dd6Loe0kQAc4JckLwVddsjVsGod8Dfvm6x+OX1Ww2dVLKmVXXWXo5Fw==}
     engines: {node: '>=18.0.0'}
 
-  '@modular-prompt/driver@0.11.0':
-    resolution: {integrity: sha512-xlrJB8gqLrWvKYB03mIkAnmDoxfZ6IzjnhAnjATqYwwp4MFSlNcG8Ql2wcX9MmZaHvMCs9Rmtbv1m9VLhqJolQ==}
+  '@modular-prompt/driver@0.11.4':
+    resolution: {integrity: sha512-T0KepKzG48+b5L2uu8Vh2Bo9u8r606Qlm9T1Loh6NrreiM29Sgmm61gehwBodQc2FXEwqVDnHSezhgT5nvW59A==}
 
-  '@modular-prompt/process@0.4.0':
-    resolution: {integrity: sha512-sx+iGP8m1YYwxf7eIXeiFIfRVbrtB5EZqx6Wv+IWt/Fu5pfxNtqIauMrVKJMFhm/n73eXUrGdoHFmvKQRMknvA==}
+  '@modular-prompt/process@0.4.4':
+    resolution: {integrity: sha512-b6kzyulZnmmAzqBjc2qPlqnqDU+4AY5tPx2IQPsK8SoUz08Ccz06vD2g28jh8OdEY30+rcLphWCXU6HEs66N6A==}
     engines: {node: '>=18.0.0'}
 
   '@modular-prompt/utils@0.3.3':
@@ -1624,10 +1624,6 @@ packages:
 
   js-yaml@3.14.1:
     resolution: {integrity: sha512-okMH7OXXJ7YrN9Ok3/SXrnu4iX9yOk+25nqX4imS2npuvTYDmo/QEZoqwZkYaIDk3jVvBOTOIEgEhaLOynBS9g==}
-    hasBin: true
-
-  js-yaml@4.1.0:
-    resolution: {integrity: sha512-wpxZs9NoxZaJESJGIZTyDEaYpl0FKSA+FB9aJiyemKhMwkxQg63h4T1KJgUGHpTqPDNRcmmYLugrRjJlBtWvRA==}
     hasBin: true
 
   js-yaml@4.1.1:
@@ -2677,7 +2673,7 @@ snapshots:
       globals: 14.0.0
       ignore: 5.3.2
       import-fresh: 3.3.1
-      js-yaml: 4.1.0
+      js-yaml: 4.1.1
       minimatch: 3.1.2
       strip-json-comments: 3.1.1
     transitivePeerDependencies:
@@ -2769,7 +2765,7 @@ snapshots:
 
   '@modular-prompt/core@0.2.2': {}
 
-  '@modular-prompt/driver@0.11.0(ws@8.20.0)(zod@3.25.76)':
+  '@modular-prompt/driver@0.11.4(ws@8.20.0)(zod@3.25.76)':
     dependencies:
       '@anthropic-ai/sdk': 0.61.0
       '@anthropic-ai/vertex-sdk': 0.14.4
@@ -2790,10 +2786,10 @@ snapshots:
       - ws
       - zod
 
-  '@modular-prompt/process@0.4.0(ws@8.20.0)(zod@3.25.76)':
+  '@modular-prompt/process@0.4.4(ws@8.20.0)(zod@3.25.76)':
     dependencies:
       '@modular-prompt/core': 0.2.2
-      '@modular-prompt/driver': 0.11.0(ws@8.20.0)(zod@3.25.76)
+      '@modular-prompt/driver': 0.11.4(ws@8.20.0)(zod@3.25.76)
       '@modular-prompt/utils': 0.3.3
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -3844,10 +3840,6 @@ snapshots:
     dependencies:
       argparse: 1.0.10
       esprima: 4.0.1
-
-  js-yaml@4.1.0:
-    dependencies:
-      argparse: 2.0.1
 
   js-yaml@4.1.1:
     dependencies:
