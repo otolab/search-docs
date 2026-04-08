@@ -27,6 +27,7 @@ export async function runSearchAgent(
   const context: SearchAgentContext = {
     query: input.query,
     chunks: {},
+    messages: [],
   };
 
   const result = await toolAgentProcess(
@@ -46,5 +47,6 @@ export async function runSearchAgent(
     rawOutput: result.output,
     turns: result.metadata?.iterations ?? 0,
     usage: result.consumedUsage,
+    logEntries: result.logEntries,
   };
 }

@@ -4,7 +4,6 @@ export { searchAgentModule } from './prompt.js';
 export { parseSearchAgentOutput } from './parse.js';
 export type {
   SearchAgentContext,
-  Chunk,
   RetrievedDocument,
   SearchAgentInput,
   SearchAgentOutput,

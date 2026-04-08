@@ -69,7 +69,7 @@ describe('agent unit test (TestDriver)', () => {
         {
           content: 'Let me search for architecture information.',
           toolCalls: [
-            { id: 'tc-1', name: 'search', arguments: { query: 'architecture' } },
+            { id: 'tc-1', name: 'search_corpus', arguments: { query: 'architecture' } },
           ],
         },
         // Turn 2: 結果を見て最終出力
@@ -102,7 +102,7 @@ describe('agent unit test (TestDriver)', () => {
     // メタデータ
     expect(result.metadata?.iterations).toBe(2);
     expect(result.metadata?.toolCallLog).toHaveLength(1);
-    expect(result.metadata?.toolCallLog[0].name).toBe('search');
+    expect(result.metadata?.toolCallLog[0].name).toBe('search_corpus');
   });
 
   it('pruneツールがcontextからチャンクを除去する', async () => {
@@ -112,14 +112,14 @@ describe('agent unit test (TestDriver)', () => {
         {
           content: 'Searching...',
           toolCalls: [
-            { id: 'tc-1', name: 'search', arguments: { query: 'data model' } },
+            { id: 'tc-1', name: 'search_corpus', arguments: { query: 'data model' } },
           ],
         },
         // Turn 2: prune不要なチャンク
         {
           content: 'Pruning irrelevant chunk.',
           toolCalls: [
-            { id: 'tc-2', name: 'prune', arguments: { chunkIds: ['sec-data-001'] } },
+            { id: 'tc-2', name: 'prune_chunks', arguments: { chunk_ids: ['sec-data-001'] } },
           ],
         },
         // Turn 3: 最終出力
@@ -153,7 +153,7 @@ describe('agent unit test (TestDriver)', () => {
       responses: (prompt) => ({
         content: 'Still searching...',
         toolCalls: [
-          { id: `tc-${Date.now()}`, name: 'search', arguments: { query: 'more' } },
+          { id: `tc-${Date.now()}`, name: 'search_corpus', arguments: { query: 'more' } },
         ],
       }),
     });

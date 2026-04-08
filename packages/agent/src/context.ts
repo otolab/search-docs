@@ -1,26 +1,14 @@
 import type { ToolAgentContext } from '@modular-prompt/process';
 
 /**
- * 検索で取得したセクション（チャンク）
- */
-export interface Chunk {
-  id: string;
-  documentPath: string;
-  heading: string;
-  content: string;
-  score?: number;
-  tokenCount?: number;
-}
-
-/**
  * 検索エージェントのコンテキスト
  * toolAgentProcess の TContext として使用
  */
 export interface SearchAgentContext extends ToolAgentContext {
   /** 検索クエリ */
   query: string;
-  /** 取得済みチャンク (id → Chunk) */
-  chunks: Record<string, Chunk>;
+  /** 取得済みチャンクの蓄積。ツールハンドラが検索・読み込み結果を格納し、prune_chunksで削除する。 */
+  chunks: Record<string, { id: string; documentPath: string; heading: string; content: string; score?: number }>;
 }
 
 /**
@@ -56,4 +44,6 @@ export interface SearchAgentOutput {
   turns: number;
   /** トークン使用量 */
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  /** ワークフロー実行ログ */
+  logEntries?: import('@modular-prompt/process').WorkflowResult<SearchAgentContext>['logEntries'];
 }

@@ -178,5 +178,20 @@ configCmd
   });
 
 
+// agent コマンド
+program
+  .command('agent')
+  .description('検索エージェントを実行')
+  .argument('<query>', '検索クエリ')
+  .option('--driver <type>', 'ドライバ種別 (mlx, anthropic, openai, ollama, google)', 'mlx')
+  .option('--model <name>', 'モデル名')
+  .option('--max-turns <n>', '最大ターン数', '10')
+  .option('--format <format>', '出力形式 (text, json)', 'text')
+  .option('--server <url>', 'サーバURL')
+  .action(async (query: string, options: import('./commands/agent.js').AgentCommandOptions) => {
+    const { executeAgent } = await import('./commands/agent.js');
+    await executeAgent(query, { ...options, config: globalConfigPath });
+  });
+
 // コマンドラインを解析
 program.parse(process.argv);

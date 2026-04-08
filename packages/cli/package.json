@@ -27,6 +27,8 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
+    "@modular-prompt/driver": "0.11.8",
+    "@search-docs/agent": "workspace:*",
     "@search-docs/client": "workspace:*",
     "@search-docs/server": "workspace:*",
     "@search-docs/types": "workspace:*",

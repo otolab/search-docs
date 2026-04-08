@@ -39,11 +39,11 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
       '@modular-prompt/driver':
-        specifier: 0.11.4
-        version: 0.11.4(ws@8.20.0)(zod@3.25.76)
+        specifier: 0.11.8
+        version: 0.11.8(ws@8.20.0)(zod@3.25.76)
       '@modular-prompt/process':
-        specifier: 0.4.4
-        version: 0.4.4(ws@8.20.0)(zod@3.25.76)
+        specifier: 0.4.9
+        version: 0.4.9(ws@8.20.0)(zod@3.25.76)
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
@@ -57,6 +57,12 @@ importers:
 
   packages/cli:
     dependencies:
+      '@modular-prompt/driver':
+        specifier: 0.11.8
+        version: 0.11.8(ws@8.20.0)(zod@3.25.76)
+      '@search-docs/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
@@ -657,11 +663,11 @@ packages:
     resolution: {integrity: sha512-sn9O+mmd5bQy8XiRVD10f0KbzuGYdU/Dd6Loe0kQAc4JckLwVddsjVsGod8Dfvm6x+OX1Ww2dVLKmVXXWXo5Fw==}
     engines: {node: '>=18.0.0'}
 
-  '@modular-prompt/driver@0.11.4':
-    resolution: {integrity: sha512-T0KepKzG48+b5L2uu8Vh2Bo9u8r606Qlm9T1Loh6NrreiM29Sgmm61gehwBodQc2FXEwqVDnHSezhgT5nvW59A==}
+  '@modular-prompt/driver@0.11.8':
+    resolution: {integrity: sha512-OGSkzMDTXceqTjPGMYmpI5ksYK9ZqY5HOkHq5S59In8s9fcejlPfnlaIsLtGajHEAe+m+1p39mc7ocO1FYX86Q==}
 
-  '@modular-prompt/process@0.4.4':
-    resolution: {integrity: sha512-b6kzyulZnmmAzqBjc2qPlqnqDU+4AY5tPx2IQPsK8SoUz08Ccz06vD2g28jh8OdEY30+rcLphWCXU6HEs66N6A==}
+  '@modular-prompt/process@0.4.9':
+    resolution: {integrity: sha512-JlJJHHl9ZPvHNz3Ul6trqevecnH/fRl7VTtdrJdLVrzvhZU/eUzQb4iq4YW8vHxlRpm0B6aZyyRbPXNJ6190FQ==}
     engines: {node: '>=18.0.0'}
 
   '@modular-prompt/utils@0.3.3':
@@ -2765,7 +2771,7 @@ snapshots:
 
   '@modular-prompt/core@0.2.2': {}
 
-  '@modular-prompt/driver@0.11.4(ws@8.20.0)(zod@3.25.76)':
+  '@modular-prompt/driver@0.11.8(ws@8.20.0)(zod@3.25.76)':
     dependencies:
       '@anthropic-ai/sdk': 0.61.0
       '@anthropic-ai/vertex-sdk': 0.14.4
@@ -2786,10 +2792,10 @@ snapshots:
       - ws
       - zod
 
-  '@modular-prompt/process@0.4.4(ws@8.20.0)(zod@3.25.76)':
+  '@modular-prompt/process@0.4.9(ws@8.20.0)(zod@3.25.76)':
     dependencies:
       '@modular-prompt/core': 0.2.2
-      '@modular-prompt/driver': 0.11.4(ws@8.20.0)(zod@3.25.76)
+      '@modular-prompt/driver': 0.11.8(ws@8.20.0)(zod@3.25.76)
       '@modular-prompt/utils': 0.3.3
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'

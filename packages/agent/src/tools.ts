@@ -1,147 +1,119 @@
 import type { ToolSpec } from '@modular-prompt/process';
 import type { SearchDocsClient } from '@search-docs/client';
-import type { SearchAgentContext, Chunk } from './context.js';
+import type { SearchAgentContext } from './context.js';
 
 /**
  * search-docs用のToolSpec[]を生成する
+ *
+ * ツール名はcontext-1モデルの学習データに合わせている。
  */
 export function createSearchTools(client: SearchDocsClient): ToolSpec<SearchAgentContext>[] {
   return [
     {
       definition: {
-        name: 'search',
-        description: 'Hybrid vector search over document sections. Returns ranked results with preview.',
+        name: 'search_corpus',
+        description: 'Hybrid BM25 + dense vector search via reciprocal rank fusion (RRF). Returns ranked results with preview.',
         parameters: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search query' },
-            depth: { type: 'number', description: 'Max section depth (0-3). 0=document, 1=chapter, 2=section, 3=subsection' },
-            limit: { type: 'number', description: 'Max results (default: 10)' },
           },
           required: ['query'],
         },
       },
       handler: async (args, context) => {
-        const { query, depth, limit } = args as { query: string; depth?: number; limit?: number };
+        const { query } = args as { query: string };
         const response = await client.search({
           query,
-          options: { depth, limit, previewLines: 8 },
+          options: { depth: 0, limit: 5, previewLines: 3 },
         });
-        // チャンクをcontextに追加
+        if (response.results.length === 0) return 'No results found.';
         for (const r of response.results) {
-          context.chunks[r.id] = {
-            id: r.id,
-            documentPath: r.documentPath,
-            heading: r.heading,
-            content: r.content,
-            score: r.score,
-            tokenCount: r.tokenCount,
-          };
+          context.chunks[r.id] = { id: r.id, documentPath: r.documentPath, heading: r.heading, content: r.content, score: r.score };
         }
-        return response.results.map(r => ({
-          id: r.id,
-          heading: r.heading,
-          documentPath: r.documentPath,
-          score: r.score,
-          depth: r.depth,
-          tokenCount: r.tokenCount,
-          preview: r.content.slice(0, 500),
-        }));
+        return response.results.map((r, i) =>
+          `[${i + 1}] ${r.heading} (${r.documentPath}, document_id=${r.id})\n${r.content.slice(0, 150)}`
+        ).join('\n\n');
       },
     },
     {
       definition: {
-        name: 'get_document',
-        description: 'Get full content of a section or document by ID or path.',
+        name: 'read_document',
+        description: 'Read the full content of a document by ID.',
         parameters: {
           type: 'object',
           properties: {
-            sectionId: { type: 'string', description: 'Section ID (from search results)' },
-            path: { type: 'string', description: 'Document path' },
+            doc_id: { type: 'string', description: 'Document or section ID' },
           },
+          required: ['doc_id'],
         },
       },
       handler: async (args, context) => {
-        const { sectionId, path } = args as { sectionId?: string; path?: string };
-        const response = await client.getDocument({ sectionId, path });
-        if (!response.document) {
-          return { error: 'Document not found' };
+        const { doc_id } = args as { doc_id: string };
+        const response = await client.getDocument({ sectionId: doc_id });
+        if (!response.section && !response.document) {
+          return 'Document not found.';
         }
-        // セクション指定の場合、チャンクとして追加
+        const content = response.section?.content ?? response.document?.content ?? '';
+        const heading = response.section?.heading ?? response.document?.path ?? '';
         if (response.section) {
-          const s = response.section;
-          context.chunks[s.id] = {
-            id: s.id,
-            documentPath: s.documentPath,
-            heading: s.heading,
-            content: s.content,
-            tokenCount: s.tokenCount,
-          };
+          context.chunks[response.section.id] = { id: response.section.id, documentPath: response.section.documentPath, heading, content };
         }
-        return {
-          path: response.document.path,
-          title: response.document.metadata?.title,
-          content: response.section?.content ?? response.document.content,
-        };
+        return `${heading}\n\n${content}`;
       },
     },
     {
       definition: {
-        name: 'get_outline',
-        description: 'Get table of contents structure of a document. Shows section headings, token counts, and IDs.',
+        name: 'grep_corpus',
+        description: 'Regex search over the corpus. Returns matching sections.',
         parameters: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Document path' },
-            sectionId: { type: 'string', description: 'Section ID (show outline under this section)' },
+            pattern: { type: 'string', description: 'Search pattern' },
           },
+          required: ['pattern'],
         },
       },
-      handler: async (args) => {
-        const { path, sectionId } = args as { path?: string; sectionId?: string };
-        const response = await client.getOutline({ path, sectionId });
-        return response.items.map(item => ({
-          number: item.number,
-          heading: item.heading,
-          tokens: item.tokens,
-          id: item.id,
-        }));
+      // TODO: 実際のRegex検索を実装する（現在はsearchで代用しているが、descriptionと実態が一致していない）
+      handler: async () => {
+        return 'grep_corpus is not yet implemented. Use search_corpus instead.';
       },
     },
     {
       definition: {
-        name: 'prune',
-        description: 'Remove irrelevant chunks from context to free up token budget.',
+        name: 'prune_chunks',
+        description: 'Removes specified chunks from the conversation context.',
         parameters: {
           type: 'object',
           properties: {
-            chunkIds: {
+            chunk_ids: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Section IDs to remove from context',
+              description: 'Chunk IDs to remove from context.',
             },
           },
-          required: ['chunkIds'],
+          required: ['chunk_ids'],
         },
       },
       handler: async (args, context) => {
-        const { chunkIds } = args as { chunkIds: string[] };
-        const idSet = new Set(chunkIds);
+        const { chunk_ids } = args as { chunk_ids: string[] };
+        const idSet = new Set(chunk_ids);
         let removed = 0;
 
-        // chunksから削除
-        for (const id of chunkIds) {
-          if (context.chunks[id]) {
-            delete context.chunks[id];
-            removed++;
+        // chunks から削除
+        if (context.chunks) {
+          for (const id of idSet) {
+            if (id in context.chunks) {
+              delete context.chunks[id];
+              removed++;
+            }
           }
         }
 
-        // messagesからも該当チャンクを含むtool resultを除去
+        // messages から該当 tool result を除去
         if (context.messages) {
           context.messages = context.messages.filter(msg => {
             if ('role' in msg && msg.role === 'tool' && 'value' in msg) {
-              // tool resultの値にchunkIdが含まれていたら除去
               const valueStr = typeof msg.value === 'string' ? msg.value : JSON.stringify(msg.value);
               for (const id of idSet) {
                 if (valueStr.includes(id)) return false;
@@ -151,7 +123,8 @@ export function createSearchTools(client: SearchDocsClient): ToolSpec<SearchAgen
           });
         }
 
-        return { removed, remaining: Object.keys(context.chunks).length };
+        const remaining = context.chunks ? Object.keys(context.chunks).length : 0;
+        return { removed, remaining };
       },
     },
   ];
