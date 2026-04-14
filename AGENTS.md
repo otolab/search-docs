@@ -45,9 +45,13 @@ search-docs/
 │   ├── mcp-server/       # Claude Code統合
 │   ├── storage/          # DocumentStorage
 │   └── db-engine/        # LanceDB Pythonラッパー
+├── docker/               # Docker関連
+│   ├── entrypoint.sh    # モード分岐（MCP/Embedding）
+│   └── compose.yaml     # 共有Embeddingサーバ構成例
 ├── docs/                 # ドキュメント
 ├── prompts/              # Claude Code設定
 │   └── tasks/           # 作業メモ・計画
+├── Dockerfile            # マルチステージビルド
 ├── pyproject.toml        # Python依存関係（uv）
 ├── pnpm-workspace.yaml   # pnpmワークスペース
 └── package.json          # ルートパッケージ
@@ -62,6 +66,15 @@ search-docs/
 - **テスト**: Vitest
 - **Vector DB**: LanceDB
 - **埋め込みモデル**: Ruri Embedding (cl-nagoya/ruri-v3-30m)
+- **Docker**: マルチステージビルド、1イメージ・2モード構成
+
+### Docker構成
+
+1つのDockerイメージで2つのモードを提供:
+- **MCPサーバモード**（デフォルト）: stdio通信。Embeddingサーバ自動検出付き
+- **Embeddingサーバモード**（`--mode=embedding-server`）: HTTP APIで複数MCPサーバから共有利用
+
+**設計文書**: prompts/tasks/task34.docker-mcp-server-investigation.v1.md
 
 ### コーディング方針
 
