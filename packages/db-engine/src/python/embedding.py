@@ -5,7 +5,10 @@ search-docs用にsebas-chanのRuriEmbeddingを利用
 """
 
 import sys
-from typing import List, Union
+import json
+import urllib.request
+import urllib.error
+from typing import List, Optional, Union
 import numpy as np
 
 
@@ -190,6 +193,135 @@ class RuriEmbedding(EmbeddingModel):
             padded = np.zeros(target_dim, dtype=vector.dtype)
             padded[:current_dim] = vector
             return padded
+
+
+class RemoteEmbeddingModel(EmbeddingModel):
+    """HTTP経由でEmbeddingサーバに接続するモデル"""
+
+    def __init__(self, url: str, vector_dimension: int = 256):
+        """
+        Args:
+            url: EmbeddingサーバのベースURL（例: http://localhost:8080）
+            vector_dimension: ベクトル次元数
+        """
+        self.url = url.rstrip('/')
+        self._dimension = vector_dimension
+        self.model_name = "remote"
+        self.available = True
+        sys.stderr.write(f"RemoteEmbeddingModel initialized: {self.url}\n")
+
+    def load(self) -> bool:
+        """リモートモデルはロード不要"""
+        return True
+
+    def initialize(self) -> bool:
+        """リモートモデルは初期化不要"""
+        return True
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def encode(
+        self,
+        text: Union[str, List[str]],
+        dimension: int = None,
+        batch_size: int = 128
+    ) -> Union[List[float], List[List[float]]]:
+        """HTTP経由でテキストをベクトル化"""
+        target_dim = dimension if dimension is not None else self._dimension
+        is_single = isinstance(text, str)
+        texts = [text] if is_single else text
+
+        try:
+            request_data = json.dumps({
+                "texts": texts,
+                "dimension": target_dim,
+            }).encode('utf-8')
+
+            req = urllib.request.Request(
+                f"{self.url}/encode",
+                data=request_data,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+
+            with urllib.request.urlopen(req, timeout=60) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                vectors = result['vectors']
+                return vectors[0] if is_single else vectors
+
+        except Exception as e:
+            sys.stderr.write(f"RemoteEmbeddingModel encode error: {e}\n")
+            raise
+
+
+def detect_embedding_server(vector_dimension: int) -> Optional[RemoteEmbeddingModel]:
+    """
+    Embeddingサーバを自動検出する
+
+    検出順序:
+      1. EMBEDDING_URL 環境変数（明示指定、最優先）
+      2. http://search-docs-embedding:8080/health（Docker network内）
+      3. http://host.docker.internal:24281/health（ホスト側サービス）
+      4. すべて失敗 → None（ローカルモデルにフォールバック）
+
+    Args:
+        vector_dimension: 期待するベクトル次元数
+
+    Returns:
+        RemoteEmbeddingModel or None
+    """
+    import os
+
+    candidates = []
+
+    # 1. 環境変数による明示指定
+    env_url = os.environ.get('EMBEDDING_URL')
+    if env_url:
+        candidates.append(env_url)
+
+    # 2. Docker network内のサービス名
+    candidates.append('http://search-docs-embedding:8080')
+
+    # 3. ホスト側サービス（Docker Desktop環境）
+    port = os.environ.get('EMBEDDING_SERVER_PORT', '24281')
+    candidates.append(f'http://host.docker.internal:{port}')
+
+    for url in candidates:
+        try:
+            health_url = f"{url.rstrip('/')}/health"
+            req = urllib.request.Request(health_url, method='GET')
+            with urllib.request.urlopen(req, timeout=0.5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+
+                if data.get('status') != 'ok':
+                    continue
+
+                # ベクトル次元の整合性チェック
+                server_dim = data.get('vectorDimension')
+                if server_dim != vector_dimension:
+                    sys.stderr.write(
+                        f"[EmbeddingDetect] Dimension mismatch at {url}: "
+                        f"server={server_dim}, expected={vector_dimension}. Skipping.\n"
+                    )
+                    continue
+
+                model_name = data.get('model', 'unknown')
+                sys.stderr.write(
+                    f"[EmbeddingDetect] Found server at {url} "
+                    f"(model={model_name}, dim={server_dim})\n"
+                )
+                remote = RemoteEmbeddingModel(url, vector_dimension)
+                remote.model_name = model_name
+                return remote
+
+        except (urllib.error.URLError, OSError, json.JSONDecodeError):
+            # 接続失敗は無視して次の候補へ
+            continue
+
+    sys.stderr.write("[EmbeddingDetect] No embedding server found, using local model\n")
+    return None
 
 
 def create_embedding_model(model_name: str) -> EmbeddingModel:

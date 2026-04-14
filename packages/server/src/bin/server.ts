@@ -61,6 +61,30 @@ async function main() {
 
     console.log(`Loading config from: ${configPath || 'default config'}`);
 
+    // Docker環境での設定固定ルール
+    // embeddingModelとvectorDimensionはイメージ内蔵モデルとの整合性が必須
+    const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
+    const dockerVectorDimension = process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
+    if (dockerEmbeddingModel) {
+      if (config.indexing.embeddingModel !== dockerEmbeddingModel) {
+        console.warn(
+          `[Docker] Config embeddingModel "${config.indexing.embeddingModel}" ` +
+          `overridden to "${dockerEmbeddingModel}" (image-baked model)`
+        );
+      }
+      config.indexing.embeddingModel = dockerEmbeddingModel;
+    }
+    if (dockerVectorDimension) {
+      const dim = parseInt(dockerVectorDimension, 10);
+      if (!isNaN(dim) && config.indexing.vectorDimension !== dim) {
+        console.warn(
+          `[Docker] Config vectorDimension ${config.indexing.vectorDimension} ` +
+          `overridden to ${dim} (image-baked model)`
+        );
+        config.indexing.vectorDimension = dim;
+      }
+    }
+
     // 1. 既存PIDファイルチェック
     const existingPid = await readPidFile(projectRoot);
     if (existingPid && existingPid.pid !== process.pid && isProcessAlive(existingPid.pid)) {
