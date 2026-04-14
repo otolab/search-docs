@@ -42,12 +42,10 @@ interface JsonRpcResponse {
 
 export interface DBEngineOptions {
   /**
-   * 使用する埋め込みモデル
-   * - 'cl-nagoya/ruri-v3-30m': 小型モデル (120MB, 256次元)
-   * - 'cl-nagoya/ruri-v3-310m': 大型モデル (1.2GB, 768次元)
-   * @default 'cl-nagoya/ruri-v3-30m'
+   * Embedding ServerのURL
+   * @default 'http://localhost:8080'
    */
-  embeddingModel?: string;
+  embeddingUrl?: string;
 
   /**
    * データベースパス
@@ -201,7 +199,7 @@ export class DBEngine extends EventEmitter {
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Pick<Required<DBEngineOptions>, 'embeddingModel' | 'dbPath' | 'maxBatchTokens'>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'>;
   private performanceCsvPath: string | null = null;
   private performanceCsvStream: fs.WriteStream | null = null;
   private memoryCheckInterval: NodeJS.Timeout | null = null;
@@ -231,7 +229,7 @@ export class DBEngine extends EventEmitter {
   constructor(options: DBEngineOptions = {}) {
     super();
     this.options = {
-      embeddingModel: options.embeddingModel || 'cl-nagoya/ruri-v3-30m',
+      embeddingUrl: options.embeddingUrl || 'http://localhost:8080',
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
     };
@@ -298,9 +296,9 @@ export class DBEngine extends EventEmitter {
     const pythonCmd = 'uv';
     const pythonArgs = ['--project', packageRoot, 'run', 'python', pythonScript];
 
-    // モデル選択オプションを追加
-    if (this.options.embeddingModel) {
-      pythonArgs.push(`--model=${this.options.embeddingModel}`);
+    // Embedding URLオプションを追加
+    if (this.options.embeddingUrl) {
+      pythonArgs.push(`--embedding-url=${this.options.embeddingUrl}`);
     }
 
     // maxBatchTokensオプションを追加

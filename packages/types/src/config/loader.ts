@@ -286,6 +286,8 @@ export class ConfigLoader {
           config.indexing?.vectorDimension ?? DEFAULT_CONFIG.indexing.vectorDimension,
         embeddingModel:
           config.indexing?.embeddingModel ?? DEFAULT_CONFIG.indexing.embeddingModel,
+        embeddingUrl:
+          config.indexing?.embeddingUrl ?? DEFAULT_CONFIG.indexing.embeddingUrl,
       },
       search: {
         defaultLimit: config.search?.defaultLimit ?? DEFAULT_CONFIG.search.defaultLimit,

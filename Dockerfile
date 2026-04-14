@@ -89,6 +89,7 @@ ENV HF_HOME=/app/.cache/huggingface
 # Docker設定固定: イメージ内蔵モデルに強制
 ENV SEARCH_DOCS_DOCKER_EMBEDDING_MODEL=cl-nagoya/ruri-v3-30m
 ENV SEARCH_DOCS_DOCKER_VECTOR_DIMENSION=256
+ENV SEARCH_DOCS_DOCKER_EMBEDDING_URL=http://localhost:8080
 
 # オフラインモード: モデルは焼き込み済み、ネットワーク不要
 ENV HF_HUB_OFFLINE=1

@@ -235,11 +235,11 @@ class SearchDocsWorker:
             sys.stderr.write("[MemoryOptimization] PyTorch MPS available, will clear cache after batches\n")
             sys.stderr.flush()
 
-        # モデルを初期化（まだロードしない）
-        model_name = self._get_model_name()
-        self.embedding_model = create_embedding_model(model_name)
-        self.vector_dimension = self.embedding_model.dimension if hasattr(self.embedding_model, 'dimension') else 256
-        self.init_tables()
+        # Embedding URLを取得（initModel()でサーバに接続）
+        self.embedding_url = self._get_embedding_url()
+        self.embedding_model = None  # initModel()で作成
+        self.vector_dimension = None  # initModel()で/healthから取得
+        # init_tables()はvector_dimension確定後（initModel()内）で実行
 
         # 設定値を取得
         self.max_batch_tokens = self._get_max_batch_tokens()
@@ -296,24 +296,15 @@ class SearchDocsWorker:
                 sys.stderr.write(f"[MemoryOptimization] Warning: Failed to clear MPS cache: {e}\n")
                 sys.stderr.flush()
 
-    def _get_model_name(self):
-        """モデル名を取得
-
-        Returns:
-            モデル名
-        """
-        # コマンドライン引数からモデル名を取得（--model=xxx形式）
-        model_name = None
+    def _get_embedding_url(self) -> str:
+        """Embedding URLを取得（CLI引数 > 環境変数 > デフォルト）"""
         for arg in sys.argv[1:]:
-            if arg.startswith('--model='):
-                model_name = arg.split('=', 1)[1]
-                break
-
-        # デフォルトモデル名
-        if not model_name:
-            model_name = 'cl-nagoya/ruri-v3-30m'
-
-        return model_name
+            if arg.startswith('--embedding-url='):
+                return arg.split('=', 1)[1]
+        env_url = os.environ.get('EMBEDDING_URL')
+        if env_url:
+            return env_url
+        return 'http://localhost:8080'
 
     @staticmethod
     def _get_db_path() -> str:
@@ -692,13 +683,42 @@ class SearchDocsWorker:
         return {"status": "ok"}
 
     def init_model(self) -> Dict[str, Any]:
-        """埋め込みモデルを初期化"""
-        success = self.embedding_model.initialize()
-        return {
-            "success": success,
-            "model_name": self.embedding_model.model_name if hasattr(self.embedding_model, 'model_name') else 'unknown',
-            "dimension": self.vector_dimension
-        }
+        """Embedding Serverに接続してモデル情報を取得し、テーブルを初期化"""
+        import urllib.request as _urllib_request
+        import urllib.error as _urllib_error
+
+        health_url = f"{self.embedding_url.rstrip('/')}/health"
+        try:
+            req = _urllib_request.Request(health_url, method='GET')
+            with _urllib_request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                if data.get('status') != 'ok':
+                    raise RuntimeError(f"Embedding server returned status: {data.get('status')}")
+                model_name = data.get('model', 'unknown')
+                self.vector_dimension = data.get('vectorDimension')
+                if not self.vector_dimension:
+                    raise RuntimeError("Embedding server did not return vectorDimension")
+
+            sys.stderr.write(
+                f"[InitModel] Connected to embedding server at {self.embedding_url}\n"
+                f"  Model: {model_name}, Dimension: {self.vector_dimension}\n"
+            )
+            sys.stderr.flush()
+
+            self.embedding_model = create_embedding_model(self.embedding_url, self.vector_dimension)
+            self.init_tables()
+
+            return {"success": True, "model_name": model_name, "dimension": self.vector_dimension}
+
+        except (_urllib_error.URLError, OSError) as e:
+            error_msg = (
+                f"Failed to connect to embedding server at {self.embedding_url}: {e}\n"
+                f"Ensure the embedding server is running before starting the worker.\n"
+                f"  python packages/db-engine/src/python/embedding_server.py --port=8080"
+            )
+            sys.stderr.write(f"[InitModel] {error_msg}\n")
+            sys.stderr.flush()
+            raise RuntimeError(error_msg)
 
     def _create_token_aware_batches(
         self,
@@ -789,9 +809,9 @@ class SearchDocsWorker:
         # スレッド情報（処理前）
         self.log_thread_info(f"BEFORE add_sections (call #{self._add_count + 1})")
 
-        # モデル初期化
-        if not self.embedding_model.available:
-            self.embedding_model.initialize()
+        # モデル初期化チェック
+        if self.embedding_model is None:
+            raise RuntimeError("Embedding model not initialized. Call initModel() first.")
 
         # セクションをバリデーション
         for section in sections:
@@ -885,9 +905,9 @@ class SearchDocsWorker:
         if not query:
             raise ValueError("query parameter is required")
 
-        # モデル初期化
-        if not self.embedding_model.available:
-            self.embedding_model.initialize()
+        # モデル初期化チェック
+        if self.embedding_model is None:
+            raise RuntimeError("Embedding model not initialized. Call initModel() first.")
 
         # クエリをベクトル化
         query_vector = self.embedding_model.encode(query, self.vector_dimension)

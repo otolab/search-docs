@@ -8,7 +8,7 @@ import sys
 import json
 import urllib.request
 import urllib.error
-from typing import List, Optional, Union
+from typing import List, Union
 import numpy as np
 
 
@@ -256,88 +256,17 @@ class RemoteEmbeddingModel(EmbeddingModel):
             raise
 
 
-def detect_embedding_server(vector_dimension: int) -> Optional[RemoteEmbeddingModel]:
+def create_embedding_model(embedding_url: str, vector_dimension: int) -> EmbeddingModel:
     """
-    Embeddingサーバを自動検出する
+    埋め込みモデルのファクトリー関数（HTTP経由のみ）
 
-    検出順序:
-      1. EMBEDDING_URL 環境変数（明示指定、最優先）
-      2. http://search-docs-embedding:8080/health（Docker network内）
-      3. http://host.docker.internal:24281/health（ホスト側サービス）
-      4. すべて失敗 → None（ローカルモデルにフォールバック）
+    Embedding Serverは事前起動が必要です。
 
     Args:
-        vector_dimension: 期待するベクトル次元数
+        embedding_url: EmbeddingサーバのベースURL（例: http://localhost:8080）
+        vector_dimension: ベクトル次元数
 
     Returns:
-        RemoteEmbeddingModel or None
+        RemoteEmbeddingModelインスタンス
     """
-    import os
-
-    candidates = []
-
-    # 1. 環境変数による明示指定
-    env_url = os.environ.get('EMBEDDING_URL')
-    if env_url:
-        candidates.append(env_url)
-
-    # 2. Docker network内のサービス名
-    candidates.append('http://search-docs-embedding:8080')
-
-    # 3. ホスト側サービス（Docker Desktop環境）
-    port = os.environ.get('EMBEDDING_SERVER_PORT', '24281')
-    candidates.append(f'http://host.docker.internal:{port}')
-
-    for url in candidates:
-        try:
-            health_url = f"{url.rstrip('/')}/health"
-            req = urllib.request.Request(health_url, method='GET')
-            with urllib.request.urlopen(req, timeout=0.5) as response:
-                data = json.loads(response.read().decode('utf-8'))
-
-                if data.get('status') != 'ok':
-                    continue
-
-                # ベクトル次元の整合性チェック
-                server_dim = data.get('vectorDimension')
-                if server_dim != vector_dimension:
-                    sys.stderr.write(
-                        f"[EmbeddingDetect] Dimension mismatch at {url}: "
-                        f"server={server_dim}, expected={vector_dimension}. Skipping.\n"
-                    )
-                    continue
-
-                model_name = data.get('model', 'unknown')
-                sys.stderr.write(
-                    f"[EmbeddingDetect] Found server at {url} "
-                    f"(model={model_name}, dim={server_dim})\n"
-                )
-                remote = RemoteEmbeddingModel(url, vector_dimension)
-                remote.model_name = model_name
-                return remote
-
-        except (urllib.error.URLError, OSError, json.JSONDecodeError):
-            # 接続失敗は無視して次の候補へ
-            continue
-
-    sys.stderr.write("[EmbeddingDetect] No embedding server found, using local model\n")
-    return None
-
-
-def create_embedding_model(model_name: str) -> EmbeddingModel:
-    """
-    埋め込みモデルのファクトリー関数
-
-    Args:
-        model_name: モデル名
-
-    Returns:
-        EmbeddingModelインスタンス
-    """
-    # Ruriモデルの場合
-    if model_name.startswith('cl-nagoya/ruri'):
-        model = RuriEmbedding(model_name=model_name)
-        model.load()
-        return model
-    else:
-        raise ValueError(f"Unsupported model: {model_name}")
+    return RemoteEmbeddingModel(url=embedding_url, vector_dimension=vector_dimension)

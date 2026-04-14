@@ -49,8 +49,10 @@ export interface IndexingConfig {
   maxDepth: number;
   /** ベクトル次元数 */
   vectorDimension: number;
-  /** 埋め込みモデル */
+  /** 埋め込みモデル（情報表示用、実際のモデルはembedding serverが管理） */
   embeddingModel: string;
+  /** Embedding ServerのURL（デフォルト: http://localhost:8080） */
+  embeddingUrl?: string;
 }
 
 export interface SearchConfig {
@@ -125,6 +127,7 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     maxDepth: 3,
     vectorDimension: 256,
     embeddingModel: 'cl-nagoya/ruri-v3-30m',
+    embeddingUrl: 'http://localhost:8080',
   },
   search: {
     defaultLimit: 10,

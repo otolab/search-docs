@@ -62,9 +62,18 @@ async function main() {
     console.log(`Loading config from: ${configPath || 'default config'}`);
 
     // Docker環境での設定固定ルール
-    // embeddingModelとvectorDimensionはイメージ内蔵モデルとの整合性が必須
+    const dockerEmbeddingUrl = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL;
     const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
     const dockerVectorDimension = process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
+    if (dockerEmbeddingUrl) {
+      if (config.indexing.embeddingUrl && config.indexing.embeddingUrl !== dockerEmbeddingUrl) {
+        console.warn(
+          `[Docker] Config embeddingUrl "${config.indexing.embeddingUrl}" ` +
+          `overridden to "${dockerEmbeddingUrl}" (container-local embedding server)`
+        );
+      }
+      config.indexing.embeddingUrl = dockerEmbeddingUrl;
+    }
     if (dockerEmbeddingModel) {
       if (config.indexing.embeddingModel !== dockerEmbeddingModel) {
         console.warn(
@@ -132,7 +141,7 @@ async function main() {
     // DBエンジン初期化
     const dbEngine = new DBEngine({
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
-      embeddingModel: config.indexing.embeddingModel,
+      embeddingUrl: config.indexing.embeddingUrl,
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
