@@ -34,7 +34,7 @@ describe('FileWatcher', () => {
   const waitForEvents = async (
     events: FileChangeEvent[],
     minCount: number = 1,
-    timeoutMs: number = 2000
+    timeoutMs: number = 5000
   ): Promise<void> => {
     const startTime = Date.now();
     while (events.length < minCount && Date.now() - startTime < timeoutMs) {
@@ -42,7 +42,7 @@ describe('FileWatcher', () => {
     }
   };
 
-  it('ファイル追加を検出できる', async () => {
+  it('ファイル追加を検出できる', { timeout: 10000 }, async () => {
     const events: FileChangeEvent[] = [];
 
     watcher = new FileWatcher({
@@ -63,12 +63,13 @@ describe('FileWatcher', () => {
     watcher.on('change', (event: FileChangeEvent) => events.push(event));
 
     await watcher.start(); // readyまで待つ
+    await wait(500); // ネイティブFSイベント購読の安定化待ち
 
     // ファイル作成
     const testFile = path.join(tmpDir, 'test.md');
     await fs.writeFile(testFile, '# Test');
 
-    // イベントが来るまで待つ（最大2秒）
+    // イベントが来るまで待つ
     await waitForEvents(events, 1);
 
     expect(events.length).toBeGreaterThanOrEqual(1);
@@ -76,9 +77,7 @@ describe('FileWatcher', () => {
     expect(events[0].path).toBe('test.md');
   });
 
-  it('ファイル変更を検出できる', async () => {
-    const events: FileChangeEvent[] = [];
-
+  it('ファイル変更を検出できる', { timeout: 10000 }, async () => {
     // 事前にファイル作成
     const testFile = path.join(tmpDir, 'test.md');
     await fs.writeFile(testFile, '# Test');
@@ -98,14 +97,17 @@ describe('FileWatcher', () => {
       },
     });
 
-    watcher.on('change', (event: FileChangeEvent) => events.push(event));
+    // 初回スキャンのイベントを捨てるため、start後に安定化待ちしてからリスナー登録
+    await watcher.start();
+    await wait(1000);
 
-    await watcher.start(); // readyまで待つ
+    const events: FileChangeEvent[] = [];
+    watcher.on('change', (event: FileChangeEvent) => events.push(event));
 
     // ファイル更新
     await fs.writeFile(testFile, '# Updated');
 
-    // イベントが来るまで待つ（最大2秒）
+    // イベントが来るまで待つ
     await waitForEvents(events, 1);
 
     expect(events).toHaveLength(1);
@@ -113,9 +115,7 @@ describe('FileWatcher', () => {
     expect(events[0].path).toBe('test.md');
   });
 
-  it('ファイル削除を検出できる', async () => {
-    const events: FileChangeEvent[] = [];
-
+  it('ファイル削除を検出できる', { timeout: 10000 }, async () => {
     // 事前にファイル作成
     const testFile = path.join(tmpDir, 'test.md');
     await fs.writeFile(testFile, '# Test');
@@ -135,14 +135,17 @@ describe('FileWatcher', () => {
       },
     });
 
-    watcher.on('change', (event: FileChangeEvent) => events.push(event));
+    // 初回スキャンのイベントを捨てるため、start後に安定化待ちしてからリスナー登録
+    await watcher.start();
+    await wait(1000);
 
-    await watcher.start(); // readyまで待つ
+    const events: FileChangeEvent[] = [];
+    watcher.on('change', (event: FileChangeEvent) => events.push(event));
 
     // ファイル削除
     await fs.unlink(testFile);
 
-    // イベントが来るまで待つ（最大2秒）
+    // イベントが来るまで待つ
     await waitForEvents(events, 1);
 
     expect(events).toHaveLength(1);
@@ -220,7 +223,7 @@ describe('FileWatcher', () => {
     expect(events.length).toBeLessThanOrEqual(2); // add + change
   });
 
-  it('サブディレクトリのファイルも検出できる', async () => {
+  it('サブディレクトリのファイルも検出できる', { timeout: 10000 }, async () => {
     const events: FileChangeEvent[] = [];
 
     watcher = new FileWatcher({
@@ -241,6 +244,7 @@ describe('FileWatcher', () => {
     watcher.on('change', (event: FileChangeEvent) => events.push(event));
 
     await watcher.start(); // readyまで待つ
+    await wait(500); // ネイティブFSイベント購読の安定化待ち
 
     // サブディレクトリ作成
     const subDir = path.join(tmpDir, 'docs');

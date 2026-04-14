@@ -54,11 +54,22 @@ describe('search-docs MCP Server E2E Tests', () => {
       if (content.includes('サーバ停止中') || content.includes('サーバを起動してください')) {
         // サーバを起動
         await tester.callTool('server_start', {});
-        // 起動完了を待機
-        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
-  }, 30000); // タイムアウトを30秒に延長
+
+    // DB接続完了を待機（最大20秒ポーリング）
+    const startTime = Date.now();
+    while (Date.now() - startTime < 20000) {
+      const checkResult = await tester.callTool('get_system_status', {});
+      if (checkResult.success) {
+        const checkContent = (checkResult.result as MCPToolResult)?.content?.[0]?.text || '';
+        if (checkContent.includes('総文書数:')) {
+          break; // DB接続完了
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }, 40000); // タイムアウトを40秒に延長
 
   afterEach(async () => {
     // テスト環境をクリーンアップ

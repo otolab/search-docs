@@ -61,6 +61,7 @@ Vector検索機能をテストします。
         maxDepth: 3,
         vectorDimension: 256,
         embeddingModel: 'cl-nagoya/ruri-v3-30m',
+        embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080',
       },
       search: {
         defaultLimit: 10,
@@ -108,48 +109,33 @@ Vector検索機能をテストします。
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    // サーバの起動を待つ
-    await new Promise<void>((resolve, reject) => {
-      let output = '';
-      const timeout = setTimeout(() => {
-        reject(new Error('Server startup timeout'));
-      }, 30000);
-
-      serverProcess!.stdout?.on('data', (data: Buffer) => {
-        const message = data.toString();
-        output += message;
-
-        // verboseモードでは全て出力
-        if (verbose) {
-          console.log('[Server]', message.trim());
-        }
-
-        if (output.includes('Server started successfully')) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-
-      serverProcess!.stderr?.on('data', (data: Buffer) => {
-        const message = data.toString().trim();
-        // Ruriモデルの読み込みメッセージは情報なのでverboseモードのみ
-        if (verbose || !message.includes('Ruri model loaded')) {
-          console.error('[Server Error]', message);
-        }
-      });
-
-      serverProcess!.on('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-
-      serverProcess!.on('exit', (code) => {
-        if (code !== 0 && code !== null) {
-          clearTimeout(timeout);
-          reject(new Error(`Server exited with code ${code}`));
-        }
-      });
+    // stderr/stdout をキャプチャ（デバッグ用）
+    serverProcess!.stdout?.on('data', (data: Buffer) => {
+      if (verbose) {
+        console.log('[Server]', data.toString().trim());
+      }
     });
+
+    serverProcess!.stderr?.on('data', (data: Buffer) => {
+      if (verbose) {
+        console.error('[Server Error]', data.toString().trim());
+      }
+    });
+
+    // サーバの起動をHTTPポーリングで待つ
+    const startTime = Date.now();
+    while (Date.now() - startTime < 30000) {
+      try {
+        const res = await fetch(`http://localhost:${serverPort}`);
+        if (res.ok || res.status === 400) {
+          // JSON-RPCサーバはGETに対して400を返す可能性があるが、接続は成功
+          break;
+        }
+      } catch {
+        // 接続失敗は無視して再試行
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
 
     if (verbose) {
       console.log('[E2E] Server started successfully');

@@ -15,5 +15,6 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    globalSetup: '../db-engine/src/__tests__/globalSetup.ts',
   },
 });

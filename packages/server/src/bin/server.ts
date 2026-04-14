@@ -61,6 +61,12 @@ async function main() {
 
     console.log(`Loading config from: ${configPath || 'default config'}`);
 
+    // 環境変数によるembeddingUrl上書き（テスト環境・Docker環境共通）
+    const envEmbeddingUrl = process.env.EMBEDDING_URL;
+    if (envEmbeddingUrl) {
+      config.indexing.embeddingUrl = envEmbeddingUrl;
+    }
+
     // Docker環境での設定固定ルール
     const dockerEmbeddingUrl = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL;
     const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;

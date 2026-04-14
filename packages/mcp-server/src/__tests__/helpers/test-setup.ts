@@ -76,6 +76,7 @@ export async function setupTestEnvironment(
         maxDepth: 3,
         vectorDimension: 256,
         embeddingModel: 'cl-nagoya/ruri-v3-30m',
+        embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080',
       },
       search: {
         defaultLimit: 10,

@@ -29,7 +29,7 @@ describe('null fields reproduction test', () => {
     // DBエンジンを接続
     dbEngine = new DBEngine({
       dbPath: testDbPath,
-      embeddingUrl: 'http://localhost:8080'
+      embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080'
     });
     await dbEngine.connect();
   });

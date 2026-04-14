@@ -1,5 +1,6 @@
 import * as watcher from '@parcel/watcher';
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
@@ -32,7 +33,7 @@ export class FileWatcher extends EventEmitter {
 
   constructor(options: FileWatcherOptions) {
     super();
-    this.rootDir = path.resolve(options.rootDir);
+    this.rootDir = fs.realpathSync(path.resolve(options.rootDir));
     this.filesConfig = options.filesConfig;
     this.watcherConfig = options.watcherConfig;
   }

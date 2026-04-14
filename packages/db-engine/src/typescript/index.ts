@@ -229,7 +229,7 @@ export class DBEngine extends EventEmitter {
   constructor(options: DBEngineOptions = {}) {
     super();
     this.options = {
-      embeddingUrl: options.embeddingUrl || 'http://localhost:8080',
+      embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:8080',
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
     };

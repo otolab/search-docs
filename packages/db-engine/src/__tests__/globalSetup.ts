@@ -60,6 +60,7 @@ export async function setup() {
   console.log('Embedding server ready');
 
   process.env.TEST_EMBEDDING_URL = `http://localhost:${EMBEDDING_PORT}`;
+  process.env.EMBEDDING_URL = `http://localhost:${EMBEDDING_PORT}`;
 }
 
 export async function teardown() {
