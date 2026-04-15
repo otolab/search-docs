@@ -74,7 +74,9 @@ search-docs/
 - **MCPサーバモード**（デフォルト）: stdio通信。Embeddingサーバ自動検出付き
 - **Embeddingサーバモード**（`--mode=embedding-server`）: HTTP APIで複数MCPサーバから共有利用
 
-**設計文書**: prompts/tasks/task34.docker-mcp-server-investigation.v1.md
+**ユーザー向けガイド**: docs/docker-deployment.md  
+**設計文書**: prompts/tasks/task34.docker-mcp-server-investigation.v1.md  
+**実装メモ**: prompts/tasks/task34.docker-mcp-server-implementation.v1.md
 
 ### コーディング方針
 

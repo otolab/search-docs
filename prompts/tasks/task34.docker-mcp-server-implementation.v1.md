@@ -54,9 +54,47 @@
   → `python:3.12-slim-bookworm` に固定して解決
 - agentパッケージはまだ未リリース（mainブランチに存在しない）→ Dockerfileから除外
 
+## 発見・修正したバグ (2026-04-14)
+
+### 1. entrypoint.sh - check_health の bare except バグ
+- **問題**: Python の `except:` が `exit(0)` の `SystemExit` をキャッチし、常に exit(1) で終了
+- **修正**: `except:` → `except Exception:` に変更
+
+### 2. Dockerfile - libssl3 不足
+- **問題**: ランタイムイメージに libssl.so.3 がなく、pyarrow/lancedb が動かない
+- **修正**: `apt-get install libssl3` をランタイムステージに追加
+
+### 3. Dockerfile - db-engine/.venv 未作成
+- **問題**: db-engine の Python 依存関係用 .venv がビルドされておらず、uv run が権限エラー
+- **修正**: ビルドステージで `uv sync --project packages/db-engine` を追加、ランタイムにコピー＆権限付与
+
+### 4. Dockerfile - UV_CACHE_DIR 権限エラー
+- **問題**: appuser が /home/appuser/.cache/uv を作れない
+- **修正**: `ENV UV_CACHE_DIR=/app/.cache/uv` を追加
+
+### 5. server.ts - Docker 環境の IPv4/IPv6 バインドミスマッチ
+- **問題**: Docker 内で `localhost` が IPv6 (::1) に解決され、Express がIPv6のみにバインド。Node.js fetch は IPv4 で接続して失敗
+- **修正**: Docker 環境検出時に `0.0.0.0` にバインドするよう変更
+
+### 6. .mcp.json - Docker MCP 設定追加
+- 2つのMCPサーバ構成を定義: `search-docs`(Docker) と `search-docs-local`(ローカル)
+
+### 7. @parcel/watcher - Docker bind mountでinotifyイベント非伝播
+- **問題**: @parcel/watcher 2.5.1ではDocker bind mountのマウントポイント直下をsubscribeするとinotifyイベントが届かなかった
+- **修正**: @parcel/watcher 2.5.1 → 2.5.6 に更新
+
+### 8. file-watcher.ts - extglobパターンによるイベント消失
+- **問題**: ignoreオプションの `**/*.!(md)` パターンがpicomatch→C++ regexで極端に遅延し、Docker環境でファイル変更イベントが事実上タイムアウトしていた
+- **修正**: extglobパターンを削除し、`.md`フィルタは既存の `shouldProcessFile()` に委譲
+
+**詳細**: prompts/tasks/task34.docker-mcp-server-investigation.v1.md の「2026-04-14 実装完了」セクション参照
+
 ## 残タスク
 
 - [x] Dockerビルド成功確認 (4.46GB)
-- [ ] Embedding Server の動作確認
-- [ ] stdio transport での動作確認
+- [x] Embedding Server の動作確認
+- [x] stdio transport での動作確認
+- [x] バグ修正（6件）
 - [ ] 自動検出ロジックの統合テスト
+- [ ] Docker Compose での共有 Embedding サーバ構成のテスト
+- [ ] Docker MCP Catalog への登録準備

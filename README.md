@@ -36,6 +36,16 @@ AIエージェント / CLI / API
 
 ## 30秒で始める（Claude Code）
 
+### Docker版（推奨）
+
+```bash
+docker mcp run search-docs
+```
+
+→ [Docker構成ガイド](docs/docker-deployment.md)
+
+### npm/npx版
+
 ```bash
 claude mcp add npx -- -y @search-docs/mcp-server
 ```

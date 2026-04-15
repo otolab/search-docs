@@ -449,3 +449,245 @@ docker run --memory=512m --cpus=1.0 --cpu-shares=512 ...
 8. [ ] リソース制限の検証
 9. [ ] CI/CD パイプライン（GitHub Actions → ghcr.io）
 10. [ ] Docker MCP Catalog へのPR準備
+
+## 2026-04-14 調査メモ: Docker MCPサーバモードのファイル監視
+
+### 今回の調査計画
+
+1. `packages/server/src/discovery/file-watcher.ts` の呼び出し元を追跡する
+2. `packages/mcp-server` と `docker/entrypoint.sh` から search-docs server 起動経路を確認する
+3. `docker/compose.yaml` の mount 方式と watcher への影響を整理する
+4. `file-watcher.test.ts` の失敗要因を実測し、watcher 本体と分離して確認する
+
+### コード確認で確定した事実
+
+- `FileWatcher` は `@parcel/watcher.subscribe(rootDir, ..., { ignore })` を直接呼ぶ実装
+- `SearchDocsServer` は `config.watcher.enabled` が `true` のときだけ `new FileWatcher(...)` を作成し、`start()` で `await this.watcher.start()` を実行する
+- `DEFAULT_CONFIG.watcher.enabled` は `true`
+- Docker 用の `packages/server/src/bin/server.ts` は `embeddingUrl` / `embeddingModel` / `vectorDimension` は上書きするが、watcher 設定は変更しない
+- Docker の `entrypoint.sh` は MCP サーバモードで最終的に `node packages/mcp-server/dist/server.js` を `exec` する
+- Dockerfile の `WORKDIR` は `/app`
+- MCP サーバ本体は `CONFIGURED_SERVER_DOWN` かつ index ディレクトリが存在する場合に `ServerManager.startServer(...)` で search-docs server を自動起動する
+- `ServerManager.startServer(...)` は `node <cli> server start --port ... [--config ...]` を子プロセス起動する
+- CLI `server start` は `@search-docs/server/dist/bin/server.js` を起動する
+- `packages/mcp-server/src/server.ts` は `--project-dir` が未指定なら `process.cwd()` を使う
+- したがって Docker 内で MCP サーバが search-docs server を起動した場合も、対象プロジェクトが解決されている限り、設定で無効化しない限り FileWatcher 起動経路に入る
+- 一方で現行 Dockerfile + `compose.yaml` コメント例のままではカレントディレクトリは `/app` のままで、`/workspace` を volume mount しても自動ではそこを見ない
+- `/workspace` を対象にするには `--project-dir /workspace` か `docker compose run -w /workspace ...` のどちらかが必要
+
+### 実測メモ
+
+- `pnpm -C packages/server test -- --run src/discovery/__tests__/file-watcher.test.ts` は watcher テスト実行前に失敗
+- 失敗箇所は `packages/server/vitest.config.ts` が参照する `../db-engine/src/__tests__/globalSetup.ts`
+- 失敗メッセージは `failed to open file /Users/naoto.kato/.cache/uv/sdists-v9/.git: Operation not permitted`
+- つまりこの失敗は watcher イベント未着より前段の embedding server 起動失敗
+- 最小再現として `packages/server` 配下で `@parcel/watcher.subscribe()` を直接呼ぶ Node スクリプトを実行したところ、macOS 側で `Error starting FSEvents stream` で失敗
+- この実測から、現在の作業環境では watcher の native backend 初期化自体が失敗している
+
+### 補足
+
+- `docs/file-watcher-design.md` には `markDirty()` / `deleteDocument()` とあるが、現行コードでは add/change 時に storage 保存と `createIndexRequest()`、unlink 時に `deleteSectionsByPath()` と storage 削除を行っている
+
+## 2026-04-14 実装完了: Docker MCP サーバの動作確認とバグ修正
+
+### 実装完了内容
+
+基本的なDocker化実装が完了し、実際の動作確認を行ったところ、複数のバグを発見・修正しました。
+
+### 発見・修正したバグ
+
+#### 1. entrypoint.sh - check_health の bare except バグ
+
+**問題**: 
+- Python の `except:` が `exit(0)` の `SystemExit` をキャッチし、常に exit(1) で終了
+- ヘルスチェックが常に失敗していた
+
+**修正**: 
+```bash
+# 修正前
+except:
+    exit(1)
+
+# 修正後
+except Exception:
+    exit(1)
+```
+
+**ファイル**: `docker/entrypoint.sh`
+
+#### 2. Dockerfile - libssl3 不足
+
+**問題**: 
+- ランタイムイメージ (node:22-slim) に libssl.so.3 がなく、pyarrow/lancedb が動かない
+- エラー: `ImportError: libssl.so.3: cannot open shared object file`
+
+**修正**: 
+- `apt-get install libssl3` をランタイムステージに追加
+
+**ファイル**: `Dockerfile`
+
+#### 3. Dockerfile - db-engine/.venv 未作成
+
+**問題**: 
+- db-engine の Python 依存関係用 .venv がビルドされておらず、uv run が権限エラー
+- エラー: `Permission denied: '/app/.cache/uv/...'`
+
+**修正**: 
+- ビルドステージで `uv sync --project packages/db-engine` を追加
+- ランタイムにコピー＆権限付与
+
+**ファイル**: `Dockerfile`
+
+#### 4. Dockerfile - UV_CACHE_DIR 権限エラー
+
+**問題**: 
+- appuser が /home/appuser/.cache/uv を作れない
+- エラー: `Permission denied: '/home/appuser/.cache/uv'`
+
+**修正**: 
+- `ENV UV_CACHE_DIR=/app/.cache/uv` を追加
+
+**ファイル**: `Dockerfile`
+
+#### 5. server.ts - Docker 環境の IPv4/IPv6 バインドミスマッチ
+
+**問題**: 
+- Docker 内で `localhost` が IPv6 (::1) に解決され、Express がIPv6のみにバインド
+- Node.js fetch は IPv4 で接続して失敗
+- エラー: `ECONNREFUSED 127.0.0.1:24280`
+
+**根本原因**:
+```javascript
+// Express のデフォルト動作
+app.listen(port, 'localhost')  // → IPv6 (::1) にのみバインド
+
+// Node.js fetch の動作
+fetch('http://localhost:24280/health')  // → IPv4 (127.0.0.1) に接続
+```
+
+**修正**: 
+- Docker 環境検出時に `0.0.0.0` にバインドするよう変更
+- 環境変数 `IS_DOCKER=true` で Docker 環境を識別
+- Docker 外では従来通り `localhost` を使用（セキュリティ維持）
+
+**ファイル**: `packages/server/src/bin/server.ts`
+
+**実装詳細**:
+```typescript
+const isDocker = process.env.IS_DOCKER === 'true';
+const host = isDocker ? '0.0.0.0' : 'localhost';
+```
+
+#### 6. .mcp.json - Docker MCP 設定追加
+
+**追加内容**:
+- 2つのMCPサーバ構成を定義:
+  - `search-docs`: Docker版（本番用）
+  - `search-docs-local`: ローカル開発版
+
+**ファイル**: `.mcp.json`
+
+### 技術的な学び
+
+#### IPv4/IPv6 バインディングの挙動
+
+- **`localhost` の解決**:
+  - Linux/Docker: IPv6 (::1) が優先される場合がある
+  - macOS: IPv4 (127.0.0.1) と IPv6 (::1) の両方に解決されることが多い
+
+- **Express の listen()**:
+  - `app.listen(port, 'localhost')`: OSの名前解決に依存
+  - Docker 内では IPv6 のみにバインドされる可能性
+  
+- **Node.js fetch の接続**:
+  - 実装依存で IPv4 を優先する場合がある
+  - DNS解決結果と異なるプロトコルで接続して失敗
+
+- **解決策**:
+  - Docker 内: `0.0.0.0` で IPv4/IPv6 両方にバインド
+  - ホスト: `localhost` でセキュリティを維持
+
+#### Python の except 構文の落とし穴
+
+- `except:` は `SystemExit`, `KeyboardInterrupt` も含むすべての例外をキャッチ
+- `exit(0)` の成功終了も例外として扱われ、意図しない動作に
+- ベストプラクティス: `except Exception:` を使用
+
+### 影響範囲
+
+これらの修正により、Docker MCP サーバが正常に動作するようになりました:
+
+1. ヘルスチェックが正常に機能
+2. Python依存関係が正しく解決
+3. Docker内でのネットワーク通信が安定
+4. セキュリティを維持しながら環境間の互換性を確保
+
+### 次のステップ
+
+- [ ] Docker Compose での共有 Embedding サーバ構成のテスト
+- [ ] Docker MCP Catalog への登録準備
+- [ ] CI/CD パイプライン構築
+
+## 2026-04-15 追加修正: ファイルウォッチャーのDocker対応
+
+### バグ6: @parcel/watcher - Docker bind mountでinotifyイベント非伝播
+
+**問題**:
+- @parcel/watcher 2.5.1ではDocker bind mountのマウントポイント直下をsubscribeするとinotifyイベントが伝播しなかった
+- Docker環境でファイル変更を検知できず、自動インデックス更新が動作しなかった
+
+**原因**:
+- @parcel/watcher 2.5.1のLinux inotify実装がbind mountのマウントポイント直下を正しく監視できない既知のバグ
+
+**修正**:
+- @parcel/watcher 2.5.1 → 2.5.6 に更新
+- 2.5.6でDockerボリュームマウントのinotifyイベント伝播が修正された
+
+**影響範囲**:
+- `packages/server/package.json` の依存関係更新
+- Docker MCP サーバモードでのファイル監視機能の正常化
+
+### バグ7: file-watcher.ts - extglobパターンによるイベント消失
+
+**問題**:
+- ignoreオプションに `**/*.!(md)` / `**/!(*.md)` といったextglobパターンを指定すると、picomatchがC++ regexに変換する際に極端に遅延
+- Docker環境でファイル変更イベントがタイムアウトし、事実上イベントが届かない状態になっていた
+- ローカル環境では発生しないがDocker環境で顕著に現れる（I/Oレイテンシの差）
+
+**原因**:
+- picomatchのextglobサポートがC++側のregex実装と組み合わさったときのパフォーマンス劣化
+- `!(pattern)` 否定パターンの複雑度が高い
+- Docker bind mount環境では元々I/Oレイテンシが高く、regex評価の遅延が致命的に
+
+**修正**:
+- ignoreオプションからextglobパターン（`**/*.!(md)`, `**/!(*.md)`）を削除
+- `.md`ファイルのフィルタリングは既存の `shouldProcessFile()` メソッドに委譲
+  - `shouldProcessFile()` は既に拡張子チェックを実装済み
+  - ignoreとの役割分担を明確化: ignore=ディレクトリ除外、shouldProcessFile=ファイル種別フィルタ
+
+**実装詳細**:
+```typescript
+// 修正前
+const ignorePatterns = [
+  ...DEFAULT_EXCLUDE_PATTERNS,
+  '**/*.!(md)',      // .md以外を除外
+  '**/!(*.md)',      // 別形式の否定パターン
+];
+
+// 修正後
+const ignorePatterns = [
+  ...DEFAULT_EXCLUDE_PATTERNS,
+  // extglobパターンは削除
+  // .mdフィルタはshouldProcessFile()に委譲
+];
+```
+
+**影響範囲**:
+- `packages/server/src/discovery/file-watcher.ts`
+- Docker MCP サーバモードでのファイル監視機能の正常化
+- ローカル環境では既存の挙動を維持（shouldProcessFile()が同じフィルタを実行）
+
+**技術的な学び**:
+- picomatchのextglobパターンはJavaScript環境では高速だが、C++実装（@parcel/watcher）との連携ではボトルネックになる可能性
+- Docker bind mount環境では正規表現評価のような軽微な遅延も積み重なって顕在化する
+- 責務分離: ignoreはパス除外、拡張子フィルタはアプリケーションロジックで行うべき

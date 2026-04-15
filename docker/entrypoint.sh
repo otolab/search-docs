@@ -35,7 +35,7 @@ import urllib.request
 try:
     urllib.request.urlopen('${url}', timeout=1)
     exit(0)
-except:
+except Exception:
     exit(1)
 " 2>/dev/null
 }

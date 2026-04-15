@@ -71,7 +71,8 @@ async function main() {
     const dockerEmbeddingUrl = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL;
     const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
     const dockerVectorDimension = process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
-    if (dockerEmbeddingUrl) {
+    // EMBEDDING_URL が明示設定されている場合はそちらを優先（entrypoint.shの検出結果）
+    if (dockerEmbeddingUrl && !envEmbeddingUrl) {
       if (config.indexing.embeddingUrl && config.indexing.embeddingUrl !== dockerEmbeddingUrl) {
         console.warn(
           `[Docker] Config embeddingUrl "${config.indexing.embeddingUrl}" ` +
@@ -156,10 +157,13 @@ async function main() {
     // SearchDocsサーバ初期化
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
 
+    // Docker環境ではIPv4/IPv6両方でリッスン（localhostだとIPv6のみになる場合がある）
+    const serverHost = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL ? '0.0.0.0' : config.server.host;
+
     // JSON-RPCサーバ初期化
     const jsonRpcServer = new JsonRpcServer(
       searchDocsServer,
-      config.server.host,
+      serverHost,
       config.server.port
     );
 
