@@ -279,22 +279,29 @@ export class DBEngine extends EventEmitter {
     console.log('[DBEngine.connect] pythonScript:', pythonScript);
     console.log('[DBEngine.connect] pythonScript exists:', fs.existsSync(pythonScript));
 
-    // pyproject.tomlの存在確認（パッケージルート）
-    const pyprojectPath = path.join(packageRoot, 'pyproject.toml');
-    console.log('[DBEngine.connect] Checking pyproject.toml at:', pyprojectPath);
-    console.log('[DBEngine.connect] pyproject.toml exists:', fs.existsSync(pyprojectPath));
+    // Docker環境ではpythonコマンドを直接使用（uv/.venv不要）
+    const isDocker = process.env.IS_DOCKER === 'true';
 
-    if (!fs.existsSync(pyprojectPath)) {
-      console.error('[DBEngine.connect] ERROR: pyproject.toml not found at:', pyprojectPath);
-      throw new Error(
-        'pyproject.toml not found. Please ensure the Python environment is properly set up with uv.'
-      );
+    if (!isDocker) {
+      // pyproject.tomlの存在確認（パッケージルート、uv実行に必要）
+      const pyprojectPath = path.join(packageRoot, 'pyproject.toml');
+      console.log('[DBEngine.connect] Checking pyproject.toml at:', pyprojectPath);
+      console.log('[DBEngine.connect] pyproject.toml exists:', fs.existsSync(pyprojectPath));
+
+      if (!fs.existsSync(pyprojectPath)) {
+        console.error('[DBEngine.connect] ERROR: pyproject.toml not found at:', pyprojectPath);
+        throw new Error(
+          'pyproject.toml not found. Please ensure the Python environment is properly set up with uv.'
+        );
+      }
+      console.log('[DBEngine.connect] pyproject.toml found OK');
     }
-    console.log('[DBEngine.connect] pyproject.toml found OK');
 
-    // uv --project でPythonを実行（パッケージルートを指定）
-    const pythonCmd = 'uv';
-    const pythonArgs = ['--project', packageRoot, 'run', 'python', pythonScript];
+    // Python実行コマンドの構築
+    const pythonCmd = isDocker ? 'python' : 'uv';
+    const pythonArgs = isDocker
+      ? [pythonScript]
+      : ['--project', packageRoot, 'run', 'python', pythonScript];
 
     // Embedding URLオプションを追加
     if (this.options.embeddingUrl) {

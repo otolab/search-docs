@@ -1,36 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 
-export PYTHONPATH="/app/packages/db-engine/src/python:${PYTHONPATH:-}"
+# Python scripts パス（pnpm deploy + シンボリックリンク経由）
+PYTHON_DIR="/app/python"
+export PYTHONPATH="${PYTHON_DIR}:${PYTHONPATH:-}"
 
-# Python実行ヘルパー（exec付き、フォアグラウンド用）
+# Docker内では python コマンドに統一（.venv/uv 不要）
 run_python() {
-  if [ -x /app/.venv/bin/python ]; then
-    exec /app/.venv/bin/python "$@"
-  else
-    exec uv --project /app run python "$@"
-  fi
+  exec python "$@"
 }
 
-# Python実行ヘルパー（exec無し、バックグラウンド用）
 start_python() {
-  if [ -x /app/.venv/bin/python ]; then
-    /app/.venv/bin/python "$@" &
-  else
-    uv --project /app run python "$@" &
-  fi
+  python "$@" &
 }
 
 # Health check（python使用、curl不要）
 check_health() {
   local url="$1"
-  local python_cmd
-  if [ -x /app/.venv/bin/python ]; then
-    python_cmd="/app/.venv/bin/python"
-  else
-    python_cmd="python"
-  fi
-  $python_cmd -c "
+  python -c "
 import urllib.request
 try:
     urllib.request.urlopen('${url}', timeout=1)
@@ -90,7 +77,7 @@ detect_embedding_server() {
 case "${1:-}" in
   --mode=embedding-server)
     run_python \
-      packages/db-engine/src/python/embedding_server.py \
+      "${PYTHON_DIR}/embedding_server.py" \
       --port="${EMBEDDING_SERVER_PORT:-8080}"
     ;;
   *)
@@ -105,7 +92,7 @@ case "${1:-}" in
       # ローカルで起動
       echo "No external embedding server found, starting local..." >&2
       start_python \
-        packages/db-engine/src/python/embedding_server.py \
+        "${PYTHON_DIR}/embedding_server.py" \
         --port="${EMBEDDING_PORT}"
       EMBEDDING_PID=$!
 
@@ -118,6 +105,6 @@ case "${1:-}" in
       export EMBEDDING_URL="http://localhost:${EMBEDDING_PORT}"
     fi
 
-    exec node packages/mcp-server/dist/server.js "$@"
+    exec node dist/server.js "$@"
     ;;
 esac
