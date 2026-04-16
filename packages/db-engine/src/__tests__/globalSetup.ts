@@ -42,6 +42,7 @@ export async function setup() {
       '--project', packageRoot,
       'run', 'python', script,
       '--port', EMBEDDING_PORT.toString(),
+      '--runtime', 'torch',
     ],
     {
       stdio: ['ignore', 'pipe', 'pipe'],

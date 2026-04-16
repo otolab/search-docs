@@ -23,13 +23,6 @@ import numpy as np
 import duckdb
 from pathlib import Path
 
-# PyTorch（MPSキャッシュクリア用）
-try:
-    import torch
-    TORCH_AVAILABLE = torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False
-except ImportError:
-    TORCH_AVAILABLE = False
-
 # パフォーマンス監視用
 try:
     import psutil
@@ -284,17 +277,6 @@ class SearchDocsWorker:
             sys.stderr.write(f"    {name}: {count}\n")
 
         sys.stderr.flush()
-
-    def clear_gpu_cache(self):
-        """GPU（MPS）キャッシュをクリア"""
-        if TORCH_AVAILABLE:
-            try:
-                torch.mps.empty_cache()
-                # sys.stderr.write("[MemoryOptimization] MPS cache cleared\n")
-                # sys.stderr.flush()
-            except Exception as e:
-                sys.stderr.write(f"[MemoryOptimization] Warning: Failed to clear MPS cache: {e}\n")
-                sys.stderr.flush()
 
     def _get_embedding_url(self) -> str:
         """Embedding URLを取得（CLI引数 > 環境変数 > デフォルト）"""
@@ -687,38 +669,36 @@ class SearchDocsWorker:
         import urllib.request as _urllib_request
         import urllib.error as _urllib_error
 
+        # /health を試す（自前サーバ）
         health_url = f"{self.embedding_url.rstrip('/')}/health"
+        model_name = 'unknown'
         try:
             req = _urllib_request.Request(health_url, method='GET')
             with _urllib_request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode('utf-8'))
-                if data.get('status') != 'ok':
-                    raise RuntimeError(f"Embedding server returned status: {data.get('status')}")
                 model_name = data.get('model', 'unknown')
-                self.vector_dimension = data.get('vectorDimension')
-                if not self.vector_dimension:
-                    raise RuntimeError("Embedding server did not return vectorDimension")
+                server_dim = data.get('vectorDimension')
+                if server_dim:
+                    self.vector_dimension = server_dim
 
             sys.stderr.write(
                 f"[InitModel] Connected to embedding server at {self.embedding_url}\n"
                 f"  Model: {model_name}, Dimension: {self.vector_dimension}\n"
             )
-            sys.stderr.flush()
-
-            self.embedding_model = create_embedding_model(self.embedding_url, self.vector_dimension)
-            self.init_tables()
-
-            return {"success": True, "model_name": model_name, "dimension": self.vector_dimension}
-
-        except (_urllib_error.URLError, OSError) as e:
-            error_msg = (
-                f"Failed to connect to embedding server at {self.embedding_url}: {e}\n"
-                f"Ensure the embedding server is running before starting the worker.\n"
-                f"  python packages/db-engine/src/python/embedding_server.py --port=8080"
+        except (_urllib_error.URLError, OSError):
+            # 外部 Ollama の場合は /health がない → 設定値を使う
+            sys.stderr.write(
+                f"[InitModel] /health not available at {self.embedding_url}, "
+                f"using configured dimension: {self.vector_dimension}\n"
             )
-            sys.stderr.write(f"[InitModel] {error_msg}\n")
-            sys.stderr.flush()
-            raise RuntimeError(error_msg)
+        sys.stderr.flush()
+
+        self.embedding_model = create_embedding_model(
+            self.embedding_url, self.vector_dimension, model=model_name
+        )
+        self.init_tables()
+
+        return {"success": True, "model_name": model_name, "dimension": self.vector_dimension}
 
     def _create_token_aware_batches(
         self,
@@ -831,9 +811,8 @@ class SearchDocsWorker:
                 for idx, vector in zip(batch_indices, vectors):
                     sections[idx]["vector"] = vector
 
-                # バッチごとにGCとMPSキャッシュクリア（大きなベクトルオブジェクトとGPUメモリを即座に解放）
+                # バッチごとにGC（大きなベクトルオブジェクトを即座に解放）
                 gc.collect()
-                self.clear_gpu_cache()
 
             # スキップされたセクションの処理
             if skipped_indices:
@@ -864,12 +843,11 @@ class SearchDocsWorker:
         # スレッド情報（table.add後）
         self.log_thread_info("AFTER table.add()")
 
-        # メモリリーク対策: GCとMPSキャッシュクリアを明示的に実行（1ファイルごと）
-        # LanceDB内部の一時オブジェクトとGPUメモリを解放
+        # メモリリーク対策: GCを明示的に実行（1ファイルごと）
+        # LanceDB内部の一時オブジェクトを解放
         # 世代2（最古の世代）までスキャンして完全にGC
         count = len(sections)
         gc.collect(2)
-        self.clear_gpu_cache()
 
         # 呼び出し回数をカウント
         self._add_count += 1
@@ -881,7 +859,6 @@ class SearchDocsWorker:
                 sys.stderr.flush()
                 table.optimize.compact_files()
                 gc.collect(2)  # compact後もGC（全世代）
-                self.clear_gpu_cache()  # MPSキャッシュもクリア
                 sys.stderr.write(f"Compaction completed\n")
                 sys.stderr.flush()
             except Exception as e:

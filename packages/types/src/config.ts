@@ -126,7 +126,7 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     minTokensForSplit: 100,
     maxDepth: 3,
     vectorDimension: 256,
-    embeddingModel: 'cl-nagoya/ruri-v3-30m',
+    embeddingModel: 'ruri-v3-30m-onnx',
     embeddingUrl: 'http://localhost:8080',
   },
   search: {

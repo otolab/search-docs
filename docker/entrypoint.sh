@@ -78,7 +78,10 @@ case "${1:-}" in
   --mode=embedding-server)
     run_python \
       "${PYTHON_DIR}/embedding_server.py" \
-      --port="${EMBEDDING_SERVER_PORT:-8080}"
+      --port="${EMBEDDING_SERVER_PORT:-8080}" \
+      --runtime="${EMBEDDING_RUNTIME:-onnx}" \
+      --model-path="${SEARCH_DOCS_DOCKER_MODEL_PATH:-/app/.cache/models/ruri-v3-30m-onnx}" \
+      --dimension="${SEARCH_DOCS_DOCKER_VECTOR_DIMENSION:-256}"
     ;;
   *)
     # MCPサーバモード
@@ -93,7 +96,10 @@ case "${1:-}" in
       echo "No external embedding server found, starting local..." >&2
       start_python \
         "${PYTHON_DIR}/embedding_server.py" \
-        --port="${EMBEDDING_PORT}"
+        --port="${EMBEDDING_PORT}" \
+        --runtime="${EMBEDDING_RUNTIME:-onnx}" \
+        --model-path="${SEARCH_DOCS_DOCKER_MODEL_PATH:-/app/.cache/models/ruri-v3-30m-onnx}" \
+        --dimension="${SEARCH_DOCS_DOCKER_VECTOR_DIMENSION:-256}"
       EMBEDDING_PID=$!
 
       if ! wait_for_embedding "http://localhost:${EMBEDDING_PORT}"; then

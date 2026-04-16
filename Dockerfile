@@ -9,29 +9,38 @@
 # bookwormで統一（node:22-slim のGLIBCバージョンと合わせる）
 FROM python:3.12-slim-bookworm AS python-deps
 
+ARG RUNTIME_TYPE=cpu
+
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# torch CPU-only を先にインストール（CUDA不要、サイズ大幅削減）
-RUN uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu
+# ONNX Runtime（CPU or GPU）
+RUN if [ "$RUNTIME_TYPE" = "gpu" ]; then \
+      uv pip install --system "onnxruntime-gpu>=1.20.0"; \
+    else \
+      uv pip install --system "onnxruntime>=1.20.0"; \
+    fi
 
 # Python依存関係をシステムに直接インストール（.venv を作らない）
-# pytest等のテスト依存は除外
+# torch/sentence-transformers は不要（ONNX Runtime + transformers tokenizer のみ）
 RUN uv pip install --system \
     "lancedb==0.25.3" \
     "pyarrow==22.0.0" \
     "pandas==2.3.3" \
     "numpy==2.3.5" \
-    "sentence-transformers==5.1.2" \
+    "transformers>=4.48.0" \
+    "huggingface-hub>=0.27.0" \
     "protobuf==6.33.1" \
     "sentencepiece==0.2.1" \
     "psutil==7.1.3" \
     "duckdb==1.4.2"
 
-# Embeddingモデルを事前ダウンロード（ビルド時にイメージに焼き込み）
-ENV HF_HOME=/app/.cache/huggingface
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('cl-nagoya/ruri-v3-30m')"
+# ONNXモデルを事前ダウンロード（ビルド時にイメージに焼き込み）
+RUN python -c "from huggingface_hub import snapshot_download; \
+    snapshot_download('sirasagi62/ruri-v3-30m-ONNX', \
+    local_dir='/app/.cache/models/ruri-v3-30m-onnx', \
+    allow_patterns=['onnx/model.onnx', '*.json', '*.txt', '*.model'])"
 
 # ============================================================
 # Stage 2: Node.jsビルド + pnpm deploy
@@ -90,7 +99,7 @@ COPY --from=python-deps --chown=appuser:appgroup \
     /usr/local/lib/python3.12/site-packages/ \
     /usr/local/lib/python3.12/site-packages/
 
-# HFモデルキャッシュ
+# ONNXモデルキャッシュ
 COPY --from=python-deps --chown=appuser:appgroup /app/.cache /app/.cache
 
 # pnpm deploy 出力（node_modules + dist + Python scripts）
@@ -107,13 +116,13 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV TOKENIZERS_PARALLELISM=false
 ENV NODE_ENV=production
-ENV HF_HOME=/app/.cache/huggingface
 ENV IS_DOCKER=true
 
 # Docker設定固定: イメージ内蔵モデルに強制
-ENV SEARCH_DOCS_DOCKER_EMBEDDING_MODEL=cl-nagoya/ruri-v3-30m
+ENV SEARCH_DOCS_DOCKER_EMBEDDING_MODEL=ruri-v3-30m-onnx
 ENV SEARCH_DOCS_DOCKER_VECTOR_DIMENSION=256
 ENV SEARCH_DOCS_DOCKER_EMBEDDING_URL=http://localhost:8080
+ENV SEARCH_DOCS_DOCKER_MODEL_PATH=/app/.cache/models/ruri-v3-30m-onnx
 
 # オフラインモード: モデルは焼き込み済み、ネットワーク不要
 ENV HF_HUB_OFFLINE=1
