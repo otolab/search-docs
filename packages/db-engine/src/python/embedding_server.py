@@ -28,6 +28,8 @@ class EmbeddingRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/health':
             self._handle_health()
+        elif self.path == '/api/tags':
+            self._handle_tags()
         else:
             self._send_json(404, {"error": "Not found"})
 
@@ -45,6 +47,19 @@ class EmbeddingRequestHandler(BaseHTTPRequestHandler):
             "status": "ok",
             "model": self.model.model_name,
             "vectorDimension": self.model.dimension,
+        })
+
+    def _handle_tags(self):
+        """Ollama互換 /api/tags - 利用可能なモデル一覧"""
+        self._send_json(200, {
+            "models": [{
+                "name": self.model.model_name,
+                "model": self.model.model_name,
+                "details": {
+                    "family": "embedding",
+                    "parameter_size": "30M",
+                },
+            }],
         })
 
     def _handle_encode(self):

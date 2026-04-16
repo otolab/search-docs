@@ -14,8 +14,8 @@ start_python() {
   python "$@" &
 }
 
-# Health check（python使用、curl不要）
-check_health() {
+# Ollama API互換チェック（/api/tags で確認、python使用・curl不要）
+check_api() {
   local url="$1"
   python -c "
 import urllib.request
@@ -34,7 +34,7 @@ wait_for_embedding() {
   local elapsed=0
   echo "Waiting for embedding server at ${url}..." >&2
   while [ $elapsed -lt $max_wait ]; do
-    if check_health "${url}/health"; then
+    if check_api "${url}/api/tags"; then
       echo "Embedding server is ready" >&2
       return 0
     fi
@@ -45,13 +45,13 @@ wait_for_embedding() {
   return 1
 }
 
-# Embedding server の検出
+# Embedding server の検出（Ollama API互換: /api/tags で確認）
 detect_embedding_server() {
   local port="${EMBEDDING_SERVER_PORT:-24281}"
 
   # 1. EMBEDDING_URL が明示設定されている場合
   if [ -n "${EMBEDDING_URL:-}" ]; then
-    if check_health "${EMBEDDING_URL}/health"; then
+    if check_api "${EMBEDDING_URL}/api/tags"; then
       echo "${EMBEDDING_URL}"
       return 0
     fi
@@ -59,13 +59,19 @@ detect_embedding_server() {
   fi
 
   # 2. Docker network内のサービス名
-  if check_health "http://search-docs-embedding:8080/health"; then
+  if check_api "http://search-docs-embedding:8080/api/tags"; then
     echo "http://search-docs-embedding:8080"
     return 0
   fi
 
-  # 3. ホスト側サービス
-  if check_health "http://host.docker.internal:${port}/health"; then
+  # 3. ホスト側Ollamaデフォルトポート
+  if check_api "http://host.docker.internal:11434/api/tags"; then
+    echo "http://host.docker.internal:11434"
+    return 0
+  fi
+
+  # 4. ホスト側自前サーバ
+  if check_api "http://host.docker.internal:${port}/api/tags"; then
     echo "http://host.docker.internal:${port}"
     return 0
   fi

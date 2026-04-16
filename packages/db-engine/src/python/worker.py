@@ -223,11 +223,6 @@ class SearchDocsWorker:
         Path(db_path).mkdir(parents=True, exist_ok=True)
         self.db = lancedb.connect(db_path)
 
-        # MPS情報をログ出力
-        if TORCH_AVAILABLE:
-            sys.stderr.write("[MemoryOptimization] PyTorch MPS available, will clear cache after batches\n")
-            sys.stderr.flush()
-
         # Embedding URLを取得（initModel()でサーバに接続）
         self.embedding_url = self._get_embedding_url()
         self.embedding_model = None  # initModel()で作成

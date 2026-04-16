@@ -33,7 +33,9 @@ export async function setup() {
     path.dirname(fileURLToPath(import.meta.url)),
     '../..',
   );
+  const projectRoot = path.resolve(packageRoot, '../..');
   const script = path.join(packageRoot, 'src/python/embedding_server.py');
+  const modelPath = path.join(projectRoot, '.cache/models/ruri-v3-30m-onnx');
 
   console.log(`Starting embedding server on port ${EMBEDDING_PORT}...`);
   embeddingServer = spawn(
@@ -42,7 +44,8 @@ export async function setup() {
       '--project', packageRoot,
       'run', 'python', script,
       '--port', EMBEDDING_PORT.toString(),
-      '--runtime', 'torch',
+      '--runtime', 'onnx',
+      '--model-path', modelPath,
     ],
     {
       stdio: ['ignore', 'pipe', 'pipe'],
