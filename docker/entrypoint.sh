@@ -74,6 +74,35 @@ detect_embedding_server() {
   return 1
 }
 
+# Embedding server を起動する共通関数
+start_embedding_server() {
+  local port="${1:-8080}"
+
+  if detected_url=$(detect_embedding_server); then
+    echo "Using external embedding server: ${detected_url}" >&2
+    export EMBEDDING_URL="${detected_url}"
+    return 0
+  fi
+
+  # ローカルで起動
+  echo "No external embedding server found, starting local..." >&2
+  start_python \
+    "${PYTHON_DIR}/embedding_server.py" \
+    --port="${port}" \
+    --runtime="${EMBEDDING_RUNTIME:-onnx}" \
+    --model-path="${SEARCH_DOCS_DOCKER_MODEL_PATH:-/app/.cache/models/ruri-v3-30m-onnx}" \
+    --dimension="${SEARCH_DOCS_DOCKER_VECTOR_DIMENSION:-256}"
+  EMBEDDING_PID=$!
+
+  if ! wait_for_embedding "http://localhost:${port}"; then
+    kill "${EMBEDDING_PID}" 2>/dev/null || true
+    return 1
+  fi
+
+  export EMBEDDING_URL="http://localhost:${port}"
+  return 0
+}
+
 case "${1:-}" in
   --mode=embedding-server)
     run_python \
@@ -85,40 +114,37 @@ case "${1:-}" in
     ;;
   *)
     # MCPサーバモード
-
-    # Read-onlyモード: embedding server 不要（検索のみ）
-    if [ "${READ_ONLY:-}" = "true" ]; then
-      echo "Starting in READ-ONLY mode (no embedding server)" >&2
-      exec node dist/server.js "$@"
-    fi
-
-    # 通常モード: embedding server が必要
     EMBEDDING_PORT="${EMBEDDING_SERVER_PORT:-8080}"
+    PIDS_TO_KILL=""
 
-    # Embedding server を検出
-    if detected_url=$(detect_embedding_server); then
-      echo "Using external embedding server: ${detected_url}" >&2
-      export EMBEDDING_URL="${detected_url}"
-    else
-      # ローカルで起動
-      echo "No external embedding server found, starting local..." >&2
-      start_python \
-        "${PYTHON_DIR}/embedding_server.py" \
-        --port="${EMBEDDING_PORT}" \
-        --runtime="${EMBEDDING_RUNTIME:-onnx}" \
-        --model-path="${SEARCH_DOCS_DOCKER_MODEL_PATH:-/app/.cache/models/ruri-v3-30m-onnx}" \
-        --dimension="${SEARCH_DOCS_DOCKER_VECTOR_DIMENSION:-256}"
-      EMBEDDING_PID=$!
+    cleanup() {
+      for pid in $PIDS_TO_KILL; do
+        kill "$pid" 2>/dev/null || true
+      done
+    }
+    trap cleanup EXIT TERM INT
 
-      if ! wait_for_embedding "http://localhost:${EMBEDDING_PORT}"; then
-        kill "${EMBEDDING_PID}" 2>/dev/null || true
+    # Watcher 起動判定
+    if [ "${ENABLE_WATCHER:-}" = "true" ]; then
+      echo "Starting Watcher process..." >&2
+
+      # Embedding server が必要（Watcher がインデックス更新するため）
+      if ! start_embedding_server "${EMBEDDING_PORT}"; then
+        echo "ERROR: Failed to start embedding server for Watcher" >&2
         exit 1
       fi
+      if [ -n "${EMBEDDING_PID:-}" ]; then
+        PIDS_TO_KILL="${PIDS_TO_KILL} ${EMBEDDING_PID}"
+      fi
 
-      trap "kill ${EMBEDDING_PID} 2>/dev/null || true" EXIT TERM INT
-      export EMBEDDING_URL="http://localhost:${EMBEDDING_PORT}"
+      # Watcher をバックグラウンドで起動
+      node dist/bin/watcher.js &
+      WATCHER_PID=$!
+      PIDS_TO_KILL="${PIDS_TO_KILL} ${WATCHER_PID}"
+      echo "Watcher started (PID: ${WATCHER_PID})" >&2
     fi
 
+    # MCP サーバ起動（常に read-only）
     exec node dist/server.js "$@"
     ;;
 esac
