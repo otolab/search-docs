@@ -145,6 +145,7 @@ case "${1:-}" in
     fi
 
     # MCP サーバ起動（常に read-only）
+    export READ_ONLY=true
     exec node dist/server.js "$@"
     ;;
 esac
