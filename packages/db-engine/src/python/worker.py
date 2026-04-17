@@ -223,6 +223,7 @@ class SearchDocsWorker:
     def __init__(self, db_path: str = "./.search-docs/index", read_only: bool = False):
         """search-docs LanceDBワーカーの初期化"""
         Path(db_path).mkdir(parents=True, exist_ok=True)
+        self.db_path = db_path
         self.read_only = read_only
         connect_kwargs = {}
         if read_only:
@@ -1401,15 +1402,20 @@ class SearchDocsWorker:
         return {"success": True, "updated_at": now.isoformat()}
 
     def get_writer_heartbeat(self) -> Dict[str, Any]:
-        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        # 他プロセスの書き込みを確実に反映するため、新しいDB接続で読み取る
+        fresh_db = lancedb.connect(self.db_path)
+        table = fresh_db.open_table(WRITER_HEARTBEAT_TABLE)
         results = table.search().limit(1).to_list()
         if len(results) == 0:
             return {"exists": False}
         row = results[0]
-        now = pd.Timestamp.now(tz='UTC')
+        now = datetime.now(tz=None)
         updated_at = row["updated_at"]
-        if updated_at.tzinfo is None:
-            updated_at = updated_at.tz_localize('UTC')
+        # datetime.datetime または pd.Timestamp のどちらが来ても対応
+        if isinstance(updated_at, pd.Timestamp):
+            updated_at = updated_at.to_pydatetime().replace(tzinfo=None)
+        elif hasattr(updated_at, 'tzinfo') and updated_at.tzinfo is not None:
+            updated_at = updated_at.replace(tzinfo=None)
         age_seconds = (now - updated_at).total_seconds()
         return {
             "exists": True,
