@@ -52,8 +52,10 @@ from embedding import create_embedding_model
 from schemas import (
     get_sections_schema,
     get_index_requests_schema,
+    get_writer_heartbeat_schema,
     SECTIONS_TABLE,
     INDEX_REQUESTS_TABLE,
+    WRITER_HEARTBEAT_TABLE,
     validate_section,
     validate_index_request
 )
@@ -354,6 +356,16 @@ class SearchDocsWorker:
                     sys.stderr.write(f"Warning: Table {INDEX_REQUESTS_TABLE} already exists, skipping creation\n")
                     sys.stderr.flush()
 
+            # WriterHeartbeat テーブル
+            if WRITER_HEARTBEAT_TABLE not in existing_tables:
+                try:
+                    self.db.create_table(WRITER_HEARTBEAT_TABLE, schema=get_writer_heartbeat_schema())
+                except ValueError as e:
+                    if "already exists" not in str(e):
+                        raise
+                    sys.stderr.write(f"Warning: Table {WRITER_HEARTBEAT_TABLE} already exists, skipping creation\n")
+                    sys.stderr.flush()
+
             # IndexRequestsテーブルのインデックスを作成
             try:
                 index_requests_table = self.db.open_table(INDEX_REQUESTS_TABLE)
@@ -639,6 +651,14 @@ class SearchDocsWorker:
                 result = self.update_many_index_requests(params)
             elif method == "getPathsWithStatus":
                 result = self.get_paths_with_status(params)
+            elif method == "claimWriter":
+                result = self.claim_writer(params)
+            elif method == "updateHeartbeat":
+                result = self.update_heartbeat(params)
+            elif method == "getWriterHeartbeat":
+                result = self.get_writer_heartbeat()
+            elif method == "releaseWriter":
+                result = self.release_writer(params)
             else:
                 return {
                     "jsonrpc": "2.0",
@@ -1348,6 +1368,69 @@ class SearchDocsWorker:
         paths = df["document_path"].unique().tolist()
 
         return {"paths": paths}
+
+    def claim_writer(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        writer_id = params["writer_id"]
+        host = params["host"]
+        pid = params["pid"]
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        now = pd.Timestamp.now(tz='UTC').floor('ms')
+        table.add([{
+            "writer_id": writer_id,
+            "host": host,
+            "pid": np.int32(pid),
+            "state": "claiming",
+            "updated_at": now,
+        }], mode='overwrite')
+        return {"success": True, "writer_id": writer_id, "state": "claiming"}
+
+    def update_heartbeat(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        writer_id = params["writer_id"]
+        host = params["host"]
+        pid = params["pid"]
+        state = params.get("state", "watching")
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        now = pd.Timestamp.now(tz='UTC').floor('ms')
+        table.add([{
+            "writer_id": writer_id,
+            "host": host,
+            "pid": np.int32(pid),
+            "state": state,
+            "updated_at": now,
+        }], mode='overwrite')
+        return {"success": True, "updated_at": now.isoformat()}
+
+    def get_writer_heartbeat(self) -> Dict[str, Any]:
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        results = table.search().limit(1).to_list()
+        if len(results) == 0:
+            return {"exists": False}
+        row = results[0]
+        now = pd.Timestamp.now(tz='UTC')
+        updated_at = row["updated_at"]
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.tz_localize('UTC')
+        age_seconds = (now - updated_at).total_seconds()
+        return {
+            "exists": True,
+            "heartbeat": {
+                "writer_id": row["writer_id"],
+                "host": row["host"],
+                "pid": int(row["pid"]),
+                "state": row["state"],
+                "updated_at": updated_at.isoformat(),
+                "age_seconds": age_seconds,
+            }
+        }
+
+    def release_writer(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        writer_id = params["writer_id"]
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        results = table.search().limit(1).to_list()
+        if len(results) > 0 and results[0]["writer_id"] != writer_id:
+            return {"success": False, "reason": "not_current_master"}
+        table.delete("writer_id IS NOT NULL")
+        return {"success": True}
 
 
 def main():

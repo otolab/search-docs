@@ -53,12 +53,28 @@ def get_index_requests_schema() -> pa.Schema:
     ])
 
 
+def get_writer_heartbeat_schema() -> pa.Schema:
+    """WriterHeartbeatテーブルのスキーマを返す
+
+    Returns:
+        WriterHeartbeatテーブルのスキーマ
+    """
+    return pa.schema([
+        pa.field("writer_id", pa.string()),
+        pa.field("host", pa.string()),
+        pa.field("pid", pa.int32()),
+        pa.field("state", pa.string()),
+        pa.field("updated_at", pa.timestamp('ms')),
+    ])
+
+
 # テーブル名の定義
 SECTIONS_TABLE = "sections"
 INDEX_REQUESTS_TABLE = "index_requests"
+WRITER_HEARTBEAT_TABLE = "writer_heartbeat"
 
 # 全テーブルのリスト
-ALL_TABLES = [SECTIONS_TABLE, INDEX_REQUESTS_TABLE]
+ALL_TABLES = [SECTIONS_TABLE, INDEX_REQUESTS_TABLE, WRITER_HEARTBEAT_TABLE]
 
 
 def validate_section(section_data: dict) -> None:

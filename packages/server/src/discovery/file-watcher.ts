@@ -41,6 +41,10 @@ export class FileWatcher extends EventEmitter {
   /**
    * 監視を開始
    */
+  isRunning(): boolean {
+    return this.subscription !== null;
+  }
+
   async start(): Promise<void> {
     // ignoreパターンの構築
     const ignorePatterns = this.buildIgnorePatterns();

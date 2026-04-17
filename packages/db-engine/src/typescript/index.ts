@@ -1149,6 +1149,64 @@ export class DBEngine extends EventEmitter {
     const response = result as { paths: string[] };
     return response.paths;
   }
+
+  // ========================================
+  // Writer Heartbeat操作
+  // ========================================
+
+  /**
+   * Writer mastership を claim
+   */
+  async claimWriter(params: { writerId: string; host: string; pid: number }): Promise<{ success: boolean; writerId: string; state: string }> {
+    return await this.sendRequest('claimWriter', {
+      writer_id: params.writerId,
+      host: params.host,
+      pid: params.pid,
+    }) as { success: boolean; writerId: string; state: string };
+  }
+
+  /**
+   * Heartbeat を更新
+   */
+  async updateHeartbeat(params: { writerId: string; host: string; pid: number; state: string }): Promise<{ success: boolean; updatedAt: string }> {
+    return await this.sendRequest('updateHeartbeat', {
+      writer_id: params.writerId,
+      host: params.host,
+      pid: params.pid,
+      state: params.state,
+    }) as { success: boolean; updatedAt: string };
+  }
+
+  /**
+   * 現在のwriter heartbeat を取得
+   */
+  async getWriterHeartbeat(): Promise<{ exists: boolean; heartbeat?: { writerId: string; host: string; pid: number; state: string; updatedAt: string; ageSeconds: number } }> {
+    const result = await this.sendRequest('getWriterHeartbeat') as { exists: boolean; heartbeat?: { writer_id: string; host: string; pid: number; state: string; updated_at: string; age_seconds: number } };
+    if (!result.exists || !result.heartbeat) {
+      return { exists: false };
+    }
+    const hb = result.heartbeat;
+    return {
+      exists: true,
+      heartbeat: {
+        writerId: hb.writer_id,
+        host: hb.host,
+        pid: hb.pid,
+        state: hb.state,
+        updatedAt: hb.updated_at,
+        ageSeconds: hb.age_seconds,
+      },
+    };
+  }
+
+  /**
+   * Writer mastership を解放
+   */
+  async releaseWriter(params: { writerId: string }): Promise<{ success: boolean }> {
+    return await this.sendRequest('releaseWriter', {
+      writer_id: params.writerId,
+    }) as { success: boolean };
+  }
 }
 
 export default DBEngine;
