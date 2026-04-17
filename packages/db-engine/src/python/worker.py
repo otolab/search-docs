@@ -218,10 +218,14 @@ def _safe_value(value) -> Any:
 
 
 class SearchDocsWorker:
-    def __init__(self, db_path: str = "./.search-docs/index"):
+    def __init__(self, db_path: str = "./.search-docs/index", read_only: bool = False):
         """search-docs LanceDBワーカーの初期化"""
         Path(db_path).mkdir(parents=True, exist_ok=True)
-        self.db = lancedb.connect(db_path)
+        self.read_only = read_only
+        connect_kwargs = {}
+        if read_only:
+            connect_kwargs['read_consistency_interval'] = timedelta(seconds=5)
+        self.db = lancedb.connect(db_path, **connect_kwargs)
 
         # Embedding URLを取得（initModel()でサーバに接続）
         self.embedding_url = self._get_embedding_url()
@@ -247,6 +251,10 @@ class SearchDocsWorker:
         # パフォーマンスロガー
         self.perf_logger = PerformanceLogger(interval=1.0)
         self.perf_logger.start()
+
+        if self.read_only:
+            sys.stderr.write("[Worker] Running in READ-ONLY mode (read_consistency_interval=5s)\n")
+            sys.stderr.flush()
 
     def log_thread_info(self, label: str):
         """スレッド情報をログ出力（デバッグ用）"""
@@ -295,6 +303,15 @@ class SearchDocsWorker:
                 return arg.split('=', 1)[1]
         # デフォルト値
         return "./.search-docs/index"
+
+    @staticmethod
+    def _is_read_only() -> bool:
+        """コマンドライン引数からread_onlyを取得
+
+        Returns:
+            read_onlyフラグ
+        """
+        return '--read-only' in sys.argv[1:]
 
     @staticmethod
     def _get_max_batch_tokens() -> int:
@@ -691,7 +708,8 @@ class SearchDocsWorker:
         self.embedding_model = create_embedding_model(
             self.embedding_url, self.vector_dimension, model=model_name
         )
-        self.init_tables()
+        if not self.read_only:
+            self.init_tables()
 
         return {"success": True, "model_name": model_name, "dimension": self.vector_dimension}
 
@@ -1339,7 +1357,8 @@ def main():
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
 
     db_path = SearchDocsWorker._get_db_path()
-    worker = SearchDocsWorker(db_path=db_path)
+    read_only = SearchDocsWorker._is_read_only()
+    worker = SearchDocsWorker(db_path=db_path, read_only=read_only)
 
     # 標準入力からJSON-RPCリクエストを読み取る
     for line in sys.stdin:

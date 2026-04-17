@@ -70,6 +70,12 @@ export interface DBEngineOptions {
    * @default 30000
    */
   memoryCheckIntervalMs?: number;
+
+  /**
+   * 読み取り専用モード
+   * テーブル作成・インデックス更新をスキップし、検索のみ行う
+   */
+  readOnly?: boolean;
 }
 
 export interface DBEngineStatus {
@@ -199,7 +205,7 @@ export class DBEngine extends EventEmitter {
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'> & Pick<DBEngineOptions, 'readOnly'>;
   private performanceCsvPath: string | null = null;
   private performanceCsvStream: fs.WriteStream | null = null;
   private memoryCheckInterval: NodeJS.Timeout | null = null;
@@ -232,6 +238,7 @@ export class DBEngine extends EventEmitter {
       embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:8080',
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
+      readOnly: options.readOnly,
     };
     this.pythonMaxMemoryMB = options.pythonMaxMemoryMB ?? null;
     this.memoryCheckIntervalMs = options.memoryCheckIntervalMs ?? 30000;
@@ -311,6 +318,11 @@ export class DBEngine extends EventEmitter {
     // maxBatchTokensオプションを追加
     if (this.options.maxBatchTokens !== undefined) {
       pythonArgs.push(`--max-batch-tokens=${this.options.maxBatchTokens}`);
+    }
+
+    // read-onlyオプションを追加
+    if (this.options.readOnly) {
+      pythonArgs.push('--read-only');
     }
 
     // dbPathを絶対パスに解決して追加

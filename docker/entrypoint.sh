@@ -58,19 +58,13 @@ detect_embedding_server() {
     echo "WARNING: EMBEDDING_URL=${EMBEDDING_URL} is set but not responding" >&2
   fi
 
-  # 2. Docker network内のサービス名
+  # 2. Docker network内のサービス名（共有Embeddingサーバ）
   if check_api "http://search-docs-embedding:8080/api/tags"; then
     echo "http://search-docs-embedding:8080"
     return 0
   fi
 
-  # 3. ホスト側Ollamaデフォルトポート
-  if check_api "http://host.docker.internal:11434/api/tags"; then
-    echo "http://host.docker.internal:11434"
-    return 0
-  fi
-
-  # 4. ホスト側自前サーバ
+  # 3. ホスト側自前サーバ
   if check_api "http://host.docker.internal:${port}/api/tags"; then
     echo "http://host.docker.internal:${port}"
     return 0
@@ -91,6 +85,14 @@ case "${1:-}" in
     ;;
   *)
     # MCPサーバモード
+
+    # Read-onlyモード: embedding server 不要（検索のみ）
+    if [ "${READ_ONLY:-}" = "true" ]; then
+      echo "Starting in READ-ONLY mode (no embedding server)" >&2
+      exec node dist/server.js "$@"
+    fi
+
+    # 通常モード: embedding server が必要
     EMBEDDING_PORT="${EMBEDDING_SERVER_PORT:-8080}"
 
     # Embedding server を検出

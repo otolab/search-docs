@@ -101,44 +101,57 @@ async function main() {
       }
     }
 
-    // 1. 既存PIDファイルチェック
-    const existingPid = await readPidFile(projectRoot);
-    if (existingPid && existingPid.pid !== process.pid && isProcessAlive(existingPid.pid)) {
-      throw new Error(
-        `Server is already running for this project.\n` +
-          `  PID: ${existingPid.pid}\n` +
-          `  Port: ${existingPid.port}\n` +
-          `  Started: ${existingPid.startedAt}\n` +
-          `\n` +
-          `To stop the server, kill the process or use: search-docs server stop`
-      );
+    // Read-onlyモード判定（環境変数 or CLI引数）
+    const isReadOnly = process.env.READ_ONLY === 'true' || process.argv.includes('--read-only');
+    if (isReadOnly) {
+      config.server.readOnly = true;
+      config.watcher.enabled = false;
+      config.worker.enabled = false;
+      console.log('[ReadOnly] Running in read-only mode (watcher/worker disabled)');
     }
 
-    // 古いPIDファイルがあれば削除（自分自身のPIDでない場合のみ）
-    if (existingPid && existingPid.pid !== process.pid) {
-      console.log(`Cleaning up stale PID file (previous PID: ${existingPid.pid})`);
-      await deletePidFile(projectRoot);
+    // 1. 既存PIDファイルチェック（read-onlyモードではスキップ）
+    if (!config.server.readOnly) {
+      const existingPid = await readPidFile(projectRoot);
+      if (existingPid && existingPid.pid !== process.pid && isProcessAlive(existingPid.pid)) {
+        throw new Error(
+          `Server is already running for this project.\n` +
+            `  PID: ${existingPid.pid}\n` +
+            `  Port: ${existingPid.port}\n` +
+            `  Started: ${existingPid.startedAt}\n` +
+            `\n` +
+            `To stop the server, kill the process or use: search-docs server stop`
+        );
+      }
+
+      // 古いPIDファイルがあれば削除（自分自身のPIDでない場合のみ）
+      if (existingPid && existingPid.pid !== process.pid) {
+        console.log(`Cleaning up stale PID file (previous PID: ${existingPid.pid})`);
+        await deletePidFile(projectRoot);
+      }
     }
 
-    // 2. PIDファイル作成
+    // 2. PIDファイル作成（read-onlyモードではスキップ）
     // バージョン情報を取得
     const packageJsonPath = path.join(path.dirname(new URL(import.meta.url).pathname), '../../package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version: string };
 
-    const pidFileContent: PidFileContent = {
-      pid: process.pid,
-      startedAt: new Date().toISOString(),
-      projectRoot,
-      projectName: config.project.name,
-      host: config.server.host,
-      port: config.server.port,
-      configPath,
-      version: packageJson.version,
-      nodeVersion: process.version,
-    };
+    if (!config.server.readOnly) {
+      const pidFileContent: PidFileContent = {
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        projectRoot,
+        projectName: config.project.name,
+        host: config.server.host,
+        port: config.server.port,
+        configPath,
+        version: packageJson.version,
+        nodeVersion: process.version,
+      };
 
-    await writePidFile(pidFileContent);
-    console.log(`PID file created (PID: ${process.pid})`);
+      await writePidFile(pidFileContent);
+      console.log(`PID file created (PID: ${process.pid})`);
+    }
 
     // ストレージ初期化
     const storage = new FileStorage({
@@ -152,6 +165,7 @@ async function main() {
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
+      readOnly: config.server.readOnly,
     });
 
     // SearchDocsサーバ初期化
@@ -171,9 +185,11 @@ async function main() {
     const shutdown = async () => {
       console.log('\nShutting down...');
 
-      // PIDファイル削除
-      await deletePidFile(projectRoot);
-      console.log('PID file removed');
+      // PIDファイル削除（read-onlyモードでは作成していないのでスキップ）
+      if (!config.server.readOnly) {
+        await deletePidFile(projectRoot);
+        console.log('PID file removed');
+      }
 
       await jsonRpcServer.stop();
       process.exit(0);

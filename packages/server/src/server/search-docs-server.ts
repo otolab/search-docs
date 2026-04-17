@@ -120,8 +120,8 @@ export class SearchDocsServer {
         console.log('[SearchDocsServer] Performance logging disabled');
       }
 
-      // 起動時にインデックスを同期（バックグラウンドで非同期実行）
-      if (this.startupSyncWorker) {
+      // 起動時にインデックスを同期（バックグラウンドで非同期実行、read-onlyモードではスキップ）
+      if (this.startupSyncWorker && !this.config.server.readOnly) {
         this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
       }
 

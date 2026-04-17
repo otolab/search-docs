@@ -71,6 +71,8 @@ export interface ServerConfig {
   port: number;
   /** プロトコル */
   protocol: 'json-rpc' | 'http';
+  /** 読み取り専用モード（ファイル監視・インデックス更新を無効化） */
+  readOnly?: boolean;
 }
 
 export interface StorageConfig {
