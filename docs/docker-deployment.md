@@ -10,14 +10,14 @@ search-docsは、Docker化されたMCPサーバとして配布・利用できま
 ghcr.io/otolab/search-docs-mcp:<version>
 
   A) MCPサーバモード（デフォルト / CMD）
-     └─ Embeddingサーバ検出あり → 外部に接続（軽量動作）
-     └─ Embeddingサーバ検出なし → ローカルモデルロード（全部入り動作）
+     └─ WatcherProcess内蔵（heartbeat調停で自動協調）
+     └─ Embeddingサーバ自動検出 → 外部接続 or ローカル起動
 
   B) Embeddingサーバモード（--mode=embedding-server）
      └─ HTTP で待ち受け、複数MCPサーバから共有利用
 ```
 
-**ユーザーが意識するのは「Embeddingサーバコンテナを起動するかどうか」だけ**。MCPサーバ側は自動検出で勝手に切り替わります。
+**ユーザーが意識するのは「Embeddingサーバコンテナを起動するかどうか」だけ**。MCPサーバ側は自動検出で勝手に切り替わります。ファイル監視（WatcherProcess）は各サーバに内蔵されており、Heartbeat調停で1つだけがmasterとして動作します。
 
 ## 利用形態
 
@@ -41,23 +41,37 @@ docker run -d \
   ghcr.io/otolab/search-docs-mcp:latest \
   --mode=embedding-server
 
-# 以降: docker mcp run search-docs
+# 各プロジェクト: MCPサーバ（WatcherProcess内蔵、heartbeat調停で自動協調）
+docker mcp run search-docs
 ```
 
 → Embeddingサーバ自動検出 → 軽量動作（メモリ節約）
 
 メモリ: 120MB x N → 120MB x 1（共有サーバ）+ 軽量MCP x N
 
+### Watcher調停（複数インスタンス）
+
+同じプロジェクトディレクトリで複数のMCPサーバが起動すると、Heartbeat調停により1つだけがmaster（watching状態）になります。他のインスタンスはsleeping状態で待機し、masterが停止すると自動的にfailoverします。
+
+## 環境変数
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `EMBEDDING_URL` | 明示的なEmbeddingサーバURL | - |
+| `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `8080` (Embeddingモード), `24281` (検出用) |
+
 ## Embeddingサーバ自動検出
 
 MCPサーバ起動時に、以下の順序でEmbeddingサーバを探します：
 
 1. `EMBEDDING_URL` 環境変数（明示指定、最優先）
-2. `http://search-docs-embedding:8080/health`（Docker network内）
-3. `http://host.docker.internal:24281/health`（ホスト側サービス）
+2. `http://search-docs-embedding:8080/api/tags`（Docker network内）
+3. `http://host.docker.internal:24281/api/tags`（ホスト側サービス）
 4. すべて失敗（タイムアウト 1s）→ ローカルモデルロード
 
 **注意**: Docker内から `localhost` はコンテナ自身を指します。ホスト側のサービスには `host.docker.internal`（macOS/Windows）を使います。Linux では `--add-host=host.docker.internal:host-gateway` が必要です。
+
+**検出エンドポイント**: Ollama API互換の `/api/tags` を使用します（`/health` は非互換）。
 
 ## Dockerイメージ構成
 

@@ -103,6 +103,18 @@ search-docsサーバを停止します。
 
 **パラメータ**: なし
 
+## 前提条件
+
+- [uv](https://docs.astral.sh/uv/)（Pythonパッケージマネージャ）が必要です
+  ```bash
+  # macOS (Homebrew)
+  brew install uv
+  # macOS/Linux (公式インストーラ)
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+
+> Docker版を使用する場合はuvのインストールは不要です。→ [Docker構成ガイド](../../docs/docker-deployment.md)
+
 ## セットアップ
 
 ### サーバ自動起動機能

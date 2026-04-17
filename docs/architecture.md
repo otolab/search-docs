@@ -2,7 +2,7 @@
 
 ## 概要
 
-search-docsは、ローカル文書のVector検索を実現するための多層アーキテクチャを採用しています。TypeScriptをメインとし、Vector検索やDBエンジンにはPythonを使用することで、それぞれの言語の強みを活かした設計となっています。
+search-docsは、ローカル文書のVector検索を実現するための多層アーキテクチャを採用しています。TypeScriptをメインとし、Vector検索やDBエンジンにはPythonを使用することで、それぞれの言語の強みを活かした設計となっています。Embeddingには ONNX Runtime ベースの自前サーバ（Ollama API互換）を使用し、外部Ollamaへの接続も可能です。
 
 ## システム構成
 
@@ -20,6 +20,45 @@ search-docsは、ローカル文書のVector検索を実現するための多層
 │  - 埋め込み生成                         │
 │  - LanceDB管理                          │
 └─────────────────────────────────────────┘
+```
+
+## プロセス構成
+
+search-docsは以下の3つのプロセス役割で構成されます。
+
+### 1. MCP Server (`packages/mcp-server/`)
+
+- **役割**: Claude Code統合、stdio通信
+- **通信**: クライアント → JSON-RPC Server
+
+### 2. JSON-RPC Server (`packages/server/src/bin/server.ts`)
+
+- **役割**: HTTP JSON-RPCサーバ、検索APIの提供、WatcherProcess内蔵
+- **機能**: search, getDocument, getOutline, getStatus
+- **WatcherProcess**: FileWatcher, IndexWorker, StartupSyncWorker（heartbeat調停で複数インスタンス間を自動協調）
+
+### 3. Embedding Server (`packages/db-engine/src/python/embedding_server.py`)
+
+- **役割**: Ollama API互換のHTTP埋め込みサーバ
+- **アクセスモード**: ステートレス、複数クライアントから共有利用可能
+- **起動モード**:
+  - 単体利用: MCPサーバプロセス内で自動起動
+  - 共有利用: 独立プロセスとして起動（複数プロジェクト共有）
+
+### プロセス間の関係
+
+```
+MCP Server
+    ↓ JSON-RPC
+JSON-RPC Server (WatcherProcess内蔵)
+    ↓
+┌───────────────────┬────────────────────┐
+│                   │                    │
+WatcherProcess   DBEngine           Embedding Server
+(heartbeat調停)  (read/write)        (stateless)
+│                   │                    │
+└───────────────────┴────────────────────┘
+              LanceDB
 ```
 
 ## コアコンポーネント
@@ -167,6 +206,40 @@ heading + "\n" + content
 2. 結果が不十分な場合、テキストベース検索にフォールバック
 3. 両方の結果をマージしてランキング
 
+## SearchDocsServer と WatcherProcess の分離
+
+- **SearchDocsServer**: search, getDocument, getOutline, getStatus のみ（read-only機能）
+- **WatcherProcess**: FileWatcher, IndexWorker, StartupSyncWorker, handleFileChange, indexDocument, rebuildIndex（write系全て）
+
+`server.ts` が両方を同一プロセス内で起動し、DBEngineインスタンスを共有します。複数のサーバインスタンスが存在する場合、Heartbeat調停により1つだけがFileWatcherを起動します。
+
+## Heartbeatによる Watcher 調停
+
+複数のWatcherProcessが同時に存在する環境で、1つだけがFileWatcherを起動する仕組みを提供します。
+
+### 調停メカニズム
+
+- **writer_heartbeat テーブル**: LanceDBテーブル（1行のみ、mode='overwrite'で上書き）
+- **状態マシン**: sleeping → claiming → watching
+- **Master期限切れ**: 2分以上更新なし（`MASTER_TIMEOUT_MS = 120000`）
+- **Graceful shutdown**: heartbeatクリア → 即座にfailover
+
+### タイミング定数
+
+| 定数 | 値 | 説明 |
+|------|-----|------|
+| `HEARTBEAT_INTERVAL_MS` | 20秒 | watching時のheartbeat更新間隔 |
+| `MASTER_TIMEOUT_MS` | 120秒 | Master期限切れ判定時間 |
+| `MASTER_CHECK_INTERVAL_MS` | 45秒 | sleeping時のmaster確認間隔 |
+| `CLAIM_JITTER_MAX_MS` | 5秒 | claim前のランダム待ち時間（thundering herd対策） |
+| `CLAIM_READBACK_DELAY_MS` | 4秒 | readback前の待ち時間（排他確認） |
+
+### 状態遷移
+
+1. **sleeping**: 45秒ごとにmasterを確認、期限切れならclaim試行
+2. **claiming**: jitter待機 → claim書き込み → readback確認 → 勝者ならwatching、敗者ならsleeping
+3. **watching**: 20秒ごとにheartbeat更新、FileWatcher/IndexWorkerを起動
+
 ## データストレージ
 
 ### ストレージ構造
@@ -175,7 +248,8 @@ heading + "\n" + content
 ./data/
 └── lancedb/
     ├── documents/     # 文書テーブル
-    └── sections/      # セクションテーブル
+    ├── sections/      # セクションテーブル
+    └── writer_heartbeat/  # Watcher調停用
 ```
 
 ### データ型

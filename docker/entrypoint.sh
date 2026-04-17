@@ -113,7 +113,7 @@ case "${1:-}" in
       --dimension="${SEARCH_DOCS_DOCKER_VECTOR_DIMENSION:-256}"
     ;;
   *)
-    # MCPサーバモード
+    # MCPサーバモード（WatcherProcess内蔵、heartbeat調停で自動協調）
     EMBEDDING_PORT="${EMBEDDING_SERVER_PORT:-8080}"
     PIDS_TO_KILL=""
 
@@ -124,28 +124,15 @@ case "${1:-}" in
     }
     trap cleanup EXIT TERM INT
 
-    # Watcher 起動判定
-    if [ "${ENABLE_WATCHER:-}" = "true" ]; then
-      echo "Starting Watcher process..." >&2
-
-      # Embedding server が必要（Watcher がインデックス更新するため）
-      if ! start_embedding_server "${EMBEDDING_PORT}"; then
-        echo "ERROR: Failed to start embedding server for Watcher" >&2
-        exit 1
-      fi
-      if [ -n "${EMBEDDING_PID:-}" ]; then
-        PIDS_TO_KILL="${PIDS_TO_KILL} ${EMBEDDING_PID}"
-      fi
-
-      # Watcher をバックグラウンドで起動
-      node dist/bin/watcher.js &
-      WATCHER_PID=$!
-      PIDS_TO_KILL="${PIDS_TO_KILL} ${WATCHER_PID}"
-      echo "Watcher started (PID: ${WATCHER_PID})" >&2
+    # Embedding server 起動（インデックス更新に必要）
+    if ! start_embedding_server "${EMBEDDING_PORT}"; then
+      echo "ERROR: Failed to start embedding server" >&2
+      exit 1
+    fi
+    if [ -n "${EMBEDDING_PID:-}" ]; then
+      PIDS_TO_KILL="${PIDS_TO_KILL} ${EMBEDDING_PID}"
     fi
 
-    # MCP サーバ起動（常に read-only）
-    export READ_ONLY=true
     exec node dist/server.js "$@"
     ;;
 esac

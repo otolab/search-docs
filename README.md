@@ -46,6 +46,16 @@ docker mcp run search-docs
 
 ### npm/npx版
 
+[uv](https://docs.astral.sh/uv/)（Pythonパッケージマネージャ）が必要です。
+
+```bash
+# macOS (Homebrew)
+brew install uv
+
+# macOS/Linux (公式インストーラ)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ```bash
 claude mcp add npx -- -y @search-docs/mcp-server
 ```

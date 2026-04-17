@@ -9,14 +9,37 @@
 ### クライアント・サーバ構成
 
 ```
-Client (CLI/MCP/Library)
+MCP Server
     ↓ JSON-RPC
-Search-Docs Server (プロジェクト毎)
+JSON-RPC Server (WatcherProcess内蔵)
     ↓
-DocumentStorage ←→ SearchIndex (LanceDB)
+┌───────────────────┬────────────────────┐
+│                   │                    │
+WatcherProcess   DBEngine           Embedding Server
+(heartbeat調停)  (read/write)        (stateless)
+│                   │                    │
+└───────────────────┴────────────────────┘
+        LanceDB (共有ストレージ)
 ```
 
 **詳細**: docs/client-server-architecture.md
+
+### プロセス構成
+
+search-docsは以下の3つのプロセス役割で構成されます：
+
+1. **MCP Server** (`packages/mcp-server/`)
+   - Claude Code統合、stdio通信
+
+2. **JSON-RPC Server** (`packages/server/src/bin/server.ts`)
+   - HTTP JSON-RPCサーバ、WatcherProcess内蔵
+   - Heartbeat調停で複数インスタンス間を自動協調
+
+3. **Embedding Server** (`packages/db-engine/src/python/embedding_server.py`)
+   - Ollama API互換のHTTP埋め込みサーバ
+   - 複数プロセスから共有利用可能
+
+**詳細**: docs/architecture.md
 
 ### データモデル
 
@@ -71,8 +94,11 @@ search-docs/
 ### Docker構成
 
 1つのDockerイメージで2つのモードを提供:
-- **MCPサーバモード**（デフォルト）: stdio通信。Embeddingサーバ自動検出付き
-- **Embeddingサーバモード**（`--mode=embedding-server`）: HTTP APIで複数MCPサーバから共有利用
+- **MCPサーバモード**（デフォルト）: stdio通信、WatcherProcess内蔵（heartbeat調停で自動協調）
+- **Embeddingサーバモード**（`--mode=embedding-server`）: HTTP APIで複数プロセスから共有利用
+
+**環境変数**:
+- `EMBEDDING_URL`: 明示的なEmbeddingサーバURL
 
 **ユーザー向けガイド**: docs/docker-deployment.md  
 **設計文書**: prompts/tasks/task34.docker-mcp-server-investigation.v1.md  
