@@ -9,7 +9,7 @@ import { readFileSync, mkdirSync } from 'fs';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import { ConfigLoader, type PidFileContent } from '@search-docs/types';
-import { SearchDocsServer, JsonRpcServer } from '../index.js';
+import { SearchDocsServer, JsonRpcServer, WatcherProcess } from '../index.js';
 import {
   writePidFile,
   deletePidFile,
@@ -181,9 +181,19 @@ async function main() {
       config.server.port
     );
 
+    // read-only でない場合は WatcherProcess も起動
+    let watcherProcess: WatcherProcess | null = null;
+    if (!config.server.readOnly) {
+      watcherProcess = new WatcherProcess(config, storage, dbEngine);
+    }
+
     // シグナルハンドラ（PIDファイル削除を追加）
     const shutdown = async () => {
       console.log('\nShutting down...');
+
+      if (watcherProcess) {
+        await watcherProcess.stop();
+      }
 
       // PIDファイル削除（read-onlyモードでは作成していないのでスキップ）
       if (!config.server.readOnly) {
@@ -200,10 +210,22 @@ async function main() {
 
     // サーバ起動
     await jsonRpcServer.start();
+
+    // WatcherProcess 起動（JSON-RPC サーバの後に起動）
+    if (watcherProcess) {
+      await watcherProcess.start();
+      console.log('[Server] Watcher process started (file watching + indexing enabled)');
+    }
+
     console.log(`Server started successfully`);
     console.log(`  - Project: ${config.project.name}`);
     console.log(`  - Root: ${projectRoot}`);
     console.log(`  - RPC endpoint: http://${config.server.host}:${config.server.port}/rpc`);
+    if (!config.server.readOnly) {
+      console.log(`  - Mode: read-write (watcher enabled)`);
+    } else {
+      console.log(`  - Mode: read-only`);
+    }
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
