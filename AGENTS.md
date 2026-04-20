@@ -93,12 +93,24 @@ search-docs/
 
 ### Docker構成
 
+**Docker版がfirst choice**です。ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行できます。
+
 1つのDockerイメージで2つのモードを提供:
 - **MCPサーバモード**（デフォルト）: stdio通信、WatcherProcess内蔵（heartbeat調停で自動協調）
 - **Embeddingサーバモード**（`--mode=embedding-server`）: HTTP APIで複数プロセスから共有利用
 
+**起動方法**:
+```bash
+docker mcp run search-docs
+```
+
 **環境変数**:
 - `EMBEDDING_URL`: 明示的なEmbeddingサーバURL
+
+**npx版**（Docker環境がない場合の代替手段）:
+```bash
+claude mcp add npx -- -y @search-docs/mcp-server
+```
 
 **ユーザー向けガイド**: docs/docker-deployment.md  
 **設計文書**: prompts/tasks/task34.docker-mcp-server-investigation.v1.md  

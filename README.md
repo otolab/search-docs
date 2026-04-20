@@ -38,15 +38,22 @@ AIエージェント / CLI / API
 
 ### Docker版（推奨）
 
+**ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行**できます。
+
 ```bash
 docker mcp run search-docs
 ```
 
+その後、Claude Codeで：
+1. 「search-docsのセットアップをお願い」と依頼
+2. MCPを再接続（reconnect）
+3. 「このプロジェクトのアーキテクチャについて教えて」と依頼
+
 → [Docker構成ガイド](docs/docker-deployment.md)
 
-### npm/npx版
+### npm/npx版（Docker環境がない場合）
 
-[uv](https://docs.astral.sh/uv/)（Pythonパッケージマネージャ）が必要です。
+Docker環境がない場合の代替手段です。[uv](https://docs.astral.sh/uv/)（Pythonパッケージマネージャ）が必要です。
 
 ```bash
 # macOS (Homebrew)
