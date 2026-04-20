@@ -1,0 +1,39 @@
+# search-docs Docker Compose 設定
+# 共有Embeddingサーバ + MCPサーバの構成例
+#
+# 使い方:
+#   # Embeddingサーバの起動（バックグラウンド）
+#   docker compose -f docker/compose.yaml up -d embedding-server
+#
+#   # MCPサーバの起動（stdio、インタラクティブ）
+#   docker compose -f docker/compose.yaml run --rm -i mcp-server
+
+services:
+  embedding-server:
+    image: ghcr.io/otolab/search-docs-mcp:latest
+    command: ["--mode=embedding-server"]
+    mem_limit: 1g
+    cpus: 1.0
+    cpu_shares: 512
+    ports:
+      - "127.0.0.1:24281:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+
+  mcp-server:
+    image: ghcr.io/otolab/search-docs-mcp:latest
+    mem_limit: 512m
+    cpus: 1.0
+    cpu_shares: 512
+    depends_on:
+      embedding-server:
+        condition: service_healthy
+    stdin_open: true
+    # volumes は利用時に指定:
+    # docker compose -f docker/compose.yaml run --rm -i \
+    #   -v /path/to/project:/workspace:ro \
+    #   -v /path/to/project/.search-docs:/workspace/.search-docs \
+    #   mcp-server

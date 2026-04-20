@@ -8,7 +8,9 @@ dependencies = [
     "pyarrow>=14.0.0",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
-    "sentence-transformers>=2.2.0",
+    "onnxruntime>=1.20.0",
+    "transformers>=4.48.0",
+    "huggingface-hub>=0.27.0",
     "protobuf>=4.0.0",
     "sentencepiece>=0.1.99",
     "pytest>=7.0.0",
@@ -18,13 +20,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# GPU版（CUDA 11.8）
-gpu = [
+# レガシー PyTorch サポート
+torch = [
     "torch>=2.0.0",
+    "sentence-transformers>=5.0.0",
 ]
-# GPU版（CUDA 12.1）
-gpu-cu121 = [
-    "torch>=2.0.0",
+# GPU版（ONNX Runtime + CUDA）
+gpu = [
+    "onnxruntime-gpu>=1.20.0",
 ]
 
 [build-system]

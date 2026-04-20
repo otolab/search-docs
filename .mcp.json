@@ -2,6 +2,18 @@
   "mcpServers": {
     "search-docs": {
       "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "${PWD}:/workspace:ro",
+        "-v", "${PWD}/.search-docs:/workspace/.search-docs",
+        "search-docs-mcp:dev",
+        "--project-dir", "/workspace"
+      ],
+      "env": {}
+    },
+    "search-docs-local": {
+      "type": "stdio",
       "command": "node",
       "args": [
         "packages/mcp-server/dist/server.js",

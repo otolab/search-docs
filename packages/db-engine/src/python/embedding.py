@@ -5,6 +5,9 @@ search-docs用にsebas-chanのRuriEmbeddingを利用
 """
 
 import sys
+import json
+import urllib.request
+import urllib.error
 from typing import List, Union
 import numpy as np
 
@@ -192,20 +195,81 @@ class RuriEmbedding(EmbeddingModel):
             return padded
 
 
-def create_embedding_model(model_name: str) -> EmbeddingModel:
+class RemoteEmbeddingModel(EmbeddingModel):
+    """HTTP経由でEmbeddingサーバに接続するモデル"""
+
+    def __init__(self, url: str, vector_dimension: int = 256, model: str = "ruri-v3-30m"):
+        """
+        Args:
+            url: EmbeddingサーバのベースURL（例: http://localhost:8080）
+            vector_dimension: ベクトル次元数
+            model: モデル名（Ollama API用）
+        """
+        self.url = url.rstrip('/')
+        self._dimension = vector_dimension
+        self.model_name = model
+        self.available = True
+        sys.stderr.write(f"RemoteEmbeddingModel initialized: {self.url}\n")
+
+    def load(self) -> bool:
+        """リモートモデルはロード不要"""
+        return True
+
+    def initialize(self) -> bool:
+        """リモートモデルは初期化不要"""
+        return True
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def encode(
+        self,
+        text: Union[str, List[str]],
+        dimension: int = None,
+        batch_size: int = 128
+    ) -> Union[List[float], List[List[float]]]:
+        """HTTP経由でテキストをベクトル化（Ollama API使用）"""
+        target_dim = dimension if dimension is not None else self._dimension
+        is_single = isinstance(text, str)
+        texts = [text] if is_single else text
+
+        try:
+            request_data = json.dumps({
+                "model": self.model_name,
+                "input": texts,
+                "dimensions": target_dim,
+            }).encode('utf-8')
+
+            req = urllib.request.Request(
+                f"{self.url}/api/embed",
+                data=request_data,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+
+            with urllib.request.urlopen(req, timeout=60) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                vectors = result['embeddings']
+                return vectors[0] if is_single else vectors
+
+        except Exception as e:
+            sys.stderr.write(f"RemoteEmbeddingModel encode error: {e}\n")
+            raise
+
+
+def create_embedding_model(embedding_url: str, vector_dimension: int, model: str = "ruri-v3-30m") -> EmbeddingModel:
     """
-    埋め込みモデルのファクトリー関数
+    埋め込みモデルのファクトリー関数（HTTP経由のみ）
+
+    Embedding Serverは事前起動が必要です。
 
     Args:
-        model_name: モデル名
+        embedding_url: EmbeddingサーバのベースURL（例: http://localhost:8080）
+        vector_dimension: ベクトル次元数
+        model: モデル名（Ollama API用、デフォルト: ruri-v3-30m）
 
     Returns:
-        EmbeddingModelインスタンス
+        RemoteEmbeddingModelインスタンス
     """
-    # Ruriモデルの場合
-    if model_name.startswith('cl-nagoya/ruri'):
-        model = RuriEmbedding(model_name=model_name)
-        model.load()
-        return model
-    else:
-        raise ValueError(f"Unsupported model: {model_name}")
+    return RemoteEmbeddingModel(url=embedding_url, vector_dimension=vector_dimension, model=model)

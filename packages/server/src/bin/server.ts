@@ -5,49 +5,18 @@
  */
 
 import * as path from 'path';
-import { readFileSync, mkdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import { ConfigLoader, type PidFileContent } from '@search-docs/types';
-import { SearchDocsServer, JsonRpcServer } from '../index.js';
+import { SearchDocsServer, JsonRpcServer, WatcherProcess } from '../index.js';
 import {
   writePidFile,
   deletePidFile,
   readPidFile,
   isProcessAlive,
 } from '../utils/pid.js';
-import { RotatingWriteStream } from '../utils/rotating-log.js';
-
-/**
- * ログ出力をRotatingWriteStreamにリダイレクト
- */
-function setupLogRedirect(logPath: string): void {
-  mkdirSync(path.dirname(logPath), { recursive: true });
-  const logStream = new RotatingWriteStream(logPath);
-
-  const formatMessage = (args: unknown[]): string => {
-    const timestamp = new Date().toISOString();
-    const message = args.map(a =>
-      typeof a === 'string' ? a : JSON.stringify(a, null, 2)
-    ).join(' ');
-    return `[${timestamp}] ${message}\n`;
-  };
-
-  const originalLog = console.log;
-  const originalError = console.error;
-  const originalWarn = console.warn;
-
-  console.log = (...args: unknown[]) => { logStream.write(formatMessage(args)); };
-  console.error = (...args: unknown[]) => { logStream.write(formatMessage(['[ERROR]', ...args])); };
-  console.warn = (...args: unknown[]) => { logStream.write(formatMessage(['[WARN]', ...args])); };
-
-  // フォアグラウンドモードではコンソールにも出力
-  if (process.stdout.isTTY) {
-    console.log = (...args: unknown[]) => { logStream.write(formatMessage(args)); originalLog(...args); };
-    console.error = (...args: unknown[]) => { logStream.write(formatMessage(['[ERROR]', ...args])); originalError(...args); };
-    console.warn = (...args: unknown[]) => { logStream.write(formatMessage(['[WARN]', ...args])); originalWarn(...args); };
-  }
-}
+import { setupLogRedirect } from '../utils/log-redirect.js';
 
 async function main() {
   try {
@@ -60,6 +29,46 @@ async function main() {
     setupLogRedirect(logPath);
 
     console.log(`Loading config from: ${configPath || 'default config'}`);
+
+    // 環境変数によるembeddingUrl上書き（テスト環境・Docker環境共通）
+    const envEmbeddingUrl = process.env.EMBEDDING_URL;
+    if (envEmbeddingUrl) {
+      config.indexing.embeddingUrl = envEmbeddingUrl;
+    }
+
+    // Docker環境での設定固定ルール
+    const dockerEmbeddingUrl = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL;
+    const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
+    const dockerVectorDimension = process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
+    // EMBEDDING_URL が明示設定されている場合はそちらを優先（entrypoint.shの検出結果）
+    if (dockerEmbeddingUrl && !envEmbeddingUrl) {
+      if (config.indexing.embeddingUrl && config.indexing.embeddingUrl !== dockerEmbeddingUrl) {
+        console.warn(
+          `[Docker] Config embeddingUrl "${config.indexing.embeddingUrl}" ` +
+          `overridden to "${dockerEmbeddingUrl}" (container-local embedding server)`
+        );
+      }
+      config.indexing.embeddingUrl = dockerEmbeddingUrl;
+    }
+    if (dockerEmbeddingModel) {
+      if (config.indexing.embeddingModel !== dockerEmbeddingModel) {
+        console.warn(
+          `[Docker] Config embeddingModel "${config.indexing.embeddingModel}" ` +
+          `overridden to "${dockerEmbeddingModel}" (image-baked model)`
+        );
+      }
+      config.indexing.embeddingModel = dockerEmbeddingModel;
+    }
+    if (dockerVectorDimension) {
+      const dim = parseInt(dockerVectorDimension, 10);
+      if (!isNaN(dim) && config.indexing.vectorDimension !== dim) {
+        console.warn(
+          `[Docker] Config vectorDimension ${config.indexing.vectorDimension} ` +
+          `overridden to ${dim} (image-baked model)`
+        );
+        config.indexing.vectorDimension = dim;
+      }
+    }
 
     // 1. 既存PIDファイルチェック
     const existingPid = await readPidFile(projectRoot);
@@ -108,27 +117,35 @@ async function main() {
     // DBエンジン初期化
     const dbEngine = new DBEngine({
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
-      embeddingModel: config.indexing.embeddingModel,
+      embeddingUrl: config.indexing.embeddingUrl,
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
+      readOnly: false,
     });
 
     // SearchDocsサーバ初期化
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
 
+    // Docker環境ではIPv4/IPv6両方でリッスン（localhostだとIPv6のみになる場合がある）
+    const serverHost = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL ? '0.0.0.0' : config.server.host;
+
     // JSON-RPCサーバ初期化
     const jsonRpcServer = new JsonRpcServer(
       searchDocsServer,
-      config.server.host,
+      serverHost,
       config.server.port
     );
+
+    // WatcherProcess 生成
+    const watcherProcess = new WatcherProcess(config, storage, dbEngine);
 
     // シグナルハンドラ（PIDファイル削除を追加）
     const shutdown = async () => {
       console.log('\nShutting down...');
 
-      // PIDファイル削除
+      await watcherProcess.stop();
+
       await deletePidFile(projectRoot);
       console.log('PID file removed');
 
@@ -141,10 +158,16 @@ async function main() {
 
     // サーバ起動
     await jsonRpcServer.start();
+
+    // WatcherProcess 起動（JSON-RPC サーバの後に起動）
+    await watcherProcess.start();
+    console.log('[Server] Watcher process started (file watching + indexing enabled)');
+
     console.log(`Server started successfully`);
     console.log(`  - Project: ${config.project.name}`);
     console.log(`  - Root: ${projectRoot}`);
     console.log(`  - RPC endpoint: http://${config.server.host}:${config.server.port}/rpc`);
+    console.log(`  - Mode: read-write (watcher enabled)`);
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

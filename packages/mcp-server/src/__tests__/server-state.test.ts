@@ -23,7 +23,7 @@ describe('MCP Server 状態確認テスト', () => {
   });
 
   describe('NOT_CONFIGURED状態', () => {
-    test('利用可能なツールはinit, get_system_statusのみ', async () => {
+    test('全ツールが利用可能（各ツール内で状態チェック）', async () => {
       env = await setupTestEnvironment({
         prefix: 'state-not-configured',
         createConfig: false,
@@ -33,16 +33,15 @@ describe('MCP Server 状態確認テスト', () => {
       const response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
       const toolNames = response.tools.map((t) => t.name);
 
-      // NOT_CONFIGURED状態では init と get_system_status のみ利用可能
+      // 全ツールが常時有効（各ツール内で状態チェックを行い適切なエラーを返す）
+      // NOT_CONFIGURED状態でもadd_related_projectで関連プロジェクトを追加し検索可能にするため
       expect(toolNames).toContain('init');
       expect(toolNames).toContain('get_system_status');
-
-      // 他のツールは利用不可
-      expect(toolNames).not.toContain('server_start');
-      expect(toolNames).not.toContain('server_stop');
-      expect(toolNames).not.toContain('search');
-      expect(toolNames).not.toContain('get_document');
-      expect(toolNames).not.toContain('index_status');
+      expect(toolNames).toContain('server_start');
+      expect(toolNames).toContain('server_stop');
+      expect(toolNames).toContain('search');
+      expect(toolNames).toContain('get_document');
+      expect(toolNames).toContain('index_status');
     });
 
     test('get_system_statusで未設定状態を確認', async () => {

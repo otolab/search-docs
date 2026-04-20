@@ -20,7 +20,12 @@ export default defineConfig({
     // console出力は保持（デバッグ時に必要）
     silent: false,
 
+    // dist配下のテストを除外
+    exclude: ['**/dist/**', '**/node_modules/**'],
+
     // テスト環境
     environment: 'node',
+
+    globalSetup: '../db-engine/src/__tests__/globalSetup.ts',
   },
 });

@@ -29,7 +29,7 @@ describe('null fields reproduction test', () => {
     // DBエンジンを接続
     dbEngine = new DBEngine({
       dbPath: testDbPath,
-      embeddingModel: 'cl-nagoya/ruri-v3-30m'
+      embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080'
     });
     await dbEngine.connect();
   });

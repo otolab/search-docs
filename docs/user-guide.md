@@ -113,11 +113,21 @@ search-docsを使う前に、基本的な構成要素を理解しましょう。
 
 ## 始め方
 
-search-docsを始める方法は2つあります：
+search-docsを始める方法は3つあります：
 
-### 🚀 方法1: Claude Codeで使う（推奨）
+### 🚀 方法1: Claude Code + Docker版（推奨）
 
-最も簡単に始められます。
+**ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行**できます。
+
+```bash
+docker mcp run search-docs
+```
+
+詳細: **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)** | **[Docker構成ガイド](./docker-deployment.md)**
+
+### 🔧 方法2: Claude Code + npm/npx版（Docker環境がない場合）
+
+Docker環境がない場合の代替手段です。
 
 ```bash
 claude mcp add npx -- -y @search-docs/mcp-server
@@ -125,7 +135,7 @@ claude mcp add npx -- -y @search-docs/mcp-server
 
 詳細: **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)**
 
-### 💻 方法2: CLIツールとして使う
+### 💻 方法3: CLIツールとして使う
 
 コマンドラインから直接使いたい場合。
 
@@ -137,14 +147,14 @@ claude mcp add npx -- -y @search-docs/mcp-server
 
 ### インストール
 
-**推奨**: npxで直接実行（インストール不要）
+**オプション1**: npxで直接実行（インストール不要）
 
 ```bash
 # インストール不要
 npx @search-docs/cli server start
 ```
 
-または、グローバルインストールする場合：
+**オプション2**: グローバルインストール
 
 ```bash
 npm install -g @search-docs/cli

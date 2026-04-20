@@ -26,14 +26,13 @@ describe('動的ツール更新テスト', () => {
       port: 54330,
     });
 
-    // 初期状態: init, get_system_status のみ
+    // 初期状態: 全ツールが常時有効（各ツール内で状態チェック）
     let response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
     let toolNames = response.tools.map((t) => t.name);
 
     expect(toolNames).toContain('init');
     expect(toolNames).toContain('get_system_status');
-    expect(toolNames).not.toContain('server_start');
-    expect(toolNames).not.toContain('server_stop');
+    expect(toolNames).toContain('server_start');
 
     // init実行
     const initResult = await env.tester.callTool('init', {});
@@ -46,7 +45,7 @@ describe('動的ツール更新テスト', () => {
     response = (await env.tester.sendRequest('tools/list', {})) as MCPToolsListResponse;
     toolNames = response.tools.map((t) => t.name);
 
-    // init実行後: 全ツールが利用可能になる
+    // init実行後も全ツールが利用可能
     expect(toolNames).toContain('init');
     expect(toolNames).toContain('get_system_status');
     expect(toolNames).toContain('server_start');

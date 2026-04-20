@@ -105,7 +105,37 @@ search-docsサーバを停止します。
 
 ## セットアップ
 
-### サーバ自動起動機能
+### Docker版（推奨）
+
+**ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行**できます。
+
+```bash
+docker mcp run search-docs
+```
+
+その後、Claude Codeで：
+1. 「search-docsのセットアップをお願い」と依頼
+2. MCPを再接続（reconnect）
+3. 「このプロジェクトのアーキテクチャについて教えて」と依頼
+
+→ [Docker構成ガイド](../../docs/docker-deployment.md)
+
+### npm/npx版（Docker環境がない場合）
+
+Docker環境がない場合の代替手段です。
+
+**前提条件**:
+- [uv](https://docs.astral.sh/uv/)（Pythonパッケージマネージャ）が必要です
+  ```bash
+  # macOS (Homebrew)
+  brew install uv
+  # macOS/Linux (公式インストーラ)
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+
+#### npx版のセットアップ手順
+
+#### サーバ自動起動機能
 
 MCP Serverは自動的にsearch-docsサーバを起動します。
 
@@ -116,14 +146,14 @@ MCP Serverは自動的にsearch-docsサーバを起動します。
 
 これにより、手動でサーバを起動する必要がなくなりました。
 
-### 前提条件
+#### 前提条件
 
 ビルド済みであること
 ```bash
 pnpm build
 ```
 
-### Claude Code統合
+#### Claude Code統合
 
 Claude Codeの設定ファイル（`claude_desktop_config.json`または`cline_mcp_settings.json`）に以下を追加：
 

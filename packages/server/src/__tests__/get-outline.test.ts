@@ -77,7 +77,7 @@ describe('getOutline API', () => {
     await fs.mkdir(storagePath, { recursive: true });
 
     // DBEngineとStorageを初期化
-    dbEngine = new DBEngine({ dbPath });
+    dbEngine = new DBEngine({ dbPath, embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080' });
     await dbEngine.connect();
 
     storage = new FileStorage({ basePath: storagePath });
@@ -515,7 +515,7 @@ describe('maxDepth検証: Issue #30', () => {
     await fs.mkdir(dbPath, { recursive: true });
     await fs.mkdir(storagePath, { recursive: true });
 
-    dbEngine = new DBEngine({ dbPath });
+    dbEngine = new DBEngine({ dbPath, embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080' });
     await dbEngine.connect();
 
     storage = new FileStorage({ basePath: storagePath });

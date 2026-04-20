@@ -4,7 +4,29 @@ search-docsをClaude Codeから使う際の、MCPツールリファレンスで�
 
 ## 始め方
 
-セットアップ方法は **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)** を参照してください。
+### Docker版（推奨）
+
+**ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行**できます。
+
+```bash
+docker mcp run search-docs
+```
+
+→ [Docker構成ガイド](./docker-deployment.md)
+
+### npm/npx版（Docker環境がない場合）
+
+Docker環境がない場合の代替手段です。
+
+```bash
+claude mcp add npx -- -y @search-docs/mcp-server
+```
+
+詳細: **[クイックスタート - Claude Code](./quick-start.md#方法1-claude-codeで試す30秒)**
+
+---
+
+## MCPツールリファレンス
 
 このドキュメントでは、MCPから利用できるツールの詳細を説明します。
 

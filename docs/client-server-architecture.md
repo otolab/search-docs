@@ -16,7 +16,7 @@ search-docsは、プロジェクト毎に起動される単一の文書管理・
                │ JSON-RPC / HTTP
                │
 ┌──────────────▼──────────────────────────┐
-│         Search-Docs Server              │
+│       SearchDocsServer (read-only)      │
 │  (プロジェクト毎に1インスタンス)        │
 │                                         │
 │  ┌─────────────────────────────────┐   │
@@ -26,17 +26,41 @@ search-docsは、プロジェクト毎に起動される単一の文書管理・
 │  └─────────────────────────────────┘   │
 │                                         │
 │  ┌─────────────────────────────────┐   │
-│  │   Document Manager              │   │
-│  │   - DocumentStorage             │   │
-│  │   - ファイルウォッチャー        │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
 │  │   Search Engine                 │   │
 │  │   - SearchIndex (LanceDB)       │   │
 │  │   - Vector検索                  │   │
-│  │   - Dirty管理ワーカー           │   │
 │  └─────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│      WatcherProcess (write)             │
+│  (独立プロセス、Heartbeat調停あり)      │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │   Heartbeat Coordinator         │   │
+│  │   - Master選出                  │   │
+│  │   - 状態マシン管理              │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │   Document Manager              │   │
+│  │   - DocumentStorage             │   │
+│  │   - FileWatcher (master時)      │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │   Index Workers                 │   │
+│  │   - IndexWorker (master時)      │   │
+│  │   - StartupSyncWorker           │   │
+│  └─────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+
+          ↓ 共有ストレージ（LanceDB）
+┌─────────────────────────────────────────┐
+│              LanceDB                    │
+│  - documents                            │
+│  - sections                             │
+│  - writer_heartbeat (調停用)            │
 └─────────────────────────────────────────┘
 ```
 
@@ -44,12 +68,67 @@ search-docsは、プロジェクト毎に起動される単一の文書管理・
 
 ### サーバ側
 
-#### 1. Search-Docs Server
+#### 1. SearchDocsServer (Read-Only)
 
 **責務**:
 - プロジェクト毎に1インスタンスが起動
-- 設定ファイルに基づいてファイルを監視・インデックス
-- クライアントからのリクエストを処理
+- クライアントからの検索リクエストを処理
+- read-only操作のみ（search, getDocument, getOutline, getStatus）
+
+WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間を自動協調します。
+
+#### 2. WatcherProcess (Write)
+
+**責務**:
+- ファイル監視とインデックス更新
+- Heartbeat調停による排他制御
+- 複数プロセス間で1つだけがmaster（watching状態）になる
+
+server.ts内で同一プロセスとして起動されます。
+
+**Heartbeat調停メカニズム**:
+
+複数のWatcherProcessが起動している環境で、LanceDBの `writer_heartbeat` テーブルを使って1つだけがFileWatcherを起動します。
+
+**状態マシン**:
+
+1. **sleeping**: 45秒ごとにmasterを確認
+   - Masterが存在しない、または期限切れ → claim試行
+   - 他のプロセスがmaster → 待機継続
+
+2. **claiming**: Master獲得試行
+   - ランダムjitter待機（0～5秒、thundering herd対策）
+   - `claimWriter()` でheartbeatを書き込み（mode='overwrite'）
+   - 4秒待機後にreadback確認
+   - 自分のwriterIdが残っていればwatchingへ、他者なら敗北でsleepingへ
+
+3. **watching**: Master状態（FileWatcher/IndexWorker起動）
+   - 20秒ごとにheartbeatを更新
+   - Graceful shutdown時にheartbeatをクリア → 即座にfailover
+
+**タイミング定数**:
+
+| 定数 | 値 | 説明 |
+|------|-----|------|
+| `HEARTBEAT_INTERVAL_MS` | 20,000 (20秒) | watching時のheartbeat更新間隔 |
+| `MASTER_TIMEOUT_MS` | 120,000 (2分) | Masterの期限切れ判定時間 |
+| `MASTER_CHECK_INTERVAL_MS` | 45,000 (45秒) | sleeping時のmaster確認間隔 |
+| `CLAIM_JITTER_MAX_MS` | 5,000 (5秒) | claim前のランダム待ち時間 |
+| `CLAIM_READBACK_DELAY_MS` | 4,000 (4秒) | readback前の待ち時間 |
+
+**Master期限切れ**: 2分以上heartbeatが更新されない場合、他のWatcherProcessがMasterを奪取できます。
+
+#### 3. Embedding Server
+
+**責務**:
+- Ollama API互換のHTTP埋め込みサーバ
+- 複数のMCPサーバから共有利用可能
+
+**起動モード**:
+- **単体利用**: MCPサーバプロセス内で自動起動
+- **共有利用**: 独立プロセスとして起動（Docker Compose等）
+
+**実装**: `packages/server/src/bin/server.ts`
 
 **起動方法**:
 ```bash
@@ -75,7 +154,7 @@ search-docs-server start --port 24280
 - プロセスIDファイル: `.search-docs/server.pid`
 - ログファイル: `.search-docs/server.log`
 
-#### 2. Configuration Loader
+#### 4. Configuration Loader
 
 **設定ファイルパス**:
 1. `.search-docs.json` (プロジェクトルート) - 推奨
@@ -195,7 +274,7 @@ search-docsは、Pythonワーカーのメモリ使用量を監視し、上限を
 
 メモリ上限を超えた場合、Pythonワーカーは自動的に再起動され、メモリリークを防ぎます。
 
-#### 3. Document Manager
+#### 5. Document Manager (WatcherProcess内)
 
 **責務**:
 - 設定に基づいてファイルを検索
@@ -226,10 +305,11 @@ class FileDiscovery {
 ```
 
 **ファイルウォッチャー**:
-- chokidarなどを使用
+- @parcel/watcherを使用
+- master状態（watching）のWatcherProcessのみが起動
 - 変更検知 → DocumentStorageに保存 → Dirtyマーク
 
-#### 4. Search Engine
+#### 6. Search Engine
 
 **責務**:
 - LanceDBによるVector検索

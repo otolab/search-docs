@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 const TEST_DB_PATH = './.search-docs-test/index';
+const TEST_EMBEDDING_URL = process.env.TEST_EMBEDDING_URL || 'http://localhost:18080';
 
 describe('DBEngine', () => {
   let engine: DBEngine;
@@ -13,7 +14,7 @@ describe('DBEngine', () => {
     // テスト用DBエンジンを作成
     engine = new DBEngine({
       dbPath: TEST_DB_PATH,
-      embeddingModel: 'cl-nagoya/ruri-v3-30m',
+      embeddingUrl: TEST_EMBEDDING_URL,
     });
 
     // 接続

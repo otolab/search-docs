@@ -114,6 +114,7 @@ Vector検索機能をテストします。
         maxDepth: 3,
         vectorDimension: 256,
         embeddingModel: 'cl-nagoya/ruri-v3-30m',
+        embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080',
       },
       search: {
         defaultLimit: 10,
@@ -195,7 +196,16 @@ Vector検索機能をテストします。
   }, 30000);
 
   it('search コマンドで検索できる', async () => {
-    // まずインデックスを作成
+    // DB接続完了を待機（最大20秒ポーリング）
+    const startTime = Date.now();
+    while (Date.now() - startTime < 20000) {
+      const statusResult = await runCliCommand(['server', 'status']);
+      if (statusResult.stdout.includes('DB:') && !statusResult.stdout.includes('接続中')) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
     const indexResult = await runCliCommand([
       'search',
       'TypeScript',

@@ -1,5 +1,6 @@
 import * as watcher from '@parcel/watcher';
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
@@ -32,7 +33,7 @@ export class FileWatcher extends EventEmitter {
 
   constructor(options: FileWatcherOptions) {
     super();
-    this.rootDir = path.resolve(options.rootDir);
+    this.rootDir = fs.realpathSync(path.resolve(options.rootDir));
     this.filesConfig = options.filesConfig;
     this.watcherConfig = options.watcherConfig;
   }
@@ -40,6 +41,10 @@ export class FileWatcher extends EventEmitter {
   /**
    * 監視を開始
    */
+  isRunning(): boolean {
+    return this.subscription !== null;
+  }
+
   async start(): Promise<void> {
     // ignoreパターンの構築
     const ignorePatterns = this.buildIgnorePatterns();
@@ -113,12 +118,8 @@ export class FileWatcher extends EventEmitter {
     // ユーザー設定のexcludeパターン
     patterns.push(...this.filesConfig.exclude);
 
-    // .md以外のファイルを除外
-    // 注意: @parcel/watcherのignoreはGlobパターンなので、
-    // "すべてのファイルのうち.md以外"を表現する必要がある
-    // ディレクトリは除外しない（サブディレクトリを監視するため）
-    patterns.push('**/*.!(md)');
-    patterns.push('**/!(*.md)');  // 拡張子なしファイルも除外
+    // .md以外のファイルフィルタはshouldProcessFile()で行う
+    // extglobパターン（!(...)）はpicomatch→C++ regexで極端に遅延するため使用しない
 
     return patterns;
   }

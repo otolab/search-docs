@@ -78,7 +78,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
     await fs.mkdir(storagePath, { recursive: true });
 
     // DBEngineとStorageを初期化
-    dbEngine = new DBEngine({ dbPath });
+    dbEngine = new DBEngine({ dbPath, embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080' });
     await dbEngine.connect();
 
     storage = new FileStorage({ basePath: storagePath });

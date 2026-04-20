@@ -23,13 +23,6 @@ import numpy as np
 import duckdb
 from pathlib import Path
 
-# PyTorch（MPSキャッシュクリア用）
-try:
-    import torch
-    TORCH_AVAILABLE = torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False
-except ImportError:
-    TORCH_AVAILABLE = False
-
 # パフォーマンス監視用
 try:
     import psutil
@@ -59,8 +52,10 @@ from embedding import create_embedding_model
 from schemas import (
     get_sections_schema,
     get_index_requests_schema,
+    get_writer_heartbeat_schema,
     SECTIONS_TABLE,
     INDEX_REQUESTS_TABLE,
+    WRITER_HEARTBEAT_TABLE,
     validate_section,
     validate_index_request
 )
@@ -225,21 +220,21 @@ def _safe_value(value) -> Any:
 
 
 class SearchDocsWorker:
-    def __init__(self, db_path: str = "./.search-docs/index"):
+    def __init__(self, db_path: str = "./.search-docs/index", read_only: bool = False):
         """search-docs LanceDBワーカーの初期化"""
         Path(db_path).mkdir(parents=True, exist_ok=True)
-        self.db = lancedb.connect(db_path)
+        self.db_path = db_path
+        self.read_only = read_only
+        connect_kwargs = {}
+        if read_only:
+            connect_kwargs['read_consistency_interval'] = timedelta(seconds=5)
+        self.db = lancedb.connect(db_path, **connect_kwargs)
 
-        # MPS情報をログ出力
-        if TORCH_AVAILABLE:
-            sys.stderr.write("[MemoryOptimization] PyTorch MPS available, will clear cache after batches\n")
-            sys.stderr.flush()
-
-        # モデルを初期化（まだロードしない）
-        model_name = self._get_model_name()
-        self.embedding_model = create_embedding_model(model_name)
-        self.vector_dimension = self.embedding_model.dimension if hasattr(self.embedding_model, 'dimension') else 256
-        self.init_tables()
+        # Embedding URLを取得（initModel()でサーバに接続）
+        self.embedding_url = self._get_embedding_url()
+        self.embedding_model = None  # initModel()で作成
+        self.vector_dimension = None  # initModel()で/healthから取得
+        # init_tables()はvector_dimension確定後（initModel()内）で実行
 
         # 設定値を取得
         self.max_batch_tokens = self._get_max_batch_tokens()
@@ -259,6 +254,10 @@ class SearchDocsWorker:
         # パフォーマンスロガー
         self.perf_logger = PerformanceLogger(interval=1.0)
         self.perf_logger.start()
+
+        if self.read_only:
+            sys.stderr.write("[Worker] Running in READ-ONLY mode (read_consistency_interval=5s)\n")
+            sys.stderr.flush()
 
     def log_thread_info(self, label: str):
         """スレッド情報をログ出力（デバッグ用）"""
@@ -285,35 +284,15 @@ class SearchDocsWorker:
 
         sys.stderr.flush()
 
-    def clear_gpu_cache(self):
-        """GPU（MPS）キャッシュをクリア"""
-        if TORCH_AVAILABLE:
-            try:
-                torch.mps.empty_cache()
-                # sys.stderr.write("[MemoryOptimization] MPS cache cleared\n")
-                # sys.stderr.flush()
-            except Exception as e:
-                sys.stderr.write(f"[MemoryOptimization] Warning: Failed to clear MPS cache: {e}\n")
-                sys.stderr.flush()
-
-    def _get_model_name(self):
-        """モデル名を取得
-
-        Returns:
-            モデル名
-        """
-        # コマンドライン引数からモデル名を取得（--model=xxx形式）
-        model_name = None
+    def _get_embedding_url(self) -> str:
+        """Embedding URLを取得（CLI引数 > 環境変数 > デフォルト）"""
         for arg in sys.argv[1:]:
-            if arg.startswith('--model='):
-                model_name = arg.split('=', 1)[1]
-                break
-
-        # デフォルトモデル名
-        if not model_name:
-            model_name = 'cl-nagoya/ruri-v3-30m'
-
-        return model_name
+            if arg.startswith('--embedding-url='):
+                return arg.split('=', 1)[1]
+        env_url = os.environ.get('EMBEDDING_URL')
+        if env_url:
+            return env_url
+        return 'http://localhost:8080'
 
     @staticmethod
     def _get_db_path() -> str:
@@ -327,6 +306,15 @@ class SearchDocsWorker:
                 return arg.split('=', 1)[1]
         # デフォルト値
         return "./.search-docs/index"
+
+    @staticmethod
+    def _is_read_only() -> bool:
+        """コマンドライン引数からread_onlyを取得
+
+        Returns:
+            read_onlyフラグ
+        """
+        return '--read-only' in sys.argv[1:]
 
     @staticmethod
     def _get_max_batch_tokens() -> int:
@@ -367,6 +355,16 @@ class SearchDocsWorker:
                     if "already exists" not in str(e):
                         raise
                     sys.stderr.write(f"Warning: Table {INDEX_REQUESTS_TABLE} already exists, skipping creation\n")
+                    sys.stderr.flush()
+
+            # WriterHeartbeat テーブル
+            if WRITER_HEARTBEAT_TABLE not in existing_tables:
+                try:
+                    self.db.create_table(WRITER_HEARTBEAT_TABLE, schema=get_writer_heartbeat_schema())
+                except ValueError as e:
+                    if "already exists" not in str(e):
+                        raise
+                    sys.stderr.write(f"Warning: Table {WRITER_HEARTBEAT_TABLE} already exists, skipping creation\n")
                     sys.stderr.flush()
 
             # IndexRequestsテーブルのインデックスを作成
@@ -654,6 +652,14 @@ class SearchDocsWorker:
                 result = self.update_many_index_requests(params)
             elif method == "getPathsWithStatus":
                 result = self.get_paths_with_status(params)
+            elif method == "claimWriter":
+                result = self.claim_writer(params)
+            elif method == "updateHeartbeat":
+                result = self.update_heartbeat(params)
+            elif method == "getWriterHeartbeat":
+                result = self.get_writer_heartbeat()
+            elif method == "releaseWriter":
+                result = self.release_writer(params)
             else:
                 return {
                     "jsonrpc": "2.0",
@@ -692,13 +698,41 @@ class SearchDocsWorker:
         return {"status": "ok"}
 
     def init_model(self) -> Dict[str, Any]:
-        """埋め込みモデルを初期化"""
-        success = self.embedding_model.initialize()
-        return {
-            "success": success,
-            "model_name": self.embedding_model.model_name if hasattr(self.embedding_model, 'model_name') else 'unknown',
-            "dimension": self.vector_dimension
-        }
+        """Embedding Serverに接続してモデル情報を取得し、テーブルを初期化"""
+        import urllib.request as _urllib_request
+        import urllib.error as _urllib_error
+
+        # /health を試す（自前サーバ）
+        health_url = f"{self.embedding_url.rstrip('/')}/health"
+        model_name = 'unknown'
+        try:
+            req = _urllib_request.Request(health_url, method='GET')
+            with _urllib_request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                model_name = data.get('model', 'unknown')
+                server_dim = data.get('vectorDimension')
+                if server_dim:
+                    self.vector_dimension = server_dim
+
+            sys.stderr.write(
+                f"[InitModel] Connected to embedding server at {self.embedding_url}\n"
+                f"  Model: {model_name}, Dimension: {self.vector_dimension}\n"
+            )
+        except (_urllib_error.URLError, OSError):
+            # 外部 Ollama の場合は /health がない → 設定値を使う
+            sys.stderr.write(
+                f"[InitModel] /health not available at {self.embedding_url}, "
+                f"using configured dimension: {self.vector_dimension}\n"
+            )
+        sys.stderr.flush()
+
+        self.embedding_model = create_embedding_model(
+            self.embedding_url, self.vector_dimension, model=model_name
+        )
+        if not self.read_only:
+            self.init_tables()
+
+        return {"success": True, "model_name": model_name, "dimension": self.vector_dimension}
 
     def _create_token_aware_batches(
         self,
@@ -789,9 +823,9 @@ class SearchDocsWorker:
         # スレッド情報（処理前）
         self.log_thread_info(f"BEFORE add_sections (call #{self._add_count + 1})")
 
-        # モデル初期化
-        if not self.embedding_model.available:
-            self.embedding_model.initialize()
+        # モデル初期化チェック
+        if self.embedding_model is None:
+            raise RuntimeError("Embedding model not initialized. Call initModel() first.")
 
         # セクションをバリデーション
         for section in sections:
@@ -811,9 +845,8 @@ class SearchDocsWorker:
                 for idx, vector in zip(batch_indices, vectors):
                     sections[idx]["vector"] = vector
 
-                # バッチごとにGCとMPSキャッシュクリア（大きなベクトルオブジェクトとGPUメモリを即座に解放）
+                # バッチごとにGC（大きなベクトルオブジェクトを即座に解放）
                 gc.collect()
-                self.clear_gpu_cache()
 
             # スキップされたセクションの処理
             if skipped_indices:
@@ -844,12 +877,11 @@ class SearchDocsWorker:
         # スレッド情報（table.add後）
         self.log_thread_info("AFTER table.add()")
 
-        # メモリリーク対策: GCとMPSキャッシュクリアを明示的に実行（1ファイルごと）
-        # LanceDB内部の一時オブジェクトとGPUメモリを解放
+        # メモリリーク対策: GCを明示的に実行（1ファイルごと）
+        # LanceDB内部の一時オブジェクトを解放
         # 世代2（最古の世代）までスキャンして完全にGC
         count = len(sections)
         gc.collect(2)
-        self.clear_gpu_cache()
 
         # 呼び出し回数をカウント
         self._add_count += 1
@@ -861,7 +893,6 @@ class SearchDocsWorker:
                 sys.stderr.flush()
                 table.optimize.compact_files()
                 gc.collect(2)  # compact後もGC（全世代）
-                self.clear_gpu_cache()  # MPSキャッシュもクリア
                 sys.stderr.write(f"Compaction completed\n")
                 sys.stderr.flush()
             except Exception as e:
@@ -885,9 +916,9 @@ class SearchDocsWorker:
         if not query:
             raise ValueError("query parameter is required")
 
-        # モデル初期化
-        if not self.embedding_model.available:
-            self.embedding_model.initialize()
+        # モデル初期化チェック
+        if self.embedding_model is None:
+            raise RuntimeError("Embedding model not initialized. Call initModel() first.")
 
         # クエリをベクトル化
         query_vector = self.embedding_model.encode(query, self.vector_dimension)
@@ -1339,6 +1370,74 @@ class SearchDocsWorker:
 
         return {"paths": paths}
 
+    def claim_writer(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        writer_id = params["writer_id"]
+        host = params["host"]
+        pid = params["pid"]
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        now = pd.Timestamp.now(tz='UTC').floor('ms')
+        table.add([{
+            "writer_id": writer_id,
+            "host": host,
+            "pid": np.int32(pid),
+            "state": "claiming",
+            "updated_at": now,
+        }], mode='overwrite')
+        return {"success": True, "writer_id": writer_id, "state": "claiming"}
+
+    def update_heartbeat(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        writer_id = params["writer_id"]
+        host = params["host"]
+        pid = params["pid"]
+        state = params.get("state", "watching")
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        now = pd.Timestamp.now(tz='UTC').floor('ms')
+        table.add([{
+            "writer_id": writer_id,
+            "host": host,
+            "pid": np.int32(pid),
+            "state": state,
+            "updated_at": now,
+        }], mode='overwrite')
+        return {"success": True, "updated_at": now.isoformat()}
+
+    def get_writer_heartbeat(self) -> Dict[str, Any]:
+        # 他プロセスの書き込みを確実に反映するため、新しいDB接続で読み取る
+        fresh_db = lancedb.connect(self.db_path)
+        table = fresh_db.open_table(WRITER_HEARTBEAT_TABLE)
+        results = table.search().limit(1).to_list()
+        if len(results) == 0:
+            return {"exists": False}
+        row = results[0]
+        now = datetime.now(tz=None)
+        updated_at = row["updated_at"]
+        # datetime.datetime または pd.Timestamp のどちらが来ても対応
+        if isinstance(updated_at, pd.Timestamp):
+            updated_at = updated_at.to_pydatetime().replace(tzinfo=None)
+        elif hasattr(updated_at, 'tzinfo') and updated_at.tzinfo is not None:
+            updated_at = updated_at.replace(tzinfo=None)
+        age_seconds = (now - updated_at).total_seconds()
+        return {
+            "exists": True,
+            "heartbeat": {
+                "writer_id": row["writer_id"],
+                "host": row["host"],
+                "pid": int(row["pid"]),
+                "state": row["state"],
+                "updated_at": updated_at.isoformat(),
+                "age_seconds": age_seconds,
+            }
+        }
+
+    def release_writer(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        writer_id = params["writer_id"]
+        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
+        results = table.search().limit(1).to_list()
+        if len(results) > 0 and results[0]["writer_id"] != writer_id:
+            return {"success": False, "reason": "not_current_master"}
+        table.delete("writer_id IS NOT NULL")
+        return {"success": True}
+
 
 def main():
     """メインループ"""
@@ -1347,7 +1446,8 @@ def main():
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
 
     db_path = SearchDocsWorker._get_db_path()
-    worker = SearchDocsWorker(db_path=db_path)
+    read_only = SearchDocsWorker._is_read_only()
+    worker = SearchDocsWorker(db_path=db_path, read_only=read_only)
 
     # 標準入力からJSON-RPCリクエストを読み取る
     for line in sys.stdin:

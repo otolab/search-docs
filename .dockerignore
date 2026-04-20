@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+.venv
+__pycache__
+
+# Build artifacts
+packages/*/dist
+*.tsbuildinfo
+
+# Development files
+.git
+.github
+.changeset
+.serena
+.search-docs
+
+# IDE / Editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Test files
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+
+# Docs (not needed in image)
+docs/
+prompts/
+
+# Misc
+*.log
+test-run.log
+.DS_Store

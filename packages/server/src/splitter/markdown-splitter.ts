@@ -103,7 +103,7 @@ export class MarkdownSplitter {
   private extractHeadingStructure(tokens: Token[], content: string): HeadingNode[] {
     const nodes: HeadingNode[] = [];
     // 各深さレベルの現在のノードをスタックで管理（depth 0-maxDepth）
-    const currentNodes: (HeadingNode | null)[] = new Array(this.config.maxDepth + 1).fill(null);
+    const currentNodes: (HeadingNode | null)[] = new Array<HeadingNode | null>(this.config.maxDepth + 1).fill(null);
     const contentBuffer: string[] = [];
     let currentLine = 1;  // 現在の行番号（1-indexed）
 

@@ -6,8 +6,6 @@ import type {
   SearchRequest,
   GetDocumentRequest,
   GetOutlineRequest,
-  IndexDocumentRequest,
-  RebuildIndexRequest,
 } from '@search-docs/types';
 
 /**
@@ -182,10 +180,10 @@ export class JsonRpcServer {
         return await this.searchDocsServer.getOutline(params as GetOutlineRequest);
 
       case 'indexDocument':
-        return await this.searchDocsServer.indexDocument(params as IndexDocumentRequest);
+        throw new Error('indexDocument is not available in read-only mode. Use the Watcher process for indexing.');
 
       case 'rebuildIndex':
-        return await this.searchDocsServer.rebuildIndex(params as RebuildIndexRequest);
+        throw new Error('rebuildIndex is not available in read-only mode. Use the Watcher process for indexing.');
 
       case 'getStatus':
         return await this.searchDocsServer.getStatus();

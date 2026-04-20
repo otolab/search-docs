@@ -20,7 +20,7 @@ describe('DBEngine統合テスト', () => {
     // テスト用DBディレクトリを作成
     await fs.mkdir(testDbPath, { recursive: true });
 
-    dbEngine = new DBEngine({ dbPath: testDbPath });
+    dbEngine = new DBEngine({ dbPath: testDbPath, embeddingUrl: process.env.TEST_EMBEDDING_URL || 'http://localhost:18080' });
     await dbEngine.connect();
   });
 

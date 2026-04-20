@@ -140,6 +140,17 @@ Claude Code統合ガイド（MCP Server）
 - トラブルシューティング
 - パフォーマンス最適化
 
+#### [docker-deployment.md](./docker-deployment.md)
+Docker構成ガイド
+
+- 1イメージ・2モードのコンセプト
+- 利用形態（単体 / 共有Embeddingサーバ）
+- Embeddingサーバ自動検出
+- Dockerイメージ構成（マルチステージビルド）
+- 既知の問題と修正内容（7件のバグ修正）
+- MLX / GPU の制約
+- 技術的な詳細
+
 ### 開発者向けドキュメント
 
 #### [release-process.md](./release-process.md)

@@ -42,12 +42,10 @@ interface JsonRpcResponse {
 
 export interface DBEngineOptions {
   /**
-   * 使用する埋め込みモデル
-   * - 'cl-nagoya/ruri-v3-30m': 小型モデル (120MB, 256次元)
-   * - 'cl-nagoya/ruri-v3-310m': 大型モデル (1.2GB, 768次元)
-   * @default 'cl-nagoya/ruri-v3-30m'
+   * Embedding ServerのURL
+   * @default 'http://localhost:8080'
    */
-  embeddingModel?: string;
+  embeddingUrl?: string;
 
   /**
    * データベースパス
@@ -72,6 +70,12 @@ export interface DBEngineOptions {
    * @default 30000
    */
   memoryCheckIntervalMs?: number;
+
+  /**
+   * 読み取り専用モード
+   * テーブル作成・インデックス更新をスキップし、検索のみ行う
+   */
+  readOnly?: boolean;
 }
 
 export interface DBEngineStatus {
@@ -201,7 +205,7 @@ export class DBEngine extends EventEmitter {
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Pick<Required<DBEngineOptions>, 'embeddingModel' | 'dbPath' | 'maxBatchTokens'>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'> & Pick<DBEngineOptions, 'readOnly'>;
   private performanceCsvPath: string | null = null;
   private performanceCsvStream: fs.WriteStream | null = null;
   private memoryCheckInterval: NodeJS.Timeout | null = null;
@@ -231,9 +235,10 @@ export class DBEngine extends EventEmitter {
   constructor(options: DBEngineOptions = {}) {
     super();
     this.options = {
-      embeddingModel: options.embeddingModel || 'cl-nagoya/ruri-v3-30m',
+      embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:8080',
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
+      readOnly: options.readOnly,
     };
     this.pythonMaxMemoryMB = options.pythonMaxMemoryMB ?? null;
     this.memoryCheckIntervalMs = options.memoryCheckIntervalMs ?? 30000;
@@ -281,31 +286,43 @@ export class DBEngine extends EventEmitter {
     console.log('[DBEngine.connect] pythonScript:', pythonScript);
     console.log('[DBEngine.connect] pythonScript exists:', fs.existsSync(pythonScript));
 
-    // pyproject.tomlの存在確認（パッケージルート）
-    const pyprojectPath = path.join(packageRoot, 'pyproject.toml');
-    console.log('[DBEngine.connect] Checking pyproject.toml at:', pyprojectPath);
-    console.log('[DBEngine.connect] pyproject.toml exists:', fs.existsSync(pyprojectPath));
+    // Docker環境ではpythonコマンドを直接使用（uv/.venv不要）
+    const isDocker = process.env.IS_DOCKER === 'true';
 
-    if (!fs.existsSync(pyprojectPath)) {
-      console.error('[DBEngine.connect] ERROR: pyproject.toml not found at:', pyprojectPath);
-      throw new Error(
-        'pyproject.toml not found. Please ensure the Python environment is properly set up with uv.'
-      );
+    if (!isDocker) {
+      // pyproject.tomlの存在確認（パッケージルート、uv実行に必要）
+      const pyprojectPath = path.join(packageRoot, 'pyproject.toml');
+      console.log('[DBEngine.connect] Checking pyproject.toml at:', pyprojectPath);
+      console.log('[DBEngine.connect] pyproject.toml exists:', fs.existsSync(pyprojectPath));
+
+      if (!fs.existsSync(pyprojectPath)) {
+        console.error('[DBEngine.connect] ERROR: pyproject.toml not found at:', pyprojectPath);
+        throw new Error(
+          'pyproject.toml not found. Please ensure the Python environment is properly set up with uv.'
+        );
+      }
+      console.log('[DBEngine.connect] pyproject.toml found OK');
     }
-    console.log('[DBEngine.connect] pyproject.toml found OK');
 
-    // uv --project でPythonを実行（パッケージルートを指定）
-    const pythonCmd = 'uv';
-    const pythonArgs = ['--project', packageRoot, 'run', 'python', pythonScript];
+    // Python実行コマンドの構築
+    const pythonCmd = isDocker ? 'python' : 'uv';
+    const pythonArgs = isDocker
+      ? [pythonScript]
+      : ['--project', packageRoot, 'run', 'python', pythonScript];
 
-    // モデル選択オプションを追加
-    if (this.options.embeddingModel) {
-      pythonArgs.push(`--model=${this.options.embeddingModel}`);
+    // Embedding URLオプションを追加
+    if (this.options.embeddingUrl) {
+      pythonArgs.push(`--embedding-url=${this.options.embeddingUrl}`);
     }
 
     // maxBatchTokensオプションを追加
     if (this.options.maxBatchTokens !== undefined) {
       pythonArgs.push(`--max-batch-tokens=${this.options.maxBatchTokens}`);
+    }
+
+    // read-onlyオプションを追加
+    if (this.options.readOnly) {
+      pythonArgs.push('--read-only');
     }
 
     // dbPathを絶対パスに解決して追加
@@ -1131,6 +1148,64 @@ export class DBEngine extends EventEmitter {
     const result = await this.sendRequest('getPathsWithStatus', { statuses });
     const response = result as { paths: string[] };
     return response.paths;
+  }
+
+  // ========================================
+  // Writer Heartbeat操作
+  // ========================================
+
+  /**
+   * Writer mastership を claim
+   */
+  async claimWriter(params: { writerId: string; host: string; pid: number }): Promise<{ success: boolean; writerId: string; state: string }> {
+    return await this.sendRequest('claimWriter', {
+      writer_id: params.writerId,
+      host: params.host,
+      pid: params.pid,
+    }) as { success: boolean; writerId: string; state: string };
+  }
+
+  /**
+   * Heartbeat を更新
+   */
+  async updateHeartbeat(params: { writerId: string; host: string; pid: number; state: string }): Promise<{ success: boolean; updatedAt: string }> {
+    return await this.sendRequest('updateHeartbeat', {
+      writer_id: params.writerId,
+      host: params.host,
+      pid: params.pid,
+      state: params.state,
+    }) as { success: boolean; updatedAt: string };
+  }
+
+  /**
+   * 現在のwriter heartbeat を取得
+   */
+  async getWriterHeartbeat(): Promise<{ exists: boolean; heartbeat?: { writerId: string; host: string; pid: number; state: string; updatedAt: string; ageSeconds: number } }> {
+    const result = await this.sendRequest('getWriterHeartbeat') as { exists: boolean; heartbeat?: { writer_id: string; host: string; pid: number; state: string; updated_at: string; age_seconds: number } };
+    if (!result.exists || !result.heartbeat) {
+      return { exists: false };
+    }
+    const hb = result.heartbeat;
+    return {
+      exists: true,
+      heartbeat: {
+        writerId: hb.writer_id,
+        host: hb.host,
+        pid: hb.pid,
+        state: hb.state,
+        updatedAt: hb.updated_at,
+        ageSeconds: hb.age_seconds,
+      },
+    };
+  }
+
+  /**
+   * Writer mastership を解放
+   */
+  async releaseWriter(params: { writerId: string }): Promise<{ success: boolean }> {
+    return await this.sendRequest('releaseWriter', {
+      writer_id: params.writerId,
+    }) as { success: boolean };
   }
 }
 

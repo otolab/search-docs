@@ -49,8 +49,10 @@ export interface IndexingConfig {
   maxDepth: number;
   /** ベクトル次元数 */
   vectorDimension: number;
-  /** 埋め込みモデル */
+  /** 埋め込みモデル（情報表示用、実際のモデルはembedding serverが管理） */
   embeddingModel: string;
+  /** Embedding ServerのURL（デフォルト: http://localhost:8080） */
+  embeddingUrl?: string;
 }
 
 export interface SearchConfig {
@@ -69,6 +71,8 @@ export interface ServerConfig {
   port: number;
   /** プロトコル */
   protocol: 'json-rpc' | 'http';
+  /** 読み取り専用モード（ファイル監視・インデックス更新を無効化） */
+  readOnly?: boolean;
 }
 
 export interface StorageConfig {
@@ -124,7 +128,8 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     minTokensForSplit: 100,
     maxDepth: 3,
     vectorDimension: 256,
-    embeddingModel: 'cl-nagoya/ruri-v3-30m',
+    embeddingModel: 'ruri-v3-30m-onnx',
+    embeddingUrl: 'http://localhost:8080',
   },
   search: {
     defaultLimit: 10,
