@@ -21,9 +21,10 @@ export interface ResolveConfigOptions {
 
 /**
  * 設定ファイル名の候補
- * 優先順位: .search-docs.json > search-docs.json
+ * 優先順位: .search-docs.json > search-docs.json > .search-docs/config.json
  */
 const CONFIG_FILE_NAMES = ['.search-docs.json', 'search-docs.json'] as const;
+const CONFIG_SUBDIR_PATH = '.search-docs/config.json';
 
 export class ConfigLoader {
   /**
@@ -93,9 +94,10 @@ export class ConfigLoader {
 
         if (parsedConfig.project?.root) {
           // 設定ファイルで明示的に指定されている場合
-          const configDir = path.dirname(configPath);
+          // まずプロジェクトルートの基準ディレクトリを取得
+          const baseDir = await this.getProjectRootFromConfig(configPath);
           projectRoot = await this.normalizeProjectRoot(
-            path.resolve(configDir, parsedConfig.project.root)
+            path.resolve(baseDir, parsedConfig.project.root)
           );
         } else {
           // 設定ファイルの親ディレクトリをプロジェクトルートとする
@@ -149,6 +151,15 @@ export class ConfigLoader {
           // ファイルが存在しない、次を試す
           continue;
         }
+      }
+
+      // .search-docs/config.json もチェック
+      const subdirConfig = path.join(currentDir, CONFIG_SUBDIR_PATH);
+      try {
+        await access(subdirConfig);
+        return subdirConfig;
+      } catch {
+        // ファイルが存在しない
       }
 
       // 親を遡らない場合はここで終了
@@ -221,8 +232,13 @@ export class ConfigLoader {
   private static async getProjectRootFromConfig(
     configPath: string
   ): Promise<string> {
-    // 設定ファイルの親ディレクトリ
-    const configDir = path.dirname(path.resolve(configPath));
+    const resolvedPath = path.resolve(configPath);
+    const configDir = path.dirname(resolvedPath);
+
+    // .search-docs/config.json の場合、さらに1つ上がプロジェクトルート
+    if (path.basename(configDir) === '.search-docs' && path.basename(resolvedPath) === 'config.json') {
+      return await this.normalizeProjectRoot(path.dirname(configDir));
+    }
 
     return await this.normalizeProjectRoot(configDir);
   }

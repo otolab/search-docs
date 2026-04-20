@@ -227,8 +227,7 @@ export function registerServerStopTool(context: ToolRegistrationContext): Regist
       try {
         // CLIのstopServer関数を呼び出し
         // systemState.projectRootをcwdとして明示的に渡す
-        const configToUse = systemState.configPath ||
-          (systemState.projectRoot ? `${systemState.projectRoot}/.search-docs.json` : undefined);
+        const configToUse = systemState.configPath ?? undefined;
 
         await stopServer({
           config: configToUse,

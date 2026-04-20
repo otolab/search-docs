@@ -68,7 +68,7 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
         resultText += '   Claude Codeを再接続すると表示されます。\n';
         resultText += '   （Claude Codeは現時点でMCP通知に未対応のため、reconnectが必要です）\n\n';
         resultText += '次のステップ:\n';
-        resultText += '  1. 設定を調整（必要に応じて）: .search-docs.jsonを編集\n';
+        resultText += '  1. 設定を調整（必要に応じて）: .search-docs/config.json を編集\n';
         resultText += '  2. **Claude Codeを再接続してツールリストを更新**\n';
         resultText += '  3. サーバを起動: server_start\n';
         resultText += '  4. システム状態を確認: get_system_status\n';

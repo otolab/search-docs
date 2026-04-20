@@ -18,7 +18,7 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
     'add_related_project',
     {
       description:
-        '関連プロジェクトを一時的に追加します。追加されたプロジェクトはセッション中のみ有効で、設定ファイルには保存されません。指定ディレクトリに .search-docs.json が存在する必要があります。',
+        '関連プロジェクトを一時的に追加します。追加されたプロジェクトはセッション中のみ有効で、設定ファイルには保存されません。指定ディレクトリに .search-docs.json が存在する必要があります。\n（.search-docs/config.json も自動検出されます）',
       inputSchema: {
         name: z.string().describe('プロジェクト名（一意の識別子）'),
         dir: z.string().describe('プロジェクトディレクトリ（相対パスまたは絶対パス）'),
@@ -51,7 +51,7 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
 
       if (!resolveResult.config) {
         throw new Error(
-          `ディレクトリ "${resolvedDir}" に .search-docs.json が見つかりません。\n\n` +
+          `ディレクトリ "${resolvedDir}" に設定ファイルが見つかりません。\n\n` +
           '関連プロジェクトとして追加するには、対象ディレクトリで init を実行してください。'
         );
       }
@@ -67,7 +67,7 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
       if (description) {
         resultText += `  説明: ${description}\n`;
       }
-      resultText += `\n⚠️  この追加はセッション中のみ有効です。永続化するには .search-docs.json を編集してください。\n\n`;
+      resultText += `\n⚠️  この追加はセッション中のみ有効です。永続化するには設定ファイルを編集してください。\n\n`;
       resultText += '次のステップ:\n';
       resultText += `  - サーバを起動: server_start(project: "${name}")\n`;
       resultText += `  - 一覧を確認: list_related_projects\n`;
