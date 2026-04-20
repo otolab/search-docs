@@ -33,8 +33,13 @@ export async function normalizeProjectRoot(root: string): Promise<string> {
 export async function getProjectRootFromConfig(
   configPath: string
 ): Promise<string> {
-  // 設定ファイルの親ディレクトリ
-  const configDir = path.dirname(path.resolve(configPath));
+  const resolvedPath = path.resolve(configPath);
+  const configDir = path.dirname(resolvedPath);
+
+  // .search-docs/config.json の場合、さらに1つ上がプロジェクトルート
+  if (path.basename(configDir) === '.search-docs' && path.basename(resolvedPath) === 'config.json') {
+    return await normalizeProjectRoot(path.dirname(configDir));
+  }
 
   return await normalizeProjectRoot(configDir);
 }
@@ -94,7 +99,7 @@ export async function findProjectRoot(
 export async function findDefaultConfigPath(
   projectRoot: string
 ): Promise<string | null> {
-  const candidates = ['.search-docs.json', 'search-docs.json'];
+  const candidates = ['.search-docs.json', 'search-docs.json', '.search-docs/config.json'];
 
   for (const candidate of candidates) {
     const configPath = path.join(projectRoot, candidate);
@@ -134,5 +139,5 @@ export async function resolveConfigPath(
   }
 
   // デフォルトパスを返す（存在しなくてもこのパスを返す）
-  return path.join(projectRoot, '.search-docs.json');
+  return path.join(projectRoot, '.search-docs', 'config.json');
 }

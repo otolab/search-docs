@@ -97,30 +97,35 @@ export async function initConfig(options: ConfigInitOptions = {}): Promise<void>
   const cwd = options.cwd || process.cwd();
   const projectRoot = options.projectRoot || cwd;
   const port = options.port || generateRandomPort();
-  const configPath = path.join(cwd, '.search-docs.json');
 
   console.log('Initializing search-docs configuration...\n');
 
-  // 既存ファイルチェック
-  let fileExists = false;
-  try {
-    await fs.access(configPath);
-    fileExists = true;
-  } catch (error) {
-    // ファイルが存在しない場合は正常（続行）
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error;
+  // 既存ファイルチェック（3つの候補パスを確認）
+  const existingPaths = [
+    path.join(cwd, '.search-docs.json'),
+    path.join(cwd, 'search-docs.json'),
+    path.join(cwd, '.search-docs', 'config.json'),
+  ];
+  let existingConfigPath: string | null = null;
+  for (const p of existingPaths) {
+    try {
+      await fs.access(p);
+      existingConfigPath = p;
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
     }
   }
 
-  if (fileExists) {
+  if (existingConfigPath) {
     if (!options.force) {
-      // 既存ファイルがある場合は情報メッセージを表示して正常終了
-      console.log(`Configuration file already exists: ${configPath}\n`);
+      console.log(`Configuration file already exists: ${existingConfigPath}\n`);
       console.log('✅ No action needed. Your project is already configured.\n');
       console.log('To overwrite the existing file, use:');
       console.log('  search-docs config init --force\n');
-      return; // 正常終了（エラーではない）
+      return;
     }
 
     console.log('⚠️  Overwriting existing configuration file...\n');
@@ -129,7 +134,10 @@ export async function initConfig(options: ConfigInitOptions = {}): Promise<void>
   // 設定オブジェクト生成
   const config = createDefaultConfig({ port, projectRoot });
 
-  // ファイル書き込み
+  // .search-docs/ ディレクトリ作成 + ファイル書き込み
+  const searchDocsDir = path.join(cwd, '.search-docs');
+  await fs.mkdir(searchDocsDir, { recursive: true });
+  const configPath = path.join(searchDocsDir, 'config.json');
   const configContent = JSON.stringify(config, null, 2) + '\n';
   await fs.writeFile(configPath, configContent, 'utf-8');
 
@@ -139,7 +147,7 @@ export async function initConfig(options: ConfigInitOptions = {}): Promise<void>
   console.log(`🔌 Port: ${config.server.port}`);
   console.log(`📁 Root: ${projectRoot}\n`);
   console.log('Next steps:');
-  console.log('  1. Review and customize .search-docs.json');
+  console.log('  1. Review and customize .search-docs/config.json');
   console.log('  2. Start the server: search-docs server start');
   console.log('  3. Search documents: search-docs search "query"\n');
 }
