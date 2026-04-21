@@ -59,15 +59,11 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
 
       // プロジェクト指定がある場合は関連プロジェクトを検索
       if (project) {
-        // 関連プロジェクトのサーバを取得（起動済みのみ）
-        const relatedClient = await context.serverManager.getServer(project);
-        if (!relatedClient) {
-          throw new Error(
-            `関連プロジェクト "${project}" のサーバが起動していません。\n\n` +
-            `サーバを起動してください:\n` +
-            `  server_start(project: "${project}")`
-          );
-        }
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
+        const relatedClient = await context.serverManager.getOrStartRelatedServer(project, allRelated);
 
         // 関連プロジェクトで検索を実行
         try {

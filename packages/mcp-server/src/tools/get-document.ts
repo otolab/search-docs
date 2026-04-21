@@ -38,15 +38,11 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
 
       // プロジェクト指定がある場合は関連プロジェクトから取得
       if (project) {
-        // 関連プロジェクトのサーバを取得（起動済みのみ）
-        const relatedClient = await context.serverManager.getServer(project);
-        if (!relatedClient) {
-          throw new Error(
-            `関連プロジェクト "${project}" のサーバが起動していません。\n\n` +
-            `サーバを起動してください:\n` +
-            `  server_start(project: "${project}")`
-          );
-        }
+        const allRelated = context.serverManager.getAllRelatedProjects(
+          systemState.config?.relatedProjects,
+          systemState.configPath
+        );
+        const relatedClient = await context.serverManager.getOrStartRelatedServer(project, allRelated);
 
         // 関連プロジェクトから文書を取得
         try {

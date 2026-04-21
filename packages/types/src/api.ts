@@ -159,6 +159,10 @@ export interface GetStatusResponse {
     processing: number;
     queue: number;
   };
+  watcher?: {
+    state: 'sleeping' | 'claiming' | 'watching';
+    writerId: string;
+  };
 }
 
 // ========================================

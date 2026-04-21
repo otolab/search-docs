@@ -310,6 +310,40 @@ export class ServerManager {
   }
 
   /**
+   * 関連プロジェクトのサーバを取得、未起動なら自動起動
+   */
+  async getOrStartRelatedServer(
+    projectName: string,
+    allRelated: Record<string, RelatedProjectConfig>
+  ): Promise<SearchDocsClient> {
+    // キャッシュにあればヘルスチェック付きで返す
+    const cached = await this.getServer(projectName);
+    if (cached) return cached;
+
+    const relatedConfig = allRelated[projectName];
+    if (!relatedConfig) {
+      throw new Error(
+        `関連プロジェクト "${projectName}" が設定されていません。\n\n` +
+        `利用可能なプロジェクト: ${Object.keys(allRelated).join(', ') || '(なし)'}\n` +
+        `追加するには: add_related_project`
+      );
+    }
+
+    // ConfigLoader で設定を解決
+    const resolved = await ConfigLoader.resolve({
+      cwd: relatedConfig.dir,
+      traverseUp: false,
+    });
+
+    return await this.getOrStartServer(
+      projectName,
+      resolved.projectRoot,
+      resolved.config.server.port,
+      resolved.configPath ?? undefined
+    );
+  }
+
+  /**
    * 一時的な関連プロジェクトを追加
    */
   addTemporaryRelatedProject(name: string, config: RelatedProjectConfig): void {
