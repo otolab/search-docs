@@ -12,6 +12,7 @@ search-docs は複数のプロセスとコンポーネントにまたがる状�
 | Worker | IndexWorker | isRunning × isProcessing | JSON-RPCサーバプロセス |
 | Worker | FileWatcher | 起動 / 停止 | JSON-RPCサーバプロセス |
 | Worker | StartupSyncWorker | isSyncing | JSON-RPCサーバプロセス |
+| Embedding | EmbeddingServerProcess | detecting → ready / error | JSON-RPCサーバプロセス |
 
 ## プロセス構成と状態の所在
 
@@ -21,6 +22,9 @@ MCPサーバプロセス (stdio)
 │  ServerManager でJSON-RPCサーバへの接続を管理
 │
 │  ── JSON-RPC ──▶  JSON-RPCサーバプロセス (HTTP)
+│                   │
+│                   ├─ EmbeddingServerProcess (最初に起動)
+│                   │    外部検出 or ローカルspawn → URL確定
 │                   │
 │                   ├─ SearchDocsServer (読み取り専用)
 │                   │    connectionState を参照
@@ -156,6 +160,35 @@ WatcherProcessが `watching` に遷移すると `start()` で起動、`sleeping`
 
 WatcherProcessが `watching` に遷移した直後に1回だけ実行される。
 
+### 7. EmbeddingServerProcess
+
+**定義**: `packages/server/src/embedding/embedding-server-process.ts`
+
+bin/server.ts が最初に起動するコンポーネント。Embeddingサーバの検出またはローカル起動を行い、確定したURLをDBEngineに渡す。
+
+```
+ ┌───────────┐
+ │ detecting  │  外部サーバを順に探索
+ └─────┬─────┘
+       │ 見つかった → external = true
+       ├────────────────────▶ ready (external)
+       │
+       │ 見つからなかった
+       ▼
+ ┌───────────┐
+ │ starting   │  ローカルプロセスをspawn
+ └─────┬─────┘
+       │ GET /health 成功
+       ▼
+     ready (local)
+```
+
+検出順序:
+1. `options.embeddingUrl`（明示指定 or EMBEDDING_URL環境変数）
+2. `http://search-docs-embedding:8080`（Docker Composeサービス）
+3. `http://host.docker.internal:{port}`（ホスト側サーバ）
+4. ローカル起動（`embedding_server.py` をspawn）
+
 ## 起動シーケンス
 
 ```
@@ -173,8 +206,11 @@ MCPサーバ起動
 │
 │    JSON-RPCサーバ起動
 │    │
+│    ├─ EmbeddingServerProcess.start()
+│    │    外部検出 or ローカルspawn → URL確定
+│    │
 │    ├─ SearchDocsServer.start()
-│    │    DBEngine.connect() [バックグラウンド]
+│    │    DBEngine.connect(embeddingUrl) [バックグラウンド]
 │    │    connectionState: disconnected → connecting
 │    │
 │    ├─ WatcherProcess.start()
