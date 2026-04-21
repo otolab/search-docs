@@ -14,15 +14,18 @@ MCP Serverはシステム状態に応じて利用可能なツールを動的に�
 
 **システム状態とツールの対応**:
 
-| 状態 | init | server_start | server_stop | get_system_status | search | get_document | get_outline | index_status |
-|------|------|--------------|-------------|-------------------|--------|--------------|-------------|--------------|
-| NOT_CONFIGURED（未設定） | ✓ | - | - | ✓ | - | - | - | - |
-| CONFIGURED（設定済み） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 状態 | init | get_system_status | search | get_document | get_outline | index_status | add_related_project | list_related_projects |
+|------|------|-------------------|--------|--------------|-------------|--------------|---------------------|----------------------|
+| NOT_CONFIGURED（未設定） | ✓ | ✓ | - | - | - | - | - | - |
+| CONFIGURED_SERVER_DOWN（設定済み、サーバ停止） | ✓ | ✓ | ✓* | ✓* | ✓* | ✓* | ✓ | ✓ |
+| RUNNING（稼働中） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+*: サーバ停止時も自動起動するため利用可能
 
 **注意**:
 - `init`実行後、全てのツールが利用可能になります
 - ただし、**Claude Codeは現在MCP通知に未対応**のため、ツールリスト更新には**再接続が必要**です
-- 各ツール内で状態チェックを行うため、適切でない状態でツールを呼び出した場合はエラーメッセージが表示されます
+- CONFIGURED_SERVER_DOWN時は、ツール呼び出しで自動的にサーバが起動されます（`server_start`/`server_stop`ツールは廃止）
 
 ### ツール一覧
 
@@ -35,29 +38,14 @@ MCP Serverはシステム状態に応じて利用可能なツールを動的に�
 - `port` (number, オプション): サーバポート番号（省略時はランダムなポート番号が割り当てられます）
 - `force` (boolean, オプション): 既存設定を上書き（デフォルト: false）
 
-#### 2. `server_start`
-search-docsサーバを起動します。
-
-**利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
-
-**パラメータ**:
-- `foreground` (boolean, オプション): フォアグラウンド起動（デフォルト: false、バックグラウンド起動）
-
-#### 3. `server_stop`
-search-docsサーバを停止します。
-
-**利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
-
-**パラメータ**: なし
-
-#### 4. `get_system_status`
+#### 2. `get_system_status`
 システムの状態を取得します。設定ファイルの有無、サーバの起動状態、インデックス情報を確認できます。
 
 **利用可能条件**: 常時
 
 **パラメータ**: なし
 
-#### 5. `search`
+#### 3. `search`
 文書を検索します。クエリに基づいてVector検索を実行し、関連する文書セクションを返します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
@@ -72,7 +60,7 @@ search-docsサーバを停止します。
 - `excludePaths` (array of string, オプション): 除外するドキュメントパス（前方一致）。例: ["docs/internal/", "temp/"]
 - `previewLines` (number, オプション): プレビュー行数（デフォルト: 5）
 
-#### 6. `get_document`
+#### 4. `get_document`
 文書の内容を取得します。パス指定で文書全体、またはセクションIDで特定セクションを取得できます。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
@@ -84,7 +72,7 @@ search-docsサーバを停止します。
 
 **注意**: pathとsectionIdのどちらか一方は必須です。
 
-#### 7. `get_outline`
+#### 5. `get_outline`
 文書の構造（アウトライン）を取得します。セクション番号、見出し、行数、トークン数、セクションIDを一覧表示します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
@@ -96,10 +84,26 @@ search-docsサーバを停止します。
 
 **注意**: pathとsectionIdのどちらか一方は必須です。
 
-#### 8. `index_status`
+#### 6. `index_status`
 インデックスの状態を確認します。総文書数、セクション数、Dirtyセクション数などを表示します。
 
 **利用可能条件**: サーバ稼働中（RUNNING）
+
+**パラメータ**: なし
+
+#### 7. `add_related_project`
+関連プロジェクトを追加します。複数プロジェクト横断検索を可能にします。
+
+**利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
+
+**パラメータ**:
+- `name` (string, 必須): プロジェクト名
+- `path` (string, 必須): プロジェクトのパス
+
+#### 8. `list_related_projects`
+登録済み関連プロジェクトの一覧を取得します。
+
+**利用可能条件**: 設定済み（CONFIGURED_SERVER_DOWN または RUNNING）
 
 **パラメータ**: なし
 
@@ -137,14 +141,14 @@ Docker環境がない場合の代替手段です。
 
 #### サーバ自動起動機能
 
-MCP Serverは自動的にsearch-docsサーバを起動します。
+MCP Serverは必要に応じて自動的にsearch-docsサーバを起動します。
 
 **動作**:
-1. MCP Server起動時にサーバへの接続を試みる
-2. サーバが起動していない場合、自動的にサーバを起動
-3. サーバが起動したら接続を確立
+1. CONFIGURED_SERVER_DOWN状態で検索ツール（search, get_document等）を呼び出す
+2. 自動的にサーバを起動
+3. サーバが起動したら接続を確立し、リクエストを処理
 
-これにより、手動でサーバを起動する必要がなくなりました。
+これにより、手動でサーバを起動する必要がなくなりました。`server_start`/`server_stop`ツールは廃止されました。
 
 #### 前提条件
 

@@ -42,8 +42,11 @@ search-docsは以下の3つのプロセス役割で構成されます。
 - **役割**: Ollama API互換のHTTP埋め込みサーバ
 - **アクセスモード**: ステートレス、複数クライアントから共有利用可能
 - **起動モード**:
-  - 単体利用: MCPサーバプロセス内で自動起動
+  - 単体利用: `EmbeddingServerProcess`が自動検出・起動（TypeScript管理）
   - 共有利用: 独立プロセスとして起動（複数プロジェクト共有）
+- **管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`で統合管理
+  - 外部検出 → Docker service → host.docker.internal → ローカルspawnの順で検索
+  - GET /health ポーリングで readiness 待ち
 
 ### プロセス間の関係
 
