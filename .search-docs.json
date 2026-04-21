@@ -25,7 +25,7 @@
     "maxDepth": 3,
     "vectorDimension": 256,
     "embeddingModel": "cl-nagoya/ruri-v3-30m",
-    "embeddingUrl": "http://localhost:8080"
+    "embeddingUrl": "http://localhost:24281"
   },
   "search": {
     "defaultLimit": 10,

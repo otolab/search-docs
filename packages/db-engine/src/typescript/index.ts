@@ -43,7 +43,7 @@ interface JsonRpcResponse {
 export interface DBEngineOptions {
   /**
    * Embedding ServerのURL
-   * @default 'http://localhost:8080'
+   * @default 'http://localhost:24281'
    */
   embeddingUrl?: string;
 
@@ -235,7 +235,7 @@ export class DBEngine extends EventEmitter {
   constructor(options: DBEngineOptions = {}) {
     super();
     this.options = {
-      embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:8080',
+      embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:24281',
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
       readOnly: options.readOnly,
