@@ -38,7 +38,7 @@ docker run -d \
   --name search-docs-embedding \
   --network search-docs-net \
   --restart=unless-stopped \
-  -p 127.0.0.1:24281:8080 \
+  -p 127.0.0.1:24281:24281 \
   ghcr.io/otolab/search-docs-mcp:latest \
   --mode=embedding-server
 
@@ -59,7 +59,7 @@ docker mcp run search-docs
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
 | `EMBEDDING_URL` | 明示的なEmbeddingサーバURL | - |
-| `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `8080` (Embeddingモード), `24281` (検出用) |
+| `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `24281` |
 
 **注**: 以前の `SEARCH_DOCS_DOCKER_EMBEDDING_URL` 環境変数は廃止されました。`EmbeddingServerProcess`が自動検出するため不要です。
 
@@ -68,7 +68,7 @@ docker mcp run search-docs
 MCPサーバ起動時に、`EmbeddingServerProcess`（TypeScript管理）が以下の順序でEmbeddingサーバを探します：
 
 1. `EMBEDDING_URL` 環境変数（明示指定、最優先）
-2. `http://search-docs-embedding:8080/health`（Docker network内）
+2. `http://search-docs-embedding:24281/health`（Docker network内）
 3. `http://host.docker.internal:24281/health`（ホスト側サービス）
 4. すべて失敗（タイムアウト 1s）→ ローカルspawn起動
 

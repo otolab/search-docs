@@ -15,7 +15,7 @@ case "${1:-}" in
     # スタンドアロン Embedding サーバ（Docker Compose での共有サーバ用）
     run_python \
       "${PYTHON_DIR}/embedding_server.py" \
-      --port="${EMBEDDING_SERVER_PORT:-8080}" \
+      --port="${EMBEDDING_SERVER_PORT:-24281}" \
       --runtime="${EMBEDDING_RUNTIME:-onnx}" \
       --model-path="${SEARCH_DOCS_DOCKER_MODEL_PATH:-/app/.cache/models/ruri-v3-30m-onnx}" \
       --dimension="${SEARCH_DOCS_DOCKER_VECTOR_DIMENSION:-256}"

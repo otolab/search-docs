@@ -56,7 +56,7 @@ async function main() {
     // Embeddingサーバの検出・起動
     const embeddingServer = new EmbeddingServerProcess({
       embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
-      port: 8080,
+      port: 24281,
       runtime: 'onnx',
       modelPath: process.env.SEARCH_DOCS_DOCKER_MODEL_PATH,
       dimension: config.indexing.vectorDimension,

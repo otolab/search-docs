@@ -24,7 +24,7 @@ export class EmbeddingServerProcess {
   constructor(private options: EmbeddingServerOptions) {}
 
   async start(): Promise<string> {
-    const port = this.options.port ?? 8080;
+    const port = this.options.port ?? 24281;
 
     // 1. 明示的なURL指定
     if (this.options.embeddingUrl) {
@@ -38,7 +38,7 @@ export class EmbeddingServerProcess {
     }
 
     // 2. Docker network (compose service)
-    const dockerServiceUrl = 'http://search-docs-embedding:8080';
+    const dockerServiceUrl = `http://search-docs-embedding:${port}`;
     if (await this.healthCheck(dockerServiceUrl)) {
       this.url = dockerServiceUrl;
       this.external = true;
