@@ -28,6 +28,18 @@ import {
   initConfig,
   type ConfigInitOptions,
 } from './commands/config/init.js';
+import {
+  executeEmbeddingStart,
+  type EmbeddingStartOptions,
+} from './commands/embedding/start.js';
+import {
+  executeEmbeddingStop,
+  type EmbeddingStopOptions,
+} from './commands/embedding/stop.js';
+import {
+  executeEmbeddingStatus,
+  type EmbeddingStatusOptions,
+} from './commands/embedding/status.js';
 
 // package.jsonからバージョンを読み込む
 const __filename = fileURLToPath(import.meta.url);
@@ -175,6 +187,38 @@ configCmd
   .option('-f, --force', '既存ファイルを上書き')
   .action((options: ConfigInitOptions) => {
     void initConfig(options);
+  });
+
+
+// embedding コマンド
+const embeddingCmd = program
+  .command('embedding')
+  .description('Embeddingサーバの起動・停止・ステータス確認');
+
+embeddingCmd
+  .command('start')
+  .description('Embeddingサーバを起動')
+  .option('--port <port>', 'ポート番号', '24281')
+  .option('-f, --foreground', 'フォアグラウンドで起動')
+  .option('--runtime <runtime>', 'ランタイム (onnx, torch)', 'onnx')
+  .option('--dimension <dim>', 'ベクトル次元数', '256')
+  .action((options: EmbeddingStartOptions) => {
+    void executeEmbeddingStart(options);
+  });
+
+embeddingCmd
+  .command('stop')
+  .description('Embeddingサーバを停止')
+  .action((options: EmbeddingStopOptions) => {
+    void executeEmbeddingStop(options);
+  });
+
+embeddingCmd
+  .command('status')
+  .description('Embeddingサーバのステータスを確認')
+  .option('--port <port>', 'ポート番号', '24281')
+  .action((options: EmbeddingStatusOptions) => {
+    void executeEmbeddingStatus(options);
   });
 
 

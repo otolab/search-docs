@@ -33,9 +33,13 @@ class ONNXEmbedding:
             import onnxruntime as ort
             from transformers import AutoTokenizer
 
-            # GPU/CPU自動検出
+            # アクセラレータ自動検出
             providers = ['CPUExecutionProvider']
-            if 'CUDAExecutionProvider' in ort.get_available_providers():
+            available = ort.get_available_providers()
+            if 'CoreMLExecutionProvider' in available:
+                providers.insert(0, 'CoreMLExecutionProvider')
+                device_info = "CoreML (Apple Silicon)"
+            elif 'CUDAExecutionProvider' in available:
                 providers.insert(0, 'CUDAExecutionProvider')
                 device_info = "GPU (CUDA)"
             else:
