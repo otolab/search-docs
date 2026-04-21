@@ -69,7 +69,7 @@ search-docs/
 │   ├── storage/          # DocumentStorage
 │   └── db-engine/        # LanceDB Pythonラッパー
 ├── docker/               # Docker関連
-│   ├── entrypoint.sh    # モード分岐（MCP/Embedding）
+│   ├── entrypoint.sh    # モード分岐（MCP/Embedding、簡素化済み）
 │   └── compose.yaml     # 共有Embeddingサーバ構成例
 ├── docs/                 # ドキュメント
 ├── prompts/              # Claude Code設定
