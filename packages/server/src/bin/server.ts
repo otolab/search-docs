@@ -137,8 +137,9 @@ async function main() {
       config.server.port
     );
 
-    // WatcherProcess 生成
+    // WatcherProcess 生成・接続
     const watcherProcess = new WatcherProcess(config, storage, dbEngine);
+    searchDocsServer.setWatcherProcess(watcherProcess);
 
     // シグナルハンドラ（PIDファイル削除を追加）
     const shutdown = async () => {

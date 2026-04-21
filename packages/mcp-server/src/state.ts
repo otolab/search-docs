@@ -123,9 +123,8 @@ export function getStateErrorMessage(state: SystemState, action: string, related
 
     case 'CONFIGURED_SERVER_DOWN': {
       let message =
-        `${action}を実行できません。search-docsサーバが起動していません。\n\n` +
-        'サーバを起動してください:\n' +
-        '  ツール: server_start\n';
+        `${action}を実行できません。search-docsサーバを自動起動中です。\n` +
+        'しばらくお待ちください。\n';
 
       if (relatedProjectNames && relatedProjectNames.length > 0) {
         message += `\n利用可能な関連プロジェクト: ${relatedProjectNames.join(', ')}\n`;

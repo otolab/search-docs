@@ -210,6 +210,7 @@ claude mcp add npx -- -y @search-docs/mcp-server
 - docs/data-model.md - データモデル設計
 - docs/architecture.md - システムアーキテクチャ
 - docs/architecture-decisions.md - アーキテクチャ決定記録（ADR）
+- docs/state-model.md - 内部状態モデル（状態遷移・依存関係）
 - prompts/README.md - Claude Code設定
 
 ---
