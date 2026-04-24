@@ -24,6 +24,7 @@ npx @search-docs/cli <command>
 - [server コマンド](#server-コマンド)
 - [search コマンド](#search-コマンド)
 - [index コマンド](#index-コマンド)
+- [embedding コマンド](#embedding-コマンド)
 - [config コマンド](#config-コマンド)
 - [終了コード](#終了コード)
 
@@ -489,6 +490,162 @@ Worker:
 - Running: ワーカーが実行中か
 - Processing: 現在処理中のタスク数
 - Queue: キューに残っているタスク数
+
+## embedding コマンド
+
+Embeddingサーバの起動・停止・状態確認を行います。
+
+Embeddingサーバはプロジェクト横断で共有利用できるため、PIDとログは `~/.search-docs/` に配置されます（プロジェクトごとの `.search-docs/` ではありません）。ホスト側でGPU/CoreMLアクセラレーションを利用したい場合や、複数プロジェクトでEmbeddingモデルを共有したい場合に便利です。
+
+### embedding start
+
+Embeddingサーバをデーモン起動します。
+
+```bash
+search-docs embedding start [options]
+```
+
+#### オプション
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--port <port>` | ポート番号 | `24281` |
+| `-f, --foreground` | フォアグラウンドで起動（開発時） | `false` |
+| `--runtime <runtime>` | ランタイム（`onnx` または `torch`） | `onnx` |
+| `--dimension <dim>` | ベクトル次元数 | `256` |
+
+#### 使用例
+
+```bash
+# バックグラウンドで起動（デフォルト）
+search-docs embedding start
+
+# フォアグラウンドで起動（開発時）
+search-docs embedding start --foreground
+
+# カスタムポートで起動
+search-docs embedding start --port 24282
+
+# torchランタイムで起動
+search-docs embedding start --runtime torch
+```
+
+#### 動作
+
+1. 既存サーバがないことを確認
+2. ポートの空き状況を確認
+3. `uv --project <db-engine> run python embedding_server.py` で起動
+4. `/health` エンドポイントでReadiness待ち（初回はモデルダウンロードで時間がかかる場合があります）
+5. PIDファイル（`~/.search-docs/embedding.pid`）を保存
+
+#### アクセラレータ自動検出
+
+ONNX Runtimeのアクセラレータを自動検出します：
+
+- **Apple Silicon**: CoreMLExecutionProvider（445/724ノード対応）
+- **NVIDIA GPU**: CUDAExecutionProvider
+- **それ以外**: CPUExecutionProvider
+
+#### モデルパス自動解決
+
+以下の優先順で探します：
+
+1. Docker内蔵パス（`/app/.cache/models/ruri-v3-30m-onnx`）
+2. プロジェクトキャッシュ（`cwd/.cache/models/ruri-v3-30m-onnx`）
+3. HuggingFace Hubから自動ダウンロード（`sirasagi62/ruri-v3-30m-ONNX`）
+
+#### 注意事項
+
+- すでにサーバが起動している場合は何もしません
+- 初回起動時はモデルのダウンロードに時間がかかります
+- ログは `~/.search-docs/embedding.log` に出力されます
+
+### embedding stop
+
+Embeddingサーバを停止します。
+
+```bash
+search-docs embedding stop
+```
+
+#### オプション
+
+なし
+
+#### 使用例
+
+```bash
+# サーバを停止
+search-docs embedding stop
+```
+
+#### 動作
+
+1. PIDファイル（`~/.search-docs/embedding.pid`）からプロセスIDを取得
+2. プロセスにSIGTERMシグナルを送信
+3. プロセスの終了を待機
+4. PIDファイルを削除
+
+#### 注意事項
+
+- サーバが起動していない場合はエラーになります
+
+### embedding status
+
+Embeddingサーバの状態を確認します。
+
+```bash
+search-docs embedding status
+```
+
+#### オプション
+
+なし
+
+#### 使用例
+
+```bash
+# サーバの状態を確認
+search-docs embedding status
+```
+
+#### 出力例
+
+```
+Embedding Server Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Status:     Running
+PID:        45678
+Port:       24281
+Model:      cl-nagoya/ruri-v3-30m
+Dimension:  256
+Started:    2026-04-21T10:30:00.000Z
+Log:        /Users/username/.search-docs/embedding.log
+```
+
+#### 表示項目
+
+- **Status**: `Running` または `Not running`
+- **PID**: プロセスID
+- **Port**: 待ち受けポート番号
+- **Model**: モデル名
+- **Dimension**: ベクトル次元数
+- **Started**: 起動日時
+- **Log**: ログファイルのパス
+
+### Docker MCPサーバからの利用
+
+Docker内のMCPサーバは、`host.docker.internal:24281` 経由でホスト側のEmbeddingサーバを自動検出します。ホスト側でEmbeddingサーバを起動しておくだけで、Docker MCPサーバが自動的に接続します。
+
+```bash
+# ホスト側でEmbeddingサーバを起動
+search-docs embedding start
+
+# Docker MCPサーバを起動（自動的にホスト側のEmbeddingサーバを検出）
+docker mcp run search-docs
+```
+
+詳細は [Docker構成](./docker-deployment.md) を参照してください。
 
 ## config コマンド
 
