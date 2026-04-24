@@ -9,14 +9,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Command } from 'commander';
 import { createRequire } from 'module';
 import * as path from 'path';
-import * as fs from 'fs/promises';
 
 import { detectSystemState, type SystemState } from './state.js';
 import { ServerManager } from './server-manager.js';
 import {
   registerInitTool,
-  registerServerStartTool,
-  registerServerStopTool,
   registerSystemStatusTool,
   registerSearchTool,
   registerGetDocumentTool,
@@ -92,8 +89,6 @@ function parseArgs(): CLIOptions {
  */
 interface ToolHandles {
   init: RegisteredTool;
-  serverStart: RegisteredTool;
-  serverStop: RegisteredTool;
   systemStatus: RegisteredTool;
   search: RegisteredTool;
   getDocument: RegisteredTool;
@@ -120,8 +115,6 @@ function updateToolAvailability(_state: SystemState, handles: ToolHandles): void
   // 全ツールを常時有効にする
   // 各ツール内で状態チェックを行い、適切なエラーメッセージを返す
   handles.init.enable();
-  handles.serverStart.enable();
-  handles.serverStop.enable();
   handles.systemStatus.enable();
   handles.search.enable();
   handles.getDocument.enable();
@@ -151,42 +144,28 @@ async function main() {
   debugLog(`Config exists: ${systemState.config ? 'YES' : 'NO'}`);
   debugLog(`Config path: ${systemState.configPath || '(none)'}`);
 
-  // CONFIGURED_SERVER_DOWNかつインデックスが存在する場合、サーバを自動起動
+  // CONFIGURED_SERVER_DOWNの場合、サーバを自動起動
   debugLog(`Checking auto-start condition: state === CONFIGURED_SERVER_DOWN && config exists`);
   debugLog(`  - state === CONFIGURED_SERVER_DOWN: ${systemState.state === 'CONFIGURED_SERVER_DOWN'}`);
   debugLog(`  - config exists: ${!!systemState.config}`);
 
   if (systemState.state === 'CONFIGURED_SERVER_DOWN' && systemState.config) {
-    const indexPath = path.join(
-      systemState.projectRoot,
-      systemState.config.storage.indexPath
-    );
-    debugLog(`Index path to check: ${indexPath}`);
+    debugLog('✓ Config exists, attempting auto-start...');
 
+    const serverManager = new ServerManager();
     try {
-      await fs.access(indexPath);
-      // インデックスディレクトリが存在する → 自動起動を試みる
-      debugLog('✓ Index directory exists, attempting auto-start...');
+      debugLog(`Auto-start params: projectRoot=${systemState.projectRoot}, port=${systemState.config.server.port}, configPath=${systemState.configPath}`);
+      await serverManager.startServer(
+        systemState.projectRoot,
+        systemState.config.server.port,
+        systemState.configPath
+      );
 
-      const serverManager = new ServerManager();
-      try {
-        debugLog(`Auto-start params: projectRoot=${systemState.projectRoot}, port=${systemState.config.server.port}, configPath=${systemState.configPath}`);
-        await serverManager.startServer(
-          systemState.projectRoot,
-          systemState.config.server.port,
-          systemState.configPath
-        );
-
-        // 自動起動成功、状態を再判定
-        systemState = await detectSystemState(cwd);
-        debugLog(`System state after auto-start: ${systemState.state}`);
-      } catch (startError) {
-        // 自動起動失敗は致命的ではない、手動起動を促す
-        debugLog(`Auto-start failed: ${(startError as Error).message}`);
-      }
-    } catch (error) {
-      // インデックスディレクトリが存在しない → 自動起動しない
-      debugLog(`✗ Index directory does not exist, skipping auto-start: ${(error as Error).message}`);
+      // 自動起動成功、状態を再判定
+      systemState = await detectSystemState(cwd);
+      debugLog(`System state after auto-start: ${systemState.state}`);
+    } catch (startError) {
+      debugLog(`Auto-start failed: ${(startError as Error).message}`);
     }
   } else {
     debugLog('✗ Auto-start condition not met, skipping auto-start');
@@ -232,8 +211,6 @@ async function main() {
   debugLog('Registering all tools...');
   toolHandles = {
     init: registerInitTool(context),
-    serverStart: registerServerStartTool(context),
-    serverStop: registerServerStopTool(context),
     systemStatus: registerSystemStatusTool(context),
     search: registerSearchTool(context),
     getDocument: registerGetDocumentTool(context),

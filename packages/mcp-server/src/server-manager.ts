@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { SearchDocsClient } from '@search-docs/client';
 import type { RelatedProjectConfig } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/types';
 
 /**
  * サーバプロセス情報
@@ -287,9 +288,12 @@ export class ServerManager {
 
     // CLIのstopServer経由で停止
     const { stopServer } = await import('@search-docs/cli/commands/server/stop');
-    const configPath = path.join(serverInfo.projectRoot, '.search-docs.json');
+    const { configPath } = await ConfigLoader.resolve({
+      cwd: serverInfo.projectRoot,
+      traverseUp: false,
+    });
     await stopServer({
-      config: configPath,
+      config: configPath ?? undefined,
       cwd: serverInfo.projectRoot,
     });
 
@@ -303,6 +307,40 @@ export class ServerManager {
    */
   getAllServers(): Map<string, ServerInfo> {
     return this.servers;
+  }
+
+  /**
+   * 関連プロジェクトのサーバを取得、未起動なら自動起動
+   */
+  async getOrStartRelatedServer(
+    projectName: string,
+    allRelated: Record<string, RelatedProjectConfig>
+  ): Promise<SearchDocsClient> {
+    // キャッシュにあればヘルスチェック付きで返す
+    const cached = await this.getServer(projectName);
+    if (cached) return cached;
+
+    const relatedConfig = allRelated[projectName];
+    if (!relatedConfig) {
+      throw new Error(
+        `関連プロジェクト "${projectName}" が設定されていません。\n\n` +
+        `利用可能なプロジェクト: ${Object.keys(allRelated).join(', ') || '(なし)'}\n` +
+        `追加するには: add_related_project`
+      );
+    }
+
+    // ConfigLoader で設定を解決
+    const resolved = await ConfigLoader.resolve({
+      cwd: relatedConfig.dir,
+      traverseUp: false,
+    });
+
+    return await this.getOrStartServer(
+      projectName,
+      resolved.projectRoot,
+      resolved.config.server.port,
+      resolved.configPath ?? undefined
+    );
   }
 
   /**

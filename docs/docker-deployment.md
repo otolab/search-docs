@@ -11,7 +11,8 @@ ghcr.io/otolab/search-docs-mcp:<version>
 
   A) MCPサーバモード（デフォルト / CMD）
      └─ WatcherProcess内蔵（heartbeat調停で自動協調）
-     └─ Embeddingサーバ自動検出 → 外部接続 or ローカル起動
+     └─ EmbeddingServerProcessが自動検出・起動（TypeScript管理）
+        → 外部検出 → Docker service → host.docker.internal → ローカルspawn
 
   B) Embeddingサーバモード（--mode=embedding-server）
      └─ HTTP で待ち受け、複数MCPサーバから共有利用
@@ -37,7 +38,7 @@ docker run -d \
   --name search-docs-embedding \
   --network search-docs-net \
   --restart=unless-stopped \
-  -p 127.0.0.1:24281:8080 \
+  -p 127.0.0.1:24281:24281 \
   ghcr.io/otolab/search-docs-mcp:latest \
   --mode=embedding-server
 
@@ -58,20 +59,24 @@ docker mcp run search-docs
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
 | `EMBEDDING_URL` | 明示的なEmbeddingサーバURL | - |
-| `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `8080` (Embeddingモード), `24281` (検出用) |
+| `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `24281` |
+
+**注**: 以前の `SEARCH_DOCS_DOCKER_EMBEDDING_URL` 環境変数は廃止されました。`EmbeddingServerProcess`が自動検出するため不要です。
 
 ## Embeddingサーバ自動検出
 
-MCPサーバ起動時に、以下の順序でEmbeddingサーバを探します：
+MCPサーバ起動時に、`EmbeddingServerProcess`（TypeScript管理）が以下の順序でEmbeddingサーバを探します：
 
 1. `EMBEDDING_URL` 環境変数（明示指定、最優先）
-2. `http://search-docs-embedding:8080/api/tags`（Docker network内）
-3. `http://host.docker.internal:24281/api/tags`（ホスト側サービス）
-4. すべて失敗（タイムアウト 1s）→ ローカルモデルロード
+2. `http://search-docs-embedding:24281/health`（Docker network内）
+3. `http://host.docker.internal:24281/health`（ホスト側サービス）
+4. すべて失敗（タイムアウト 1s）→ ローカルspawn起動
 
 **注意**: Docker内から `localhost` はコンテナ自身を指します。ホスト側のサービスには `host.docker.internal`（macOS/Windows）を使います。Linux では `--add-host=host.docker.internal:host-gateway` が必要です。
 
-**検出エンドポイント**: Ollama API互換の `/api/tags` を使用します（`/health` は非互換）。
+**検出エンドポイント**: `GET /health`を使用します。成功時は`GET /health`ポーリングでreadiness待ちします。
+
+**管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`
 
 ## Dockerイメージ構成
 
@@ -89,7 +94,7 @@ Stage 3: runtime        ─ 実行環境（Node + Python + 成果物 + モデル
 - Node.js + TypeScriptビルド成果物
 - Python + uv + .venv（LanceDB, sentence-transformers等）
 - ruri-v3-30m モデル（約60MB、焼き込み済み）
-- エントリポイントスクリプト（モード分岐）
+- エントリポイントスクリプト（モード分岐、簡素化済み28行）
 
 ### 設定の固定ルール（Docker実行時）
 
@@ -99,7 +104,7 @@ Stage 3: runtime        ─ 実行環境（Node + Python + 成果物 + モデル
 |---------|:-----------:|------|
 | `indexing.embeddingModel` | **イメージ内蔵値で強制** | イメージ内のモデルと一致必須 |
 | `indexing.vectorDimension` | **イメージ内蔵値で強制** | モデルの出力次元と一致必須 |
-| `indexing.embeddingUrl` | **コンテナ内URLで強制** | entrypoint.shが検出・設定 |
+| `indexing.embeddingUrl` | **自動検出** | EmbeddingServerProcessが検出・設定 |
 | `indexing.maxTokensPerSection` | ユーザー設定を尊重 | 分割粒度、互換性に影響しない |
 | `indexing.maxDepth` | ユーザー設定を尊重 | 同上 |
 | `files.*` | ユーザー設定を尊重 | プロジェクト固有 |
@@ -162,6 +167,19 @@ fetch('http://localhost:24280/health')  // → IPv4 (127.0.0.1) に接続
 **問題**: ignoreオプションの `**/*.!(md)` パターンがpicomatch→C++ regexで極端に遅延し、Docker環境でファイル変更イベントが事実上タイムアウトしていた
 
 **修正**: extglobパターンを削除し、`.md`フィルタは既存の `shouldProcessFile()` に委譲
+
+### 8. entrypoint.sh - Embedding管理のTypeScript統合（2026-04）
+
+**変更**: Embeddingサーバ管理ロジックをシェルスクリプトからTypeScriptに移動（139行 → 28行）
+
+**理由**:
+- Embedding検出・起動・ヘルスチェックロジックをTypeScriptで統合管理
+- `EmbeddingServerProcess`クラス（`packages/server/src/embedding/`）に集約
+- entrypoint.shはモード分岐のみに専念
+
+**影響**:
+- `SEARCH_DOCS_DOCKER_EMBEDDING_URL` 環境変数は廃止
+- Embedding管理の責務がTypeScript側に一元化
 
 ## MLX / GPU の制約
 

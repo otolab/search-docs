@@ -62,56 +62,20 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
         }
 
         case 'CONFIGURED_SERVER_DOWN':
-          statusText += '状態: 設定済み・サーバ停止中\n\n';
+          statusText += '状態: サーバ起動中...\n\n';
           statusText += `設定ファイル: ${systemState.configPath}\n`;
-          statusText += `プロジェクト: ${systemState.config?.project.name}\n`;
-          statusText += `ポート: ${systemState.config?.server.port}\n\n`;
-          statusText += 'サーバを起動してください:\n';
-          statusText += '  ツール: server_start\n';
+          statusText += `プロジェクト: ${systemState.config?.project.name}\n\n`;
+          statusText += 'サーバを自動起動中です。しばらくお待ちください。\n';
           break;
 
         case 'RUNNING':
           statusText += '状態: 稼働中 ✅\n\n';
           statusText += `設定ファイル: ${systemState.configPath}\n`;
-          statusText += `プロジェクト: ${systemState.config?.project.name}\n`;
-          statusText += `サーバURL: ${systemState.serverUrl}\n\n`;
+          statusText += `プロジェクト: ${systemState.config?.project.name}\n\n`;
 
-          // サーバ情報を取得
           try {
             const status = await systemState.client!.getStatus();
-            statusText += 'サーバ情報:\n';
-            statusText += `  バージョン: ${status.server.version}\n`;
-            statusText += `  PID: ${status.server.pid}\n`;
-            statusText += `  起動時間: ${(status.server.uptime / 1000).toFixed(1)}秒\n\n`;
 
-            // データベース接続状態を表示
-            statusText += 'データベース状態:\n';
-            switch (status.database.connectionState) {
-              case 'disconnected':
-                statusText += '  状態: 切断\n\n';
-                break;
-              case 'connecting':
-                statusText += '  状態: 接続中...\n';
-                statusText += '  進行状況: Pythonワーカーとデータベース接続を開始中\n\n';
-                break;
-              case 'initializing_model':
-                statusText += '  状態: モデル読み込み中...\n';
-                statusText += '  進行状況: Ruri埋め込みモデルを初期化中（5-10秒程度）\n\n';
-                break;
-              case 'ready':
-                statusText += '  状態: 接続完了 ✅\n\n';
-                break;
-              case 'error':
-                statusText += '  状態: エラー ❌\n';
-                if (status.database.connectionError) {
-                  statusText += `  エラー: ${status.database.connectionError}\n\n`;
-                } else {
-                  statusText += '\n';
-                }
-                break;
-            }
-
-            // DB接続完了時のみインデックス情報を表示
             if (status.database.connectionState === 'ready') {
               statusText += 'インデックス情報:\n';
               statusText += `  総文書数: ${status.index.totalDocuments}件\n`;
@@ -120,16 +84,30 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
 
               if (status.index.dirtyCount > 0) {
                 statusText += `⚠️  ${status.index.dirtyCount}件の文書が更新待ちです。\n`;
-                statusText += 'バックグラウンドで順次インデックスが更新されます。\n';
+                statusText += 'バックグラウンドで順次インデックスが更新されます。\n\n';
               }
+
+              // Watcher状態
+              if (status.watcher) {
+                statusText += 'Watcher:\n';
+                statusText += `  状態: ${status.watcher.state}\n`;
+                statusText += `  Writer ID: ${status.watcher.writerId}\n\n`;
+              }
+
+              // ワーカー状態
+              statusText += 'ワーカー:\n';
+              statusText += `  実行中: ${status.worker.running ? 'Yes' : 'No'}\n`;
+              statusText += `  キュー: ${status.worker.queue}件\n`;
+            } else if (status.database.connectionState === 'error') {
+              statusText += `データベースエラー: ${status.database.connectionError || '不明'}\n`;
             } else {
-              statusText += 'インデックス情報: データベース接続待ち...\n\n';
+              statusText += 'データベース準備中...\n';
             }
           } catch (error) {
-            statusText += `⚠️  サーバ情報の取得に失敗: ${(error as Error).message}\n`;
+            statusText += `⚠️  情報の取得に失敗: ${(error as Error).message}\n`;
           }
 
-          // 関連プロジェクト情報を表示
+          // 関連プロジェクト情報
           {
             const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects, systemState.configPath);
             const relatedProjectNames = Object.keys(allRelatedProjects);
@@ -143,31 +121,20 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
                 const serverInfo = allServers.get(projectName);
 
                 statusText += `  • ${projectName}`;
-
                 if (projectConfig.description) {
                   statusText += ` - ${projectConfig.description}`;
                 }
 
-                statusText += '\n';
-                statusText += `    ディレクトリ: ${projectConfig.dir}\n`;
-
                 if (serverInfo) {
-                  // サーバが起動中
                   try {
                     await serverInfo.client.healthCheck();
-                    statusText += `    状態: 稼働中 ✅\n`;
-                    statusText += `    ポート: ${serverInfo.port}\n`;
+                    statusText += ' ✅';
                   } catch {
-                    statusText += `    状態: 停止中\n`;
+                    statusText += ' (停止中)';
                   }
-                } else {
-                  statusText += `    状態: 未起動\n`;
                 }
+                statusText += '\n';
               }
-
-              statusText += '\n💡 関連プロジェクトを検索するには:\n';
-              statusText += '  search(query: "...", project: "プロジェクト名")\n';
-              statusText += '  get_document(path: "...", project: "プロジェクト名")\n';
             }
           }
 

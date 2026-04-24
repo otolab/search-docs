@@ -317,6 +317,18 @@ export class WatcherProcess {
     }
   }
 
+  getStatus(): {
+    writerState: 'sleeping' | 'claiming' | 'watching';
+    writerId: string;
+    indexWorker: { running: boolean; processing: boolean } | null;
+  } {
+    return {
+      writerState: this.writerState,
+      writerId: this.writerId,
+      indexWorker: this.indexWorker?.getStatus() ?? null,
+    };
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

@@ -51,7 +51,7 @@ export interface IndexingConfig {
   vectorDimension: number;
   /** 埋め込みモデル（情報表示用、実際のモデルはembedding serverが管理） */
   embeddingModel: string;
-  /** Embedding ServerのURL（デフォルト: http://localhost:8080） */
+  /** Embedding ServerのURL（デフォルト: http://localhost:24281） */
   embeddingUrl?: string;
 }
 
@@ -129,7 +129,7 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     maxDepth: 3,
     vectorDimension: 256,
     embeddingModel: 'ruri-v3-30m-onnx',
-    embeddingUrl: 'http://localhost:8080',
+    embeddingUrl: 'http://localhost:24281',
   },
   search: {
     defaultLimit: 10,

@@ -69,7 +69,7 @@ search-docs/
 │   ├── storage/          # DocumentStorage
 │   └── db-engine/        # LanceDB Pythonラッパー
 ├── docker/               # Docker関連
-│   ├── entrypoint.sh    # モード分岐（MCP/Embedding）
+│   ├── entrypoint.sh    # モード分岐（MCP/Embedding、簡素化済み）
 │   └── compose.yaml     # 共有Embeddingサーバ構成例
 ├── docs/                 # ドキュメント
 ├── prompts/              # Claude Code設定
@@ -210,6 +210,7 @@ claude mcp add npx -- -y @search-docs/mcp-server
 - docs/data-model.md - データモデル設計
 - docs/architecture.md - システムアーキテクチャ
 - docs/architecture-decisions.md - アーキテクチャ決定記録（ADR）
+- docs/state-model.md - 内部状態モデル（状態遷移・依存関係）
 - prompts/README.md - Claude Code設定
 
 ---

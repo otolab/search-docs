@@ -125,10 +125,14 @@ server.ts内で同一プロセスとして起動されます。
 - 複数のMCPサーバから共有利用可能
 
 **起動モード**:
-- **単体利用**: MCPサーバプロセス内で自動起動
+- **単体利用**: `EmbeddingServerProcess`が自動検出・起動（TypeScript管理）
 - **共有利用**: 独立プロセスとして起動（Docker Compose等）
 
-**実装**: `packages/server/src/bin/server.ts`
+**管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`
+- 外部検出 → Docker service → host.docker.internal → ローカルspawnの順で検索
+- GET /health ポーリングで readiness 待ち
+
+**統合場所**: `packages/server/src/bin/server.ts`
 
 **起動方法**:
 ```bash

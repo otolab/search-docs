@@ -9,7 +9,7 @@ import { readFileSync } from 'fs';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import { ConfigLoader, type PidFileContent } from '@search-docs/types';
-import { SearchDocsServer, JsonRpcServer, WatcherProcess } from '../index.js';
+import { SearchDocsServer, JsonRpcServer, WatcherProcess, EmbeddingServerProcess } from '../index.js';
 import {
   writePidFile,
   deletePidFile,
@@ -30,26 +30,9 @@ async function main() {
 
     console.log(`Loading config from: ${configPath || 'default config'}`);
 
-    // 環境変数によるembeddingUrl上書き（テスト環境・Docker環境共通）
-    const envEmbeddingUrl = process.env.EMBEDDING_URL;
-    if (envEmbeddingUrl) {
-      config.indexing.embeddingUrl = envEmbeddingUrl;
-    }
-
-    // Docker環境での設定固定ルール
-    const dockerEmbeddingUrl = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL;
+    // Docker環境での設定上書き（モデル・次元数）
     const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
     const dockerVectorDimension = process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
-    // EMBEDDING_URL が明示設定されている場合はそちらを優先（entrypoint.shの検出結果）
-    if (dockerEmbeddingUrl && !envEmbeddingUrl) {
-      if (config.indexing.embeddingUrl && config.indexing.embeddingUrl !== dockerEmbeddingUrl) {
-        console.warn(
-          `[Docker] Config embeddingUrl "${config.indexing.embeddingUrl}" ` +
-          `overridden to "${dockerEmbeddingUrl}" (container-local embedding server)`
-        );
-      }
-      config.indexing.embeddingUrl = dockerEmbeddingUrl;
-    }
     if (dockerEmbeddingModel) {
       if (config.indexing.embeddingModel !== dockerEmbeddingModel) {
         console.warn(
@@ -69,6 +52,16 @@ async function main() {
         config.indexing.vectorDimension = dim;
       }
     }
+
+    // Embeddingサーバの検出・起動
+    const embeddingServer = new EmbeddingServerProcess({
+      embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
+      port: 24281,
+      runtime: 'onnx',
+      modelPath: process.env.SEARCH_DOCS_DOCKER_MODEL_PATH,
+      dimension: config.indexing.vectorDimension,
+    });
+    const embeddingUrl = await embeddingServer.start();
 
     // 1. 既存PIDファイルチェック
     const existingPid = await readPidFile(projectRoot);
@@ -117,7 +110,7 @@ async function main() {
     // DBエンジン初期化
     const dbEngine = new DBEngine({
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
-      embeddingUrl: config.indexing.embeddingUrl,
+      embeddingUrl,
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
@@ -128,7 +121,7 @@ async function main() {
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
 
     // Docker環境ではIPv4/IPv6両方でリッスン（localhostだとIPv6のみになる場合がある）
-    const serverHost = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_URL ? '0.0.0.0' : config.server.host;
+    const serverHost = process.env.IS_DOCKER === 'true' ? '0.0.0.0' : config.server.host;
 
     // JSON-RPCサーバ初期化
     const jsonRpcServer = new JsonRpcServer(
@@ -137,8 +130,9 @@ async function main() {
       config.server.port
     );
 
-    // WatcherProcess 生成
+    // WatcherProcess 生成・接続
     const watcherProcess = new WatcherProcess(config, storage, dbEngine);
+    searchDocsServer.setWatcherProcess(watcherProcess);
 
     // シグナルハンドラ（PIDファイル削除を追加）
     const shutdown = async () => {
@@ -150,6 +144,7 @@ async function main() {
       console.log('PID file removed');
 
       await jsonRpcServer.stop();
+      await embeddingServer.stop();
       process.exit(0);
     };
 

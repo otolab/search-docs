@@ -16,9 +16,9 @@ services:
     cpus: 1.0
     cpu_shares: 512
     ports:
-      - "127.0.0.1:24281:8080"
+      - "127.0.0.1:24281:24281"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:24281/health')"]
       interval: 5s
       retries: 3
     restart: unless-stopped

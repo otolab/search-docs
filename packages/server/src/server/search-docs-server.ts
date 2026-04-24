@@ -11,6 +11,7 @@ import type {
 } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
+import type { WatcherProcess } from '../watcher/watcher-process.js';
 
 /**
  * SearchDocsサーバのメインクラス（読み取り専用）
@@ -20,6 +21,7 @@ import { DBEngine } from '@search-docs/db-engine';
  */
 export class SearchDocsServer {
   private startTime: number = 0;
+  private watcherProcess?: WatcherProcess;
   private requestStats = {
     total: 0,
     search: 0,
@@ -31,6 +33,10 @@ export class SearchDocsServer {
     private dbEngine: DBEngine,
     private version: string = 'unknown'
   ) {}
+
+  setWatcherProcess(watcher: WatcherProcess): void {
+    this.watcherProcess = watcher;
+  }
 
   /**
    * サーバ起動
@@ -273,10 +279,14 @@ export class SearchDocsServer {
         dirtyCount: stats.dirtyCount,
       },
       worker: {
-        running: false,
-        processing: 0,
+        running: this.watcherProcess?.getStatus().indexWorker?.running ?? false,
+        processing: queueCount,
         queue: queueCount,
       },
+      watcher: this.watcherProcess ? {
+        state: this.watcherProcess.getStatus().writerState,
+        writerId: this.watcherProcess.getStatus().writerId,
+      } : undefined,
     };
   }
 
