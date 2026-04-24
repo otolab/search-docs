@@ -32,6 +32,8 @@ docker mcp run search-docs
 
 ### 共有利用（ヘビーユーザー / 複数プロジェクト）
 
+#### オプション1: Docker Embeddingサーバ
+
 ```bash
 # 1回だけ: Embeddingサーバを起動
 docker run -d \
@@ -49,6 +51,29 @@ docker mcp run search-docs
 → Embeddingサーバ自動検出 → 軽量動作（メモリ節約）
 
 メモリ: 120MB x N → 120MB x 1（共有サーバ）+ 軽量MCP x N
+
+#### オプション2: ホスト側Embeddingサーバ（GPU/CoreML対応）
+
+ホスト側でEmbeddingサーバを直接起動すると、GPU/CoreMLアクセラレーションを利用できます。Docker MCPサーバは `host.docker.internal:24281` 経由で自動検出します。
+
+```bash
+# ホスト側でEmbeddingサーバを起動（CLIツールが必要）
+search-docs embedding start
+
+# 各プロジェクト: Docker MCPサーバ（自動的にホスト側のEmbeddingサーバを検出）
+docker mcp run search-docs
+```
+
+**メリット**:
+- **GPU/CoreMLアクセラレーション**: Apple Silicon（CoreML）やNVIDIA GPU（CUDA）を活用
+- **高速な推論**: CPU-onlyのDockerコンテナより高速
+- **複数プロジェクト共有**: 1つのサーバで複数のMCPサーバから利用可能
+
+**前提条件**:
+- `@search-docs/cli` パッケージがインストールされていること（`npm install -g @search-docs/cli`）
+- ホスト側に `uv` と Python 3.12+ がインストールされていること
+
+**詳細**: [CLI コマンドリファレンス - embedding コマンド](./cli-reference.md#embedding-コマンド)
 
 ### Watcher調停（複数インスタンス）
 
@@ -181,12 +206,36 @@ fetch('http://localhost:24280/health')  // → IPv4 (127.0.0.1) に接続
 - `SEARCH_DOCS_DOCKER_EMBEDDING_URL` 環境変数は廃止
 - Embedding管理の責務がTypeScript側に一元化
 
-## MLX / GPU の制約
+## GPU / CoreML アクセラレーション
 
-- **Docker内でMLXは不可**（LinuxKit VMの壁）
+### Docker内の制約
+
+- **Docker内でMLX/CoreMLは不可**（LinuxKit VMの壁）
 - Docker内は**CPU-only運用**。ruri-v3-30mは軽量なのでCPU実用的
-- MLXを使いたい場合: ホスト側でEmbeddingサーバを直接実行（Docker外）
-  - 自動検出の3番 `http://host.docker.internal:24281/health` で繋がる
+
+### ホスト側Embeddingサーバ（推奨）
+
+GPU/CoreMLアクセラレーションを利用したい場合は、ホスト側でEmbeddingサーバを起動してください：
+
+```bash
+# ホスト側でEmbeddingサーバを起動
+search-docs embedding start
+
+# Docker MCPサーバから自動接続
+docker mcp run search-docs
+```
+
+**アクセラレータ自動検出**（ONNX Runtime）:
+- **Apple Silicon**: CoreMLExecutionProvider（445/724ノード対応）
+- **NVIDIA GPU**: CUDAExecutionProvider
+- **それ以外**: CPUExecutionProvider
+
+**自動検出の仕組み**:
+- Docker MCPサーバ起動時に `http://host.docker.internal:24281/health` を確認
+- ホスト側のEmbeddingサーバが見つかれば自動接続
+- 見つからなければDockerコンテナ内でローカルspawn起動（CPU-only）
+
+**詳細**: [CLI コマンドリファレンス - embedding コマンド](./cli-reference.md#embedding-コマンド)
 
 ## リソース制限
 

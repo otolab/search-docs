@@ -481,6 +481,24 @@ search-docs search <query> [options]
 | `index rebuild [paths...]` | インデックスを再構築 |
 | `index status` | インデックスの状態を確認 |
 
+### embedding コマンド
+
+Embeddingサーバの起動・停止・状態確認を行います。プロジェクト横断で共有利用でき、GPU/CoreMLアクセラレーションに対応しています。
+
+| コマンド | 説明 |
+|---------|------|
+| `embedding start [options]` | Embeddingサーバを起動 |
+| `embedding stop` | Embeddingサーバを停止 |
+| `embedding status` | Embeddingサーバの状態を確認 |
+
+**主なオプション**:
+- `--port <port>`: ポート番号（デフォルト: 24281）
+- `-f, --foreground`: フォアグラウンドで起動
+- `--runtime <runtime>`: `onnx`（デフォルト、GPU/CoreML対応）または `torch`
+- `--dimension <dim>`: ベクトル次元数（デフォルト: 256）
+
+詳細は [CLIリファレンス - embedding コマンド](./cli-reference.md#embedding-コマンド) を参照してください。
+
 ### config コマンド
 
 | コマンド | 説明 |
