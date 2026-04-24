@@ -2,8 +2,8 @@
 "@search-docs/db-engine": minor
 "@search-docs/server": minor
 "@search-docs/mcp-server": minor
-"@search-docs/types": patch
-"@search-docs/cli": patch
+"@search-docs/types": minor
+"@search-docs/cli": minor
 ---
 
 ### Docker MCP サーバ
@@ -31,6 +31,43 @@ torch/sentence-transformers依存を完全除去し、ONNX Runtimeベースに�
 - writer_heartbeatテーブル（LanceDB）による排他制御
 - 状態マシン: sleeping → claiming → watching
 - サーバ統合: READ_ONLY/ENABLE_WATCHER廃止、全サーバにWatcherProcess内蔵
+
+### 設定ファイル移行
+
+`.search-docs/config.json` を新しい設定ファイルパスとしてサポート。
+
+- ConfigLoader: `.search-docs/config.json` パスの探索・解決に対応
+- プロジェクトルート判定: `.search-docs/` サブディレクトリを考慮
+
+### 型定義の拡張
+
+- GetStatusResponse: watcher状態（sleeping/claiming/watching）を公開
+- IndexingConfig: embeddingUrl プロパティ追加
+- ServerConfig: readOnly プロパティ追加
+- デフォルト値: embeddingModel を ruri-v3-30m-onnx に変更、embeddingUrl 追加
+
+### CLI embeddingコマンド
+
+Embeddingサーバの起動・停止・ステータス確認をCLIから直接管理可能に。
+
+- embedding start: デーモン起動、CoreML/CUDA自動検出、モデルパス自動解決（Docker/キャッシュ/HuggingFace Hub）
+- embedding stop: PIDファイルベースの停止
+- embedding status: ヘルスチェック + プロセス情報表示
+- PID/ログは `~/.search-docs/` に配置（プロジェクト横断で共有）
+
+### EmbeddingServerProcess TS統合
+
+Embeddingサーバのライフサイクル管理をTS側（bin/server.ts）に移管。
+
+- EmbeddingServerProcess: 外部検出 → ローカル起動の自動判定
+- Docker entrypoint.sh簡素化（Embedding管理ロジック削除）
+- MCPツール整理: init/system_status/list_related_projects/add_related_project追加、server_start/server_stop削除
+
+### サーバ内部構造の刷新
+
+- DirtyWorker廃止 → WatcherProcess内のIndexWorkerに統合
+- bin/server.ts: EmbeddingServerProcess → DBEngine → SearchDocsServer → WatcherProcess → JsonRpcServer の起動順序に整理
+- setupLogRedirect共通化
 
 ### バグ修正
 
