@@ -407,7 +407,11 @@ export class DBEngine extends EventEmitter {
         }
 
         stderrBuffer += line + '\n';
-        console.error('Python stderr:', line);
+        if (/\[ERROR\]|Error[:!]|Traceback/i.test(line)) {
+          console.error('Python stderr:', line);
+        } else {
+          console.log('Python:', line);
+        }
       }
     });
 

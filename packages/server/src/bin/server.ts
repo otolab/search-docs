@@ -65,19 +65,32 @@ async function main() {
 
     // 1. 既存PIDファイルチェック
     const existingPid = await readPidFile(projectRoot);
-    if (existingPid && existingPid.pid !== process.pid && isProcessAlive(existingPid.pid)) {
-      throw new Error(
-        `Server is already running for this project.\n` +
-          `  PID: ${existingPid.pid}\n` +
-          `  Port: ${existingPid.port}\n` +
-          `  Started: ${existingPid.startedAt}\n` +
-          `\n` +
-          `To stop the server, kill the process or use: search-docs server stop`
-      );
-    }
-
-    // 古いPIDファイルがあれば削除（自分自身のPIDでない場合のみ）
     if (existingPid && existingPid.pid !== process.pid) {
+      if (isProcessAlive(existingPid.pid)) {
+        // PIDが生きていても、別プロセス(Docker再起動時等)の可能性がある
+        // ポートで実際にサーバが応答するか確認
+        let serverResponding = false;
+        try {
+          const res = await fetch(`http://localhost:${existingPid.port}/health`, {
+            signal: AbortSignal.timeout(2000),
+          });
+          serverResponding = res.ok;
+        } catch {
+          // 応答なし
+        }
+
+        if (serverResponding) {
+          throw new Error(
+            `Server is already running for this project.\n` +
+              `  PID: ${existingPid.pid}\n` +
+              `  Port: ${existingPid.port}\n` +
+              `  Started: ${existingPid.startedAt}\n` +
+              `\n` +
+              `To stop the server, kill the process or use: search-docs server stop`
+          );
+        }
+      }
+      // PIDが死んでいる or ポート応答なし → stale PIDファイル
       console.log(`Cleaning up stale PID file (previous PID: ${existingPid.pid})`);
       await deletePidFile(projectRoot);
     }

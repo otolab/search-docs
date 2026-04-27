@@ -7,8 +7,7 @@
         "run", "--rm", "-i",
         "-v", "${PWD}:/workspace:ro",
         "-v", "${PWD}/.search-docs:/workspace/.search-docs",
-        "search-docs-mcp:dev",
-        "--project-dir", "/workspace"
+        "search-docs-mcp:dev"
       ],
       "env": {}
     },

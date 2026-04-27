@@ -7,7 +7,7 @@ search-docsは、Docker化されたMCPサーバとして配布・利用できま
 **1つのDockerイメージ**で、起動モードにより役割を切り替えます：
 
 ```
-ghcr.io/otolab/search-docs-mcp:<version>
+otolab/search-docs-mcp:<version>
 
   A) MCPサーバモード（デフォルト / CMD）
      └─ WatcherProcess内蔵（heartbeat調停で自動協調）
@@ -25,8 +25,13 @@ ghcr.io/otolab/search-docs-mcp:<version>
 ### 単体利用（大多数のユーザー）
 
 ```bash
-docker mcp run search-docs
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
 ```
+
+**注**: Docker MCP カタログに登録完了後は `docker mcp run search-docs` でも利用可能になります。
 
 → Embeddingサーバなし → ローカルモデルロード → 全部入りで動作
 
@@ -41,12 +46,17 @@ docker run -d \
   --network search-docs-net \
   --restart=unless-stopped \
   -p 127.0.0.1:24281:24281 \
-  ghcr.io/otolab/search-docs-mcp:latest \
+  otolab/search-docs-mcp:latest
   --mode=embedding-server
 
 # 各プロジェクト: MCPサーバ（WatcherProcess内蔵、heartbeat調停で自動協調）
-docker mcp run search-docs
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
 ```
+
+**注**: Docker MCP カタログに登録完了後は MCPサーバ起動に `docker mcp run search-docs` も利用可能になります。
 
 → Embeddingサーバ自動検出 → 軽量動作（メモリ節約）
 
@@ -61,8 +71,13 @@ docker mcp run search-docs
 search-docs embedding start
 
 # 各プロジェクト: Docker MCPサーバ（自動的にホスト側のEmbeddingサーバを検出）
-docker mcp run search-docs
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
 ```
+
+**注**: Docker MCP カタログに登録完了後は MCPサーバ起動に `docker mcp run search-docs` も利用可能になります。
 
 **メリット**:
 - **GPU/CoreMLアクセラレーション**: Apple Silicon（CoreML）やNVIDIA GPU（CUDA）を活用

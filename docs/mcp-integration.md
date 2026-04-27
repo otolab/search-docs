@@ -9,8 +9,13 @@ search-docsをClaude Codeから使う際の、MCPツールリファレンスで�
 **ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行**できます。
 
 ```bash
-docker mcp run search-docs
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
 ```
+
+**注**: Docker MCP カタログに登録完了後は `docker mcp run search-docs` でも利用可能になります。
 
 → [Docker構成ガイド](./docker-deployment.md)
 

@@ -33,8 +33,7 @@ RUN uv pip install --system \
     "huggingface-hub>=0.27.0" \
     "protobuf==6.33.1" \
     "sentencepiece==0.2.1" \
-    "psutil==7.1.3" \
-    "duckdb==1.4.2"
+    "psutil==7.1.3"
 
 # ONNXモデルを事前ダウンロード（ビルド時にイメージに焼き込み）
 RUN python -c "from huggingface_hub import snapshot_download; \

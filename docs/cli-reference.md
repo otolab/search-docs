@@ -642,8 +642,13 @@ Docker内のMCPサーバは、`host.docker.internal:24281` 経由でホスト側
 search-docs embedding start
 
 # Docker MCPサーバを起動（自動的にホスト側のEmbeddingサーバを検出）
-docker mcp run search-docs
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
 ```
+
+**注**: Docker MCP カタログに登録完了後は `docker mcp run search-docs` でも利用可能になります。
 
 詳細は [Docker構成](./docker-deployment.md) を参照してください。
 

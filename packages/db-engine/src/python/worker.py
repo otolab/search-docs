@@ -20,7 +20,6 @@ import lancedb
 import pyarrow as pa
 import pandas as pd
 import numpy as np
-import duckdb
 from pathlib import Path
 
 # パフォーマンス監視用
@@ -1101,19 +1100,11 @@ class SearchDocsWorker:
         # Dirty件数（count_rows()で効率的にカウント）
         dirty_count = table.count_rows(filter="is_dirty = true")
 
-        # ユニークな文書数を効率的に取得（DuckDB統合）
-        # LanceDB公式推奨: 複雑な集計にはDuckDB統合を使用
-        # ゼロコピーでArrow互換、大規模データセットでもストリーミング処理可能
+        # ユニークな文書数を取得（scanner直アクセスでベクトルカラムを除外）
         try:
-            # LanceDBテーブルをDuckDBが直接クエリできるArrow互換レイヤーとして公開
-            arrow_table = table.to_lance()
-            # DuckDBでCOUNT(DISTINCT...)を実行
-            result = duckdb.query(
-                "SELECT COUNT(DISTINCT document_path) as count FROM arrow_table"
-            ).to_df()
-            total_documents = int(result['count'].iloc[0])
+            paths = table._dataset.scanner(columns=["document_path"]).to_table()
+            total_documents = len(paths.column("document_path").unique())
         except Exception as e:
-            # エラー時は概算値を返す
             sys.stderr.write(f"Warning: Could not get unique document count: {e}\n")
             sys.stderr.flush()
             total_documents = 0
