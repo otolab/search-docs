@@ -1,6 +1,6 @@
 {
   "name": "search-docs",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供",
   "private": true,
   "license": "MIT",
