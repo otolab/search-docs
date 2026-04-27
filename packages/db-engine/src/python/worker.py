@@ -1100,9 +1100,9 @@ class SearchDocsWorker:
         # Dirty件数（count_rows()で効率的にカウント）
         dirty_count = table.count_rows(filter="is_dirty = true")
 
-        # ユニークな文書数を取得
+        # ユニークな文書数を取得（scanner直アクセスでベクトルカラムを除外）
         try:
-            paths = table.search().select(["document_path"]).limit(None).to_arrow()
+            paths = table._dataset.scanner(columns=["document_path"]).to_table()
             total_documents = len(paths.column("document_path").unique())
         except Exception as e:
             sys.stderr.write(f"Warning: Could not get unique document count: {e}\n")
