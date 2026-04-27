@@ -1,5 +1,88 @@
 # @search-docs/mcp-server
 
+## 1.8.0
+
+### Minor Changes
+
+- bb08dfd: ### Docker MCP サーバ
+
+  Docker 化された MCP サーバとして配布・利用可能に。1 イメージ・2 モード構成（MCP サーバ / Embedding サーバ）。
+
+  - Dockerfile: マルチステージビルド（python-deps → node-build → runtime）
+  - entrypoint.sh: モード分岐、Embedding サーバ自動検出
+  - compose.yaml: 共有 Embedding サーバ構成例
+
+  ### Embedding ONNX 化 + Ollama API 互換サーバ
+
+  torch/sentence-transformers 依存を完全除去し、ONNX Runtime ベースに移行。Docker イメージサイズを 11GB → 2.5GB に削減。
+
+  - embedding_server.py: Ollama API 互換 HTTP サーバ（/api/tags, /api/embed）
+  - embedding_onnx.py: ONNX Runtime 推論エンジン
+  - RemoteEmbeddingModel: ローカルモデルロード廃止、HTTP API 経由に一本化
+  - embeddingUrl 設定: Embedding Server の URL を設定可能に
+
+  ### WatcherProcess + Heartbeat 調停
+
+  複数サーバインスタンス間でファイル監視を自動協調する仕組み。
+
+  - watcher-process.ts: FileWatcher/IndexWorker/StartupSyncWorker を統合管理
+  - writer_heartbeat テーブル（LanceDB）による排他制御
+  - 状態マシン: sleeping → claiming → watching
+  - サーバ統合: READ_ONLY/ENABLE_WATCHER 廃止、全サーバに WatcherProcess 内蔵
+
+  ### 設定ファイル移行
+
+  `.search-docs/config.json` を新しい設定ファイルパスとしてサポート。
+
+  - ConfigLoader: `.search-docs/config.json` パスの探索・解決に対応
+  - プロジェクトルート判定: `.search-docs/` サブディレクトリを考慮
+
+  ### 型定義の拡張
+
+  - GetStatusResponse: watcher 状態（sleeping/claiming/watching）を公開
+  - IndexingConfig: embeddingUrl プロパティ追加
+  - ServerConfig: readOnly プロパティ追加
+  - デフォルト値: embeddingModel を ruri-v3-30m-onnx に変更、embeddingUrl 追加
+
+  ### CLI embedding コマンド
+
+  Embedding サーバの起動・停止・ステータス確認を CLI から直接管理可能に。
+
+  - embedding start: デーモン起動、CoreML/CUDA 自動検出、モデルパス自動解決（Docker/キャッシュ/HuggingFace Hub）
+  - embedding stop: PID ファイルベースの停止
+  - embedding status: ヘルスチェック + プロセス情報表示
+  - PID/ログは `~/.search-docs/` に配置（プロジェクト横断で共有）
+
+  ### EmbeddingServerProcess TS 統合
+
+  Embedding サーバのライフサイクル管理を TS 側（bin/server.ts）に移管。
+
+  - EmbeddingServerProcess: 外部検出 → ローカル起動の自動判定
+  - Docker entrypoint.sh 簡素化（Embedding 管理ロジック削除）
+  - MCP ツール整理: init/system_status/list_related_projects/add_related_project 追加、server_start/server_stop 削除
+
+  ### サーバ内部構造の刷新
+
+  - DirtyWorker 廃止 → WatcherProcess 内の IndexWorker に統合
+  - bin/server.ts: EmbeddingServerProcess → DBEngine → SearchDocsServer → WatcherProcess → JsonRpcServer の起動順序に整理
+  - setupLogRedirect 共通化
+
+  ### バグ修正
+
+  - entrypoint.sh: bare except → `except Exception:`（SystemExit の誤キャッチ防止）
+  - Dockerfile: libssl3 追加、UV_CACHE_DIR 権限修正
+  - server.ts: Docker 環境での IPv4/IPv6 バインドミスマッチ修正（0.0.0.0 バインド）
+  - @parcel/watcher: 2.5.1 → 2.5.6（Docker bind mount の inotify 非伝播修正）
+  - file-watcher.ts: extglob パターン削除（C++ regex 遅延によるイベント消失修正）
+  - heartbeat: 新規 DB 接続で readback（read_consistency_interval 問題の回避）
+
+### Patch Changes
+
+- Updated dependencies [bb08dfd]
+  - @search-docs/types@1.4.0
+  - @search-docs/cli@1.1.0
+  - @search-docs/client@1.0.20
+
 ## 1.7.1
 
 ### Patch Changes
