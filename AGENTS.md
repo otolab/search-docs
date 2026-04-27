@@ -101,7 +101,10 @@ search-docs/
 
 **起動方法**:
 ```bash
-docker mcp run search-docs
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
 ```
 
 **環境変数**:

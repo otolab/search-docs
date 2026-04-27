@@ -40,9 +40,29 @@ AIエージェント / CLI / API
 
 **ランタイム依存（Node.js, Python, uv）を排除し、セキュアな境界で実行**できます。
 
-```bash
-docker mcp run search-docs
+`.claude/settings.json` または `.mcp.json` に以下を追加:
+
+```json
+{
+  "mcpServers": {
+    "search-docs": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", ".:/workspace:ro",
+        "-v", "./.search-docs:/workspace/.search-docs",
+        "otolab/search-docs-mcp:latest",
+        "--project-dir", "/workspace"
+      ]
+    }
+  }
+}
 ```
+
+**ボリュームマウント**:
+- `.:/workspace:ro` — プロジェクトのドキュメントを読み取り専用でマウント
+- `./.search-docs:/workspace/.search-docs` — インデックスデータの永続化（読み書き）
 
 その後、Claude Codeで：
 1. 「search-docsのセットアップをお願い」と依頼

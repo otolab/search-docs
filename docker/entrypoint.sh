@@ -22,6 +22,11 @@ case "${1:-}" in
     ;;
   *)
     # MCPサーバモード（TS側がEmbeddingサーバを管理）
-    exec node dist/server.js "$@"
+    # --project-dir 省略時は /workspace をデフォルトにする
+    if [[ ! " $* " =~ " --project-dir " ]]; then
+      exec node dist/server.js --project-dir /workspace "$@"
+    else
+      exec node dist/server.js "$@"
+    fi
     ;;
 esac
