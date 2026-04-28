@@ -27,7 +27,7 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
           statusText += 'search-docsがまだセットアップされていません。\n\n';
           statusText += 'セットアップ方法:\n';
           statusText += '  - 設定ファイルを作成: init\n';
-          statusText += '  - 関連プロジェクトを追加: add_related_project\n';
+          statusText += '  - 関連プロジェクトを追加: add_related_project（dirでローカル追加、urlで起動済みサーバに接続）\n';
 
           // 一時追加の関連プロジェクトがあれば表示
           const notConfiguredRelated = context.serverManager.getAllRelatedProjects();
@@ -43,7 +43,11 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
                 statusText += ` - ${projectConfig.description}`;
               }
               statusText += '\n';
-              statusText += `    ディレクトリ: ${projectConfig.dir}\n`;
+              if (projectConfig.url) {
+                statusText += `    URL: ${projectConfig.url}\n`;
+              } else {
+                statusText += `    ディレクトリ: ${projectConfig.dir}\n`;
+              }
               if (serverInfo) {
                 try {
                   await serverInfo.client.healthCheck();
@@ -133,9 +137,14 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
                     statusText += ' (停止中)';
                   }
                 }
+                if (projectConfig.url) {
+                  statusText += ` [URL: ${projectConfig.url}]`;
+                }
                 statusText += '\n';
               }
             }
+
+            statusText += '\n他のプロジェクトの文書を検索するには: add_related_project\n';
           }
 
           break;
