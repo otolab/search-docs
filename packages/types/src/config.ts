@@ -3,8 +3,10 @@
  */
 
 export interface RelatedProjectConfig {
-  /** プロジェクトディレクトリ（相対パスまたは絶対パス） */
-  dir: string;
+  /** プロジェクトディレクトリ（相対パスまたは絶対パス）。url と排他 */
+  dir?: string;
+  /** リモートサーバURL（例: http://localhost:24280）。dir と排他 */
+  url?: string;
   /** プロジェクトの説明（オプション） */
   description?: string;
 }

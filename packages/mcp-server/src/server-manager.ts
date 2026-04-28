@@ -286,6 +286,13 @@ export class ServerManager {
       throw new Error(`プロジェクト "${projectName}" のサーバは起動していません。`);
     }
 
+    // URL接続のサーバは外部管理なので停止処理をスキップ
+    if (serverInfo.projectRoot === '') {
+      console.error(`[mcp-server] Skipping stop for URL-connected project: ${projectName}`);
+      this.servers.delete(projectName);
+      return;
+    }
+
     // CLIのstopServer経由で停止
     const { stopServer } = await import('@search-docs/cli/commands/server/stop');
     const { configPath } = await ConfigLoader.resolve({
@@ -329,6 +336,42 @@ export class ServerManager {
       );
     }
 
+    // URL指定の場合は直接クライアント作成
+    if (relatedConfig.url) {
+      console.error(`[mcp-server] Connecting to URL for project: ${projectName} (${relatedConfig.url})`);
+      const client = new SearchDocsClient({ baseUrl: relatedConfig.url });
+
+      // 接続確認
+      try {
+        await client.healthCheck();
+        console.error(`[mcp-server] ✓ Connection established for project: ${projectName}`);
+      } catch (error) {
+        throw new Error(
+          `関連プロジェクト "${projectName}" のサーバ (URL: ${relatedConfig.url}) に接続できません。\n` +
+          `エラー: ${(error as Error).message}`
+        );
+      }
+
+      // キャッシュに保存（URL接続の場合はport不要、projectRootは空文字列）
+      const serverInfo: ServerInfo = {
+        client,
+        port: 0, // URL接続時はポート番号不要
+        projectRoot: '', // URL接続時はプロジェクトルート不要
+        projectName,
+      };
+      this.servers.set(projectName, serverInfo);
+      console.error(`[mcp-server] URL client cached for project: ${projectName}`);
+
+      return client;
+    }
+
+    // dir指定の場合は既存の起動処理
+    if (!relatedConfig.dir) {
+      throw new Error(
+        `関連プロジェクト "${projectName}" の設定に "dir" または "url" が必要です。`
+      );
+    }
+
     // ConfigLoader で設定を解決
     const resolved = await ConfigLoader.resolve({
       cwd: relatedConfig.dir,
@@ -352,7 +395,7 @@ export class ServerManager {
 
   /**
    * 設定ファイルと一時追加分をマージした関連プロジェクト一覧を取得
-   * 返却値のdirは全て絶対パスに解決済み
+   * 返却値のdirは全て絶対パスに解決済み（urlの場合はdirなし）
    */
   getAllRelatedProjects(
     configRelated?: Record<string, RelatedProjectConfig>,
@@ -364,10 +407,15 @@ export class ServerManager {
     if (configRelated && configPath) {
       const baseDir = path.dirname(configPath);
       for (const [name, config] of Object.entries(configRelated)) {
-        merged[name] = {
-          ...config,
-          dir: path.resolve(baseDir, config.dir),
-        };
+        // URL指定の場合はdirの解決不要
+        if (config.url) {
+          merged[name] = { ...config };
+        } else if (config.dir) {
+          merged[name] = {
+            ...config,
+            dir: path.resolve(baseDir, config.dir),
+          };
+        }
       }
     }
 

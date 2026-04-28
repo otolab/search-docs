@@ -259,7 +259,7 @@ export class ConfigLoader {
     projectRoot: string;
   } | null> {
     const relatedProject = relatedProjects[projectName];
-    if (!relatedProject) {
+    if (!relatedProject || !relatedProject.dir) {
       return null;
     }
 
