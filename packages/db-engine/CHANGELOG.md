@@ -1,5 +1,11 @@
 # @search-docs/db-engine
 
+## 1.5.1
+
+### Patch Changes
+
+- 5488381: CoreML GPU ディスパッチ修正 — 動的形状による全ノード CPU フォールバックを解消
+
 ## 1.5.0
 
 ### Minor Changes
