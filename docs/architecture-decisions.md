@@ -1810,3 +1810,152 @@ Facebook製の高性能ファイル監視デーモン。
 
 - 実装ファイル: `packages/server/src/discovery/file-watcher.ts`
 - Nuxt.jsでの採用: `experimental: { watcher: 'parcel' }`
+
+---
+
+## ADR-018: CoreML GPU最適化のための静的形状オーバーライド
+
+**日付**: 2026-04-27
+**状態**: 採用
+**決定者**: 実装チーム
+**関連PR**: #80
+
+### コンテキスト
+
+PyTorch → ONNX Runtime 移行（task38）後、Apple Silicon環境でGPU利用率が0%にデグレードした。
+CoreML Execution Providerに599ノードが委譲されるが、`ProfileComputePlan`で確認すると
+全て`MLCPUComputeDevice`にフォールバックしていた。
+
+調査の結果、ONNXモデルの入力が動的形状（`batch_size`, `sequence_length`）で宣言されて
+いるため、CoreMLがGPU用の静的コンパイルを実行できないことが判明。
+
+### 問題
+
+**ONNXモデルの動的形状宣言**:
+```python
+inputs:
+  - name: input_ids
+    type: tensor(int64)
+    shape: [batch_size, sequence_length]  # 両方とも動的
+  - name: attention_mask
+    type: tensor(int64)
+    shape: [batch_size, sequence_length]  # 両方とも動的
+```
+
+**CoreMLの制約**:
+- CoreMLは静的な計算グラフをコンパイルしてGPU最適化コードを生成する
+- 動的形状の場合、コンパイル時に最適化できずCPU実行にフォールバック
+- GPU利用率0%、Embedding生成が遅延
+
+### 検討した選択肢
+
+#### 1. 動的形状のまま運用（採用しない）
+**長所**: コード変更不要、どんな入力長でも対応
+**短所**: Apple Silicon GPU が利用できず性能劣化
+
+#### 2. 単一の固定長セッション（採用しない）
+**長所**: 実装が単純
+**短所**: 短いクエリでもmax_lengthまでパディング → 無駄な計算。長いテキストは打ち切り → 情報損失
+
+#### 3. バケットサイズ別のセッション分離（採用）
+**長所**: 入力長に応じて最適なセッションを選択し、各セッションで静的形状のGPU最適化が効く
+**短所**: 複数セッションの管理コスト、メモリフットプリント増加（各バケットのコンパイル済みモデル保持）
+
+### 決定
+
+`SessionOptions.add_free_dimension_override_by_name()` を使用し、セッション作成時に
+固定長を指定。3つのバケットサイズ `[64, 2048, 8192]` でセッションを分け、入力長に
+応じて選択する。
+
+**バケットサイズの根拠**:
+- **64**: 短いクエリ（典型的な検索クエリ、10-30トークン）
+- **2048**: 中規模テキスト（段落、セクション単位）
+- **8192**: 長文テキスト（文書全体、最大長）
+
+**CoreML プロバイダオプション**:
+```python
+{
+    'ModelFormat': 'MLProgram',                      # GPU対応の新形式（NeuralNetworkは非推奨）
+    'MLComputeUnits': 'ALL',                         # GPU/ANE/CPU全て許可
+    'AllowLowPrecisionAccumulationOnGPU': '1',      # FP16アキュムレーション高速化
+    'RequireStaticInputShapes': '1',                 # 静的ノードのみCoreMLに渡す
+    'SpecializationStrategy': 'FastPrediction',      # 推論レイテンシ優先
+}
+```
+
+### 実装
+
+**変更ファイル**: `packages/db-engine/src/python/embedding_onnx.py`
+
+**CoreMLバケットセッション作成**:
+```python
+BUCKET_SIZES = [64, 2048, 8192]
+
+for size in BUCKET_SIZES:
+    so = ort.SessionOptions()
+    so.add_free_dimension_override_by_name('batch_size', 1)
+    so.add_free_dimension_override_by_name('sequence_length', size)
+    self.sessions[size] = ort.InferenceSession(
+        onnx_path, sess_options=so, providers=providers
+    )
+```
+
+**セッション選択ロジック**:
+```python
+def _select_bucket(self, token_length: int) -> int:
+    for size in BUCKET_SIZES:
+        if token_length <= size:
+            return size
+    return BUCKET_SIZES[-1]
+```
+
+**プロバイダ選択の分岐**:
+```
+CoreMLExecutionProvider あり → バケット別セッション（GPU最適化）
+CUDAExecutionProvider あり   → 単一動的セッション（CUDA）
+それ以外                      → 単一動的セッション（CPU）
+```
+
+### 検証結果
+
+**ProfileComputePlan**（ONNX Runtime診断機能）:
+- 修正前: 599/599ノードが `MLCPUComputeDevice`
+- **修正後**: 599/599ノードが `MLGPUComputeDevice: Apple M4 Max` ✅
+
+**エンコード動作テスト**:
+- 短いクエリ（10-30トークン）: 正常、256次元ベクトル出力
+- 中テキスト（500-1000トークン）: 正常
+- バッチ処理（複数文書）: 正常
+- 既存テスト: 41件全パス
+
+### 影響
+
+**プラットフォーム別動作**:
+
+| プラットフォーム | Execution Provider | セッション戦略 |
+|-----------------|-------------------|--------------|
+| Apple Silicon（ローカル） | CoreML | バケット別セッション |
+| Docker（Linux） | CUDA / CPU | 単一動的セッション |
+| その他 | CPU | 単一動的セッション |
+
+**メモリ影響**:
+- CoreML環境: 各バケットでコンパイル済みモデル保持（数十MB増）
+- 他の環境: 影響なし
+
+### トレードオフ
+
+**利点**:
+- Apple Silicon GPUのフル活用が可能に
+- バケット選択により無駄なパディング計算を最小化
+- CUDA/CPU環境に影響なし
+
+**欠点**:
+- CoreML環境で3セッション分のメモリ消費
+- バケットセッションではバッチ処理不可（1テキストずつ処理）
+- バケットサイズは固定値（将来的に調整が必要になる可能性）
+
+### 参考資料
+
+- [ONNX Runtime CoreML Execution Provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html)
+- [SessionOptions.add_free_dimension_override_by_name](https://onnxruntime.ai/docs/api/python/api_summary.html#sessionoptions)
+- task38: Embedding ONNX化 + Ollama API互換（`prompts/tasks/task38.onnx-migration-ollama-api.v1.md`）
