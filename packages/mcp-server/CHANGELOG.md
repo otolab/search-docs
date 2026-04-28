@@ -1,5 +1,15 @@
 # @search-docs/mcp-server
 
+## 1.8.2
+
+### Patch Changes
+
+- 646485c: add_related_project に URL 接続オプションを追加。Docker 環境での localhost 自動補正対応。
+- Updated dependencies [646485c]
+  - @search-docs/types@1.4.1
+  - @search-docs/cli@1.1.2
+  - @search-docs/client@1.0.21
+
 ## 1.8.1
 
 ### Patch Changes
