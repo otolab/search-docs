@@ -338,8 +338,9 @@ export class ServerManager {
 
     // URL指定の場合は直接クライアント作成
     if (relatedConfig.url) {
-      console.error(`[mcp-server] Connecting to URL for project: ${projectName} (${relatedConfig.url})`);
-      const client = new SearchDocsClient({ baseUrl: relatedConfig.url });
+      const baseUrl = ServerManager.resolveDockerUrl(relatedConfig.url);
+      console.error(`[mcp-server] Connecting to URL for project: ${projectName} (${baseUrl})`);
+      const client = new SearchDocsClient({ baseUrl });
 
       // 接続確認
       try {
@@ -425,5 +426,13 @@ export class ServerManager {
     }
 
     return merged;
+  }
+
+  /**
+   * Docker環境ではlocalhost/127.0.0.1をhost.docker.internalに置換
+   */
+  static resolveDockerUrl(url: string): string {
+    if (process.env.IS_DOCKER !== 'true') return url;
+    return url.replace(/\/\/(localhost|127\.0\.0\.1)([:\/]|$)/, '//host.docker.internal$2');
   }
 }

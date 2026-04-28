@@ -22,11 +22,11 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
         '関連プロジェクトを一時的に追加します。追加されたプロジェクトはセッション中のみ有効で、設定ファイルには保存されません。\n' +
         'dirまたはurlのいずれか一方を指定します。\n' +
         '- dir: 指定ディレクトリに .search-docs.json が存在する必要があります（.search-docs/config.json も自動検出）\n' +
-        '- url: 起動済みのsearch-docsサーバに接続します。対象プロジェクトで `search-docs server start` を実行してからURLを指定してください。Docker環境からはhttp://host.docker.internal:<port>、ローカルではhttp://localhost:<port>を使用します',
+        '- url: 起動済みのsearch-docsサーバに接続します。対象プロジェクトで `search-docs server start` を実行してからURLを指定してください（Docker環境ではlocalhostを自動でhost.docker.internalに補正します）',
       inputSchema: {
         name: z.string().describe('プロジェクト名（一意の識別子）'),
         dir: z.string().optional().describe('プロジェクトディレクトリ（相対パスまたは絶対パス）'),
-        url: z.string().optional().describe('起動済みサーバのURL。Docker内: http://host.docker.internal:<port>、ローカル: http://localhost:<port>'),
+        url: z.string().optional().describe('起動済みサーバのURL（例: http://localhost:<port>）'),
         description: z.string().optional().describe('プロジェクトの説明'),
       },
     },
@@ -54,8 +54,9 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
 
       // URL 指定時の処理
       if (url) {
-        // ヘルスチェックで接続確認
-        const client = new SearchDocsClient({ baseUrl: url });
+        const { ServerManager } = await import('../server-manager.js');
+        const resolvedUrl = ServerManager.resolveDockerUrl(url);
+        const client = new SearchDocsClient({ baseUrl: resolvedUrl });
         try {
           await client.healthCheck();
         } catch (error) {
