@@ -1,5 +1,11 @@
 # @search-docs/types
 
+## 1.4.1
+
+### Patch Changes
+
+- 646485c: add_related_project に URL 接続オプションを追加。Docker 環境での localhost 自動補正対応。
+
 ## 1.4.0
 
 ### Minor Changes

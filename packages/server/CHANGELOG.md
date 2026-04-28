@@ -1,5 +1,14 @@
 # @search-docs/server
 
+## 1.4.2
+
+### Patch Changes
+
+- Updated dependencies [646485c]
+  - @search-docs/types@1.4.1
+  - @search-docs/db-engine@1.5.2
+  - @search-docs/storage@1.0.19
+
 ## 1.4.1
 
 ### Patch Changes
