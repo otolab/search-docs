@@ -1,5 +1,11 @@
 # @search-docs/mcp-server
 
+## 1.8.1
+
+### Patch Changes
+
+- @search-docs/cli@1.1.1
+
 ## 1.8.0
 
 ### Minor Changes
