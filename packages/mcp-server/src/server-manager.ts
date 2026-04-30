@@ -138,7 +138,7 @@ export class ServerManager {
       console.error('[mcp-server] Waiting for server to start...');
 
       // サーバのヘルスチェックを行う（最大30秒待機）
-      const serverUrl = `http://localhost:${port}`;
+      const serverUrl = `http://127.0.0.1:${port}`;
       const client = new SearchDocsClient({ baseUrl: serverUrl });
       const maxWaitTime = 30000; // 30秒
       const checkInterval = 1000; // 1秒
@@ -239,7 +239,7 @@ export class ServerManager {
     await this.startServer(projectRoot, port, configPath);
 
     // クライアントを作成してキャッシュ
-    const serverUrl = `http://localhost:${port}`;
+    const serverUrl = `http://127.0.0.1:${port}`;
     const client = new SearchDocsClient({ baseUrl: serverUrl });
 
     const serverInfo: ServerInfo = {

@@ -36,7 +36,7 @@ describe('config init', () => {
 
     expect(config.version).toBe('1.0');
     expect(config.project.name).toMatch(/\.test-config-init-/);
-    expect(config.server.host).toBe('localhost');
+    expect(config.server.host).toBe('127.0.0.1');
     expect(config.server.port).toBeGreaterThanOrEqual(49152);
     expect(config.server.port).toBeLessThanOrEqual(65535);
   });

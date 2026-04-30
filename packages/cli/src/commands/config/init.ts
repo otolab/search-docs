@@ -68,7 +68,7 @@ function createDefaultConfig(options: {
       includeCleanOnly: false,
     },
     server: {
-      host: 'localhost',
+      host: '127.0.0.1',
       port: options.port,
       protocol: 'json-rpc',
     },

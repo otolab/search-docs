@@ -23,7 +23,7 @@ import type {
  * クライアント設定
  */
 export interface SearchDocsClientConfig {
-  /** サーバURL（デフォルト: http://localhost:24280） */
+  /** サーバURL（デフォルト: http://127.0.0.1:24280） */
   baseUrl?: string;
   /** リクエストタイムアウト（ミリ秒、デフォルト: 30000） */
   timeout?: number;
@@ -54,7 +54,7 @@ export class SearchDocsClient {
   private requestId = 0;
 
   constructor(config: SearchDocsClientConfig = {}) {
-    this.baseUrl = config.baseUrl || 'http://localhost:24280';
+    this.baseUrl = config.baseUrl || 'http://127.0.0.1:24280';
     this.timeout = config.timeout || 30000;
   }
 

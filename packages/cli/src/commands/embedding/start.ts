@@ -31,7 +31,7 @@ async function startEmbeddingServer(options: EmbeddingStartOptions): Promise<voi
   const dimension = options.dimension ? parseInt(options.dimension, 10) : 256;
 
   // 既存サーバチェック
-  const existing = await checkEmbeddingHealth('localhost', port);
+  const existing = await checkEmbeddingHealth('127.0.0.1', port);
   if (existing) {
     console.log(`Embedding server is already running on port ${port}`);
     console.log(`  Model: ${existing.model}`);
@@ -92,7 +92,7 @@ async function startEmbeddingServer(options: EmbeddingStartOptions): Promise<voi
 
   // readiness 待ち（初回はモデルダウンロードで時間がかかる）
   console.log('Waiting for embedding server to start (initial download may take a few minutes)...');
-  const ready = await waitForEmbeddingReady('localhost', port, 120000);
+  const ready = await waitForEmbeddingReady('127.0.0.1', port, 120000);
 
   if (!ready) {
     try { process.kill(proc.pid, 'SIGTERM'); } catch { /* ignore */ }
@@ -100,7 +100,7 @@ async function startEmbeddingServer(options: EmbeddingStartOptions): Promise<voi
   }
 
   // PIDファイル保存
-  const health = await checkEmbeddingHealth('localhost', port);
+  const health = await checkEmbeddingHealth('127.0.0.1', port);
   const pidFile = {
     pid: proc.pid,
     port,

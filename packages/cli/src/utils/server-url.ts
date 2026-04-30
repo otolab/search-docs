@@ -36,7 +36,7 @@ export async function resolveServerUrl(
   });
 
   // server設定からURLを構築
-  const host = config.server.host || 'localhost';
+  const host = config.server.host || '127.0.0.1';
   const port = config.server.port || 24280;
   return `http://${host}:${port}`;
 }
