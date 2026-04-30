@@ -383,12 +383,13 @@ export class WatcherProcess {
   }
 
   private async indexDocument(filePath: string, force = false): Promise<{ success: boolean; sectionsCreated: number }> {
-    const stat = await fs.stat(filePath);
+    const absolutePath = path.join(this.config.project.root, filePath);
+    const stat = await fs.stat(absolutePath);
     if (stat.size > this.config.files.maxFileSize) {
       return { success: false, sectionsCreated: 0 };
     }
 
-    const content = await fs.readFile(filePath, 'utf-8');
+    const content = await fs.readFile(absolutePath, 'utf-8');
     const hash = createHash('sha256').update(content).digest('hex');
 
     const existingDoc = await this.storage.get(filePath);
