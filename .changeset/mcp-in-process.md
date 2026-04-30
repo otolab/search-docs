@@ -1,8 +1,8 @@
 ---
-"@search-docs/types": minor
+"@search-docs/types": patch
 "@search-docs/server": patch
 "@search-docs/client": patch
-"@search-docs/mcp-server": minor
+"@search-docs/mcp-server": patch
 "@search-docs/db-engine": patch
 ---
 
