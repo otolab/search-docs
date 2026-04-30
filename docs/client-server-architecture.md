@@ -6,56 +6,88 @@ search-docsは、プロジェクト毎に起動される単一の文書管理・
 
 ## アーキテクチャ図
 
+### MCPサーバモード（in-process構成）
+
+```
+┌─────────────────────────────────────────┐
+│       MCP Server (Claude Code)          │
+│         (stdio通信)                     │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │  SearchDocsServer (read-only)   │   │
+│  │  - search, getDocument          │   │
+│  │  - getOutline, getStatus        │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │  WatcherProcess (write)         │   │
+│  │  - Heartbeat調停                │   │
+│  │  - FileWatcher (master時)       │   │
+│  │  - IndexWorker (master時)       │   │
+│  │  - StartupSyncWorker            │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │  DBEngine                       │   │
+│  │  - LanceDB操作                  │   │
+│  │  - Vector検索                   │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │  EmbeddingServerProcess         │   │
+│  │  - 自動検出・起動管理           │   │
+│  └─────────────────────────────────┘   │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│              LanceDB                    │
+│  - documents                            │
+│  - sections                             │
+│  - writer_heartbeat (調停用)            │
+└─────────────────────────────────────────┘
+```
+
+### HTTPサーバモード（`server start` コマンド）
+
 ```
 ┌─────────────────────────────────────────┐
 │           Client Applications           │
 │  - CLI Tool                             │
-│  - MCP Server (Claude Code統合)        │
 │  - REST API Client                      │
 └──────────────┬──────────────────────────┘
                │ JSON-RPC / HTTP
                │
 ┌──────────────▼──────────────────────────┐
-│       SearchDocsServer (read-only)      │
-│  (プロジェクト毎に1インスタンス)        │
+│   JSON-RPC Server (HTTP)                │
 │                                         │
 │  ┌─────────────────────────────────┐   │
-│  │   Configuration Loader          │   │
-│  │   - ファイル検索ルール          │   │
-│  │   - インデックス設定            │   │
+│  │  SearchDocsServer (read-only)   │   │
+│  │  - search, getDocument          │   │
+│  │  - getOutline, getStatus        │   │
 │  └─────────────────────────────────┘   │
 │                                         │
 │  ┌─────────────────────────────────┐   │
-│  │   Search Engine                 │   │
-│  │   - SearchIndex (LanceDB)       │   │
-│  │   - Vector検索                  │   │
-│  └─────────────────────────────────┘   │
-└─────────────────────────────────────────┘
-
-┌─────────────────────────────────────────┐
-│      WatcherProcess (write)             │
-│  (独立プロセス、Heartbeat調停あり)      │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │   Heartbeat Coordinator         │   │
-│  │   - Master選出                  │   │
-│  │   - 状態マシン管理              │   │
+│  │  WatcherProcess (write)         │   │
+│  │  - Heartbeat調停                │   │
+│  │  - FileWatcher (master時)       │   │
+│  │  - IndexWorker (master時)       │   │
+│  │  - StartupSyncWorker            │   │
 │  └─────────────────────────────────┘   │
 │                                         │
 │  ┌─────────────────────────────────┐   │
-│  │   Document Manager              │   │
-│  │   - DocumentStorage             │   │
-│  │   - FileWatcher (master時)      │   │
+│  │  DBEngine                       │   │
+│  │  - LanceDB操作                  │   │
+│  │  - Vector検索                   │   │
 │  └─────────────────────────────────┘   │
 │                                         │
 │  ┌─────────────────────────────────┐   │
-│  │   Index Workers                 │   │
-│  │   - IndexWorker (master時)      │   │
-│  │   - StartupSyncWorker           │   │
+│  │  EmbeddingServerProcess         │   │
+│  │  - 自動検出・起動管理           │   │
 │  └─────────────────────────────────┘   │
-└─────────────────────────────────────────┘
-
-          ↓ 共有ストレージ（LanceDB）
+└──────────────┬──────────────────────────┘
+               │
+               ▼
 ┌─────────────────────────────────────────┐
 │              LanceDB                    │
 │  - documents                            │
@@ -71,9 +103,12 @@ search-docsは、プロジェクト毎に起動される単一の文書管理・
 #### 1. SearchDocsServer (Read-Only)
 
 **責務**:
-- プロジェクト毎に1インスタンスが起動
-- クライアントからの検索リクエストを処理
 - read-only操作のみ（search, getDocument, getOutline, getStatus）
+- クライアントからの検索リクエストを処理
+
+**実装形態**:
+- **MCPサーバ**: in-processで直接インスタンスを保持
+- **HTTPサーバ**: `server start` コマンドで起動、JSON-RPC経由でアクセス
 
 WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間を自動協調します。
 
@@ -84,7 +119,9 @@ WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間
 - Heartbeat調停による排他制御
 - 複数プロセス間で1つだけがmaster（watching状態）になる
 
-server.ts内で同一プロセスとして起動されます。
+**実装形態**:
+- MCPサーバ・HTTPサーバともに同一プロセス内で起動
+- SearchDocsServerと同じプロセスで動作
 
 **Heartbeat調停メカニズム**:
 
@@ -173,6 +210,12 @@ search-docs-server start --port 24280
     "name": "my-project",
     "root": "."
   },
+  "relatedProjects": {
+    "other-project": {
+      "url": "http://localhost:24281",
+      "description": "関連プロジェクトの説明（オプション）"
+    }
+  },
   "files": {
     "include": [
       "**/*.md",
@@ -218,6 +261,14 @@ search-docs-server start --port 24280
 }
 ```
 
+**関連プロジェクト設定（relatedProjects）**:
+
+- **目的**: 他のプロジェクトのsearch-docsサーバを検索対象に含める
+- **設定方法**: `relatedProjects` に名前とURL（必須）を指定
+- **接続方法**: MCPツールの `project` パラメータで関連プロジェクト名を指定
+- **サーバ起動**: 関連プロジェクトのサーバは**明示的に `search-docs server start` で起動**する必要があります
+- **変更点（v1.9.0以降）**: `dir` フィールドは削除され、`url` のみになりました（暗黙的なサーバ自動起動を廃止）
+
 **設定スキーマ（TypeScript）**:
 ```typescript
 interface SearchDocsConfig {
@@ -226,6 +277,7 @@ interface SearchDocsConfig {
     name: string;
     root: string;
   };
+  relatedProjects?: Record<string, RelatedProjectConfig>;
   files: {
     include: string[];      // globパターン
     exclude: string[];      // globパターン
@@ -260,6 +312,13 @@ interface SearchDocsConfig {
     pythonMaxMemoryMB?: number;        // Pythonワーカーの最大メモリ使用量（MB、デフォルト: 8192）
     memoryCheckIntervalMs?: number;    // メモリ監視の間隔（ms、デフォルト: 30000）
   };
+}
+
+interface RelatedProjectConfig {
+  /** リモートサーバURL（必須）例: http://localhost:24280 */
+  url: string;
+  /** プロジェクトの説明（オプション） */
+  description?: string;
 }
 ```
 
@@ -349,20 +408,47 @@ search-docs config init
 **実装**:
 ```typescript
 class SearchDocsMCPServer {
+  private service: SearchDocsService; // in-process SearchDocsServer
+
   async search(query: string, options?: SearchOptions) {
-    // クライアントを通じてサーバにリクエスト
-    return await this.client.search(query, options);
+    // in-processで直接実行（HTTPリクエスト不要）
+    return await this.service.search({ query, options });
   }
 
   async getDocument(path: string) {
-    return await this.client.getDocument(path);
+    return await this.service.getDocument({ path });
   }
 }
 ```
 
+**SearchDocsServiceインターフェイス**:
+
+MCPサーバとHTTPクライアントは、共通のSearchDocsServiceインターフェイス（`packages/types/src/service.ts`）を使用します：
+
+```typescript
+export interface SearchDocsService {
+  search(request: SearchRequest): Promise<SearchResponse>;
+  getDocument(request: GetDocumentRequest): Promise<GetDocumentResponse>;
+  getOutline(request: GetOutlineRequest): Promise<GetOutlineResponse>;
+  getStatus(): Promise<GetStatusResponse>;
+}
+```
+
+- **SearchDocsServer**: in-processで実装
+- **SearchDocsClient**: HTTP JSON-RPC経由で実装
+
+これにより、MCPツールはサーバがin-processかHTTP経由かを意識せずに利用できます。
+
 **Claude Code統合**:
 ```bash
-claude mcp add search-docs -- search-docs mcp-server --project $(pwd)
+# Docker版（推奨）
+docker run --rm -i \
+  -v .:/workspace:ro \
+  -v ./.search-docs:/workspace/.search-docs \
+  otolab/search-docs-mcp:latest
+
+# npx版
+claude mcp add npx -- -y @search-docs/mcp-server
 ```
 
 #### 3. Client Library

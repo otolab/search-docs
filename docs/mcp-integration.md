@@ -56,6 +56,7 @@ search-docsのMCP Serverは以下のツールを提供します。
 | `includeCleanOnly` | boolean | - | false | Clean（最新）なSectionのみ検索 |
 | `includePaths` | string[] | - | - | 含めるパス（前方一致）<br>例: `["docs/", "README.md"]` |
 | `excludePaths` | string[] | - | - | 除外するパス（前方一致）<br>例: `["docs/internal/"]` |
+| `project` | string | - | - | 関連プロジェクト名<br>指定時は関連プロジェクトを検索 |
 
 **使用例**:
 
@@ -100,6 +101,7 @@ Claude: [searchツールを使用]
 |-----------|-----|------|------|
 | `path` | string | - | 文書パス<br>例: `"docs/architecture.md"` |
 | `sectionId` | string | - | セクションID（検索結果から取得）|
+| `project` | string | - | 関連プロジェクト名<br>指定時は関連プロジェクトから取得 |
 
 **注意**: `path` と `sectionId` のどちらか一方は必須
 
@@ -149,6 +151,7 @@ LanceDBとRuri Embeddingを使用したVector検索エンジンです。
 |-----------|-----|------|------|
 | `path` | string | - | 文書パス |
 | `sectionId` | string | - | セクションID（そのセクション配下のアウトライン）|
+| `project` | string | - | 関連プロジェクト名<br>指定時は関連プロジェクトから取得 |
 
 **注意**: `path` と `sectionId` のどちらか一方は必須
 
@@ -255,6 +258,108 @@ Claude: [index_statusツールを使用]
 
 ---
 
+### 5. `system_status` - システム状態確認
+
+システム全体の状態を取得します。
+
+**パラメータ**: なし
+
+**使用例**:
+
+```
+ユーザー: システムの状態を確認して
+
+Claude: [system_statusツールを使用]
+```
+
+**レスポンス例**:
+
+```
+システム状態
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+状態: RUNNING
+プロジェクトルート: /path/to/project
+設定ファイル: .search-docs.json
+
+サーバ情報:
+  バージョン: 1.0.0
+  稼働時間: 2h 15m 30s
+
+データベース:
+  接続状態: ready
+  総文書数: 152
+  総セクション数: 1,018
+
+関連プロジェクト:
+  - other-project (http://localhost:24281)
+```
+
+---
+
+### 6. `add_related_project` - 関連プロジェクト追加
+
+他のプロジェクトのsearch-docsサーバを検索対象に追加します（一時的）。
+
+**パラメータ**:
+
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `name` | string | ✓ | プロジェクト名 |
+| `url` | string | ✓ | サーバURL（例: `http://localhost:24281`） |
+| `description` | string | - | 説明（オプション） |
+
+**使用例**:
+
+```
+ユーザー: ai-agent-promptsプロジェクトも検索対象に追加して
+
+Claude: [add_related_projectツールを使用]
+        name: "ai-agent-prompts"
+        url: "http://localhost:24281"
+        description: "エージェントプロンプト集"
+```
+
+**注意**:
+- 関連プロジェクトのサーバは**明示的に `search-docs server start` で起動**しておく必要があります
+- この追加は一時的なもので、設定ファイルには保存されません
+- 恒久的に追加したい場合は、設定ファイルの `relatedProjects` セクションに記述してください
+
+---
+
+### 7. `list_related_projects` - 関連プロジェクト一覧
+
+設定されている関連プロジェクトの一覧を取得します。
+
+**パラメータ**: なし
+
+**使用例**:
+
+```
+ユーザー: 関連プロジェクトを一覧表示して
+
+Claude: [list_related_projectsツールを使用]
+```
+
+**レスポンス例**:
+
+```
+関連プロジェクト
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ai-agent-prompts
+   URL: http://localhost:24281
+   説明: エージェントプロンプト集
+   ソース: 設定ファイル
+
+2. other-project
+   URL: http://localhost:24282
+   説明: -
+   ソース: 一時追加
+```
+
+---
+
 ## 実践的な使用例
 
 ### 例1: 特定トピックの調査
@@ -328,6 +433,35 @@ Claude: Dirty管理に関する文書を検索します。
 Dirty管理について、3つの観点からまとめます：
 ...
 ```
+
+### 例4: 関連プロジェクトの検索
+
+```
+ユーザー: ai-agent-promptsプロジェクトのエージェント設計について調べて
+
+Claude: まず、ai-agent-promptsプロジェクトを検索対象に追加します。
+
+[add_related_projectツール]
+name: "ai-agent-prompts"
+url: "http://localhost:24281"
+
+追加しました。それでは検索します。
+
+[searchツール]
+query: "エージェント設計"
+project: "ai-agent-prompts"
+limit: 5
+
+検索結果:
+1. recipes/agent-design/README.md - エージェント設計パターン
+2. docs/principles.md - 設計原則
+...
+```
+
+**関連プロジェクト検索のポイント**:
+1. `add_related_project` で関連プロジェクトを追加（または設定ファイルに記述）
+2. 関連プロジェクトのサーバを `search-docs server start` で起動
+3. `search`, `get_document`, `get_outline` の `project` パラメータで指定
 
 ---
 
