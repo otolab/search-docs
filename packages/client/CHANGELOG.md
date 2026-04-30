@@ -1,5 +1,22 @@
 # @search-docs/client
 
+## 1.0.22
+
+### Patch Changes
+
+- dccec8b: MCP サービスを in-process 化し、関連プロジェクトを URL 接続に限定
+
+  - SearchDocsService インターフェイスを追加し、in-process と HTTP アクセスを透過的に扱えるように
+  - MCP サーバが SearchDocsServer インスタンスを直接保持する構成に変更（HTTP デーモン spawn 廃止）
+  - RelatedProjectConfig から dir 指定を削除し、url 必須に変更
+  - db-engine の get_stats で内部 API(\_dataset)を公開 API(to_lance())に修正
+  - lancedb 0.25.3 → 0.30.2 へアップデート（Lance v3.0 対応）
+  - Python 依存を全てバージョン固定（サプライチェーン対策）
+  - torch/sentence-transformers 依存を削除（ONNX 移行済み）
+
+- Updated dependencies [dccec8b]
+  - @search-docs/types@1.4.2
+
 ## 1.0.21
 
 ### Patch Changes
