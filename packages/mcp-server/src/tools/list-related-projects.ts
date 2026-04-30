@@ -22,7 +22,7 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
       let resultText = '';
 
       // 関連プロジェクトの存在確認
-      const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects, systemState.configPath);
+      const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
       if (Object.keys(allRelatedProjects).length === 0) {
         resultText += '📋 関連プロジェクト\n\n';
         resultText += '関連プロジェクトは設定されていません。\n\n';
@@ -55,7 +55,7 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
         }
 
         resultText += '\n';
-        resultText += `  ディレクトリ: ${projectConfig.dir}\n`;
+        resultText += `  URL: ${projectConfig.url}\n`;
 
         if (serverInfo) {
           // サーバが起動中

@@ -24,18 +24,27 @@ search-docsは、ローカル文書のVector検索を実現するための多層
 
 ## プロセス構成
 
-search-docsは以下の3つのプロセス役割で構成されます。
+search-docsは以下の構成で動作します。
 
 ### 1. MCP Server (`packages/mcp-server/`)
 
 - **役割**: Claude Code統合、stdio通信
-- **通信**: クライアント → JSON-RPC Server
+- **実装**: SearchDocsServerをin-processで直接保持
+- **インターフェイス**: SearchDocsServiceインターフェイス経由でサーバ機能を利用
+- **機能**: search, getDocument, getOutline, getStatus
+- **内蔵コンポーネント**:
+  - SearchDocsServer（read-only）
+  - WatcherProcess（write、heartbeat調停）
+  - DBEngine
+  - EmbeddingServerProcess（自動検出・起動管理）
 
 ### 2. JSON-RPC Server (`packages/server/src/bin/server.ts`)
 
-- **役割**: HTTP JSON-RPCサーバ、検索APIの提供、WatcherProcess内蔵
+- **役割**: HTTPサーバとしてSearchDocsServerをexposeする
+- **用途**: `search-docs server start` コマンドで起動、外部クライアント向け
 - **機能**: search, getDocument, getOutline, getStatus
 - **WatcherProcess**: FileWatcher, IndexWorker, StartupSyncWorker（heartbeat調停で複数インスタンス間を自動協調）
+- **注**: MCPサーバからは使用されない（MCPはin-processで動作）
 
 ### 3. Embedding Server (`packages/db-engine/src/python/embedding_server.py`)
 
@@ -51,18 +60,38 @@ search-docsは以下の3つのプロセス役割で構成されます。
 ### プロセス間の関係
 
 ```
-MCP Server
-    ↓ JSON-RPC
-JSON-RPC Server (WatcherProcess内蔵)
-    ↓
-┌───────────────────┬────────────────────┐
-│                   │                    │
-WatcherProcess   DBEngine           Embedding Server
-(heartbeat調停)  (read/write)        (stateless)
-│                   │                    │
-└───────────────────┴────────────────────┘
-              LanceDB
+MCP Server (stdio)
+  ├─ in-process: SearchDocsServer (read-only)
+  ├─ in-process: WatcherProcess (write, heartbeat調停)
+  │   ├─ FileWatcher (master時のみ起動)
+  │   ├─ IndexWorker (master時のみ起動)
+  │   └─ StartupSyncWorker (master時のみ起動)
+  ├─ in-process: DBEngine
+  └─ subprocess: Embedding Server (stateless)
+           │
+           ▼
+       LanceDB (共有ストレージ)
+
+─────────────────────────────────────────
+
+JSON-RPC Server (HTTP) ← `server start` コマンドで起動
+  ├─ in-process: SearchDocsServer (read-only)
+  ├─ in-process: WatcherProcess (write, heartbeat調停)
+  ├─ in-process: DBEngine
+  └─ subprocess: Embedding Server (stateless)
+           │
+           ▼
+       LanceDB (共有ストレージ)
 ```
+
+**SearchDocsServiceインターフェイス**:
+
+MCPサーバとJSON-RPCクライアントは、共通のSearchDocsServiceインターフェイス（`packages/types/src/service.ts`）を実装することで、透過的にサーバ機能を利用できます：
+
+- **SearchDocsServer**: in-processで直接実装
+- **SearchDocsClient**: HTTP JSON-RPC経由で実装
+
+これにより、MCPツールはサーバがin-processかHTTP経由かを意識せずに利用できます。
 
 ## コアコンポーネント
 

@@ -142,21 +142,27 @@ const results = await client.search('検索クエリ');
 
 ## アーキテクチャ概要
 
-search-docsは**クライアント・サーバ構成**です：
+search-docsは**in-process構成（MCPサーバ）** と **クライアント・サーバ構成（HTTPサーバ）** の2つのモードで動作します：
 
-### Server側
-- **Server** (`@search-docs/server`): プロジェクトごとに起動
-  - DocumentStorage: ファイルの変更検知
-  - SearchIndex: LanceDBによるVector検索
-  - IndexWorker: バックグラウンドでの自動更新
+### MCPサーバモード（Claude Code統合）
+- **MCP Server** (`@search-docs/mcp-server`): SearchDocsServerをin-processで直接保持
+  - HTTPデーモン不要、高速起動
+  - SearchDocsServer（read-only）
+  - WatcherProcess（write、heartbeat調停）
+  - DBEngine（Python/LanceDB/Ruri）
+  - EmbeddingServerProcess（自動検出・起動）
 
-### Client側
-- **MCP Server** (`@search-docs/mcp-server`): Claude Code統合
+### HTTPサーバモード（外部クライアント向け）
+- **Server** (`@search-docs/server`): `server start` コマンドで起動
+  - JSON-RPC API提供
+  - CLI Tool、Client Libraryから利用
 - **CLI Tool** (`@search-docs/cli`): コマンドライン
 - **Client Library** (`@search-docs/client`): プログラマティックな利用
 
-### DB Engine
-- **DB Engine** (`@search-docs/db-engine`): Python/LanceDB/Ruri
+### 共通インターフェイス
+- **SearchDocsService**: MCPサーバとHTTPクライアントの共通インターフェイス
+  - SearchDocsServer（in-process実装）
+  - SearchDocsClient（HTTP実装）
 
 詳細: [システムアーキテクチャ](docs/architecture.md) | [データモデル](docs/data-model.md)
 

@@ -17,6 +17,7 @@ import type {
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcError,
+  SearchDocsService,
 } from '@search-docs/types';
 
 /**
@@ -48,7 +49,7 @@ export class JsonRpcClientError extends Error {
  *
  * HTTPサーバとJSON-RPC 2.0で通信し、検索・インデックス操作を提供
  */
-export class SearchDocsClient {
+export class SearchDocsClient implements SearchDocsService {
   private baseUrl: string;
   private timeout: number;
   private requestId = 0;

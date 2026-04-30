@@ -2,13 +2,16 @@
  * システム状態管理
  */
 
-import { SearchDocsClient } from '@search-docs/client';
-import { ConfigLoader, type SearchDocsConfig } from '@search-docs/types';
+import * as path from 'path';
+import { ConfigLoader, type SearchDocsConfig, type SearchDocsService } from '@search-docs/types';
+import { FileStorage } from '@search-docs/storage';
+import { DBEngine } from '@search-docs/db-engine';
+import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess } from '@search-docs/server';
 
 /**
  * システム状態の種類
  */
-export type SystemState = 'NOT_CONFIGURED' | 'CONFIGURED_SERVER_DOWN' | 'RUNNING';
+export type SystemState = 'NOT_CONFIGURED' | 'RUNNING';
 
 /**
  * システム状態情報
@@ -22,10 +25,18 @@ export interface SystemStateInfo {
   configPath?: string;
   /** プロジェクトルート */
   projectRoot: string;
-  /** サーバURL（設定ファイルが存在する場合） */
-  serverUrl?: string;
-  /** クライアントインスタンス（サーバが稼働中の場合） */
-  client?: SearchDocsClient;
+  /** サービスインスタンス（サーバが稼働中の場合） */
+  service?: SearchDocsService;
+}
+
+/**
+ * サービスインスタンス群
+ */
+export interface ServiceInstances {
+  service: SearchDocsServer;
+  watcherProcess: WatcherProcess;
+  dbEngine: DBEngine;
+  embeddingServer: EmbeddingServerProcess;
 }
 
 /**
@@ -35,11 +46,8 @@ export interface SystemStateInfo {
  * @returns システム状態情報
  */
 export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
-  // 1. 設定ファイルの存在確認
-  let config: SearchDocsConfig | undefined;
-  let configPath: string | undefined;
-  let projectRoot: string;
-
+  // 設定ファイルの存在確認のみ行う
+  // サービスの作成は createService() で行う
   try {
     const result = await ConfigLoader.resolve({
       cwd,
@@ -58,9 +66,13 @@ export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
       };
     }
 
-    config = result.config;
-    configPath = result.configPath ?? undefined;
-    projectRoot = result.projectRoot;
+    // 設定ファイルあり
+    return {
+      state: 'RUNNING',
+      config: result.config,
+      configPath: result.configPath ?? undefined,
+      projectRoot: result.projectRoot,
+    };
   } catch (_error) {
     // 設定ファイル読み込みエラー
     return {
@@ -68,33 +80,69 @@ export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
       projectRoot: cwd,
     };
   }
+}
 
-  // 2. サーバのヘルスチェック
-  const serverUrl = `http://${config.server.host}:${config.server.port}`;
-  const client = new SearchDocsClient({ baseUrl: serverUrl });
+/**
+ * サービスインスタンスを作成
+ *
+ * @param config - 設定情報
+ * @param projectRoot - プロジェクトルート
+ * @param version - バージョン情報
+ * @returns サービスインスタンス群
+ */
+export async function createService(
+  config: SearchDocsConfig,
+  projectRoot: string,
+  version: string
+): Promise<ServiceInstances> {
+  // 1. EmbeddingServerProcess検出・起動
+  const embeddingServer = new EmbeddingServerProcess({
+    embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
+    port: 24281,
+    runtime: 'onnx',
+    modelPath: process.env.SEARCH_DOCS_DOCKER_MODEL_PATH,
+    dimension: config.indexing.vectorDimension,
+  });
+  const embeddingUrl = await embeddingServer.start();
 
-  try {
-    await client.healthCheck();
+  // 2. FileStorage初期化
+  const storage = new FileStorage({
+    basePath: path.resolve(projectRoot, config.storage.documentsPath),
+  });
 
-    // サーバ稼働中
-    return {
-      state: 'RUNNING',
-      config,
-      configPath,
-      projectRoot,
-      serverUrl,
-      client,
-    };
-  } catch (_error) {
-    // サーバ停止中
-    return {
-      state: 'CONFIGURED_SERVER_DOWN',
-      config,
-      configPath,
-      projectRoot,
-      serverUrl,
-    };
-  }
+  // 3. DBEngine初期化
+  const dbEngine = new DBEngine({
+    dbPath: path.resolve(projectRoot, config.storage.indexPath),
+    embeddingUrl,
+    maxBatchTokens: config.worker.maxBatchTokens,
+    pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
+    memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
+    readOnly: false,
+  });
+
+  // 4. SearchDocsServer初期化
+  const service = new SearchDocsServer(config, storage, dbEngine, version);
+
+  // 5. WatcherProcess初期化・接続
+  const watcherProcess = new WatcherProcess(config, storage, dbEngine);
+  service.setWatcherProcess(watcherProcess);
+
+  // 6. 起動
+  service.start();
+  watcherProcess.start();
+
+  return { service, watcherProcess, dbEngine, embeddingServer };
+}
+
+/**
+ * サービスインスタンスを停止
+ *
+ * @param instances - サービスインスタンス群
+ */
+export async function stopService(instances: ServiceInstances): Promise<void> {
+  await instances.watcherProcess.stop();
+  instances.service.stop();
+  await instances.embeddingServer.stop();
 }
 
 /**
@@ -112,19 +160,6 @@ export function getStateErrorMessage(state: SystemState, action: string, related
         'セットアップ方法:\n' +
         '  - 設定ファイルを作成: init\n' +
         '  - 関連プロジェクトを追加: add_related_project\n';
-
-      if (relatedProjectNames && relatedProjectNames.length > 0) {
-        message += `\n利用可能な関連プロジェクト: ${relatedProjectNames.join(', ')}\n`;
-        message += '関連プロジェクトを検索するには project パラメータを指定してください。\n';
-      }
-
-      return message;
-    }
-
-    case 'CONFIGURED_SERVER_DOWN': {
-      let message =
-        `${action}を実行できません。search-docsサーバを自動起動中です。\n` +
-        'しばらくお待ちください。\n';
 
       if (relatedProjectNames && relatedProjectNames.length > 0) {
         message += `\n利用可能な関連プロジェクト: ${relatedProjectNames.join(', ')}\n`;

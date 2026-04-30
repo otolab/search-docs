@@ -86,6 +86,15 @@ importers:
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
+      '@search-docs/db-engine':
+        specifier: workspace:*
+        version: link:../db-engine
+      '@search-docs/server':
+        specifier: workspace:*
+        version: link:../server
+      '@search-docs/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@search-docs/types':
         specifier: workspace:*
         version: link:../types
@@ -230,7 +239,6 @@ packages:
 
   '@coeiro-operator/mcp-debug@1.1.0':
     resolution: {integrity: sha512-foeP/Kl9Q0ByM004c+Zpxv3vXMmYk05S8hYAOTLPqL4EhkBkBV/21KWz8MvFAVgsNqEXpS7KcwN1jJdym+ADeQ==}
-    cpu: [x64, arm64, ia32]
     os: [darwin, linux, win32]
     hasBin: true
 

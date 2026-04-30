@@ -6,34 +6,34 @@
 
 ## アーキテクチャ
 
-### クライアント・サーバ構成
+### プロセス構成
 
 ```
-MCP Server
-    ↓ JSON-RPC
-JSON-RPC Server (WatcherProcess内蔵)
-    ↓
-┌───────────────────┬────────────────────┐
-│                   │                    │
-WatcherProcess   DBEngine           Embedding Server
-(heartbeat調停)  (read/write)        (stateless)
-│                   │                    │
-└───────────────────┴────────────────────┘
-        LanceDB (共有ストレージ)
+MCP Server (stdio)
+  ├─ in-process: SearchDocsServer (read-only)
+  ├─ in-process: WatcherProcess (write, heartbeat調停)
+  ├─ in-process: DBEngine
+  └─ subprocess: Embedding Server (stateless, 共有可能)
+           │
+           ▼
+       LanceDB (共有ストレージ)
 ```
 
 **詳細**: docs/client-server-architecture.md
 
-### プロセス構成
+### アーキテクチャ構成
 
-search-docsは以下の3つのプロセス役割で構成されます：
+search-docsは以下の構成で動作します：
 
 1. **MCP Server** (`packages/mcp-server/`)
    - Claude Code統合、stdio通信
+   - **SearchDocsServerをin-processで直接保持**（HTTPデーモン不要）
+   - SearchDocsServiceインターフェイス経由でサーバ機能を利用
 
 2. **JSON-RPC Server** (`packages/server/src/bin/server.ts`)
-   - HTTP JSON-RPCサーバ、WatcherProcess内蔵
-   - Heartbeat調停で複数インスタンス間を自動協調
+   - `search-docs server start` コマンドでHTTPサーバとしてexposeする用途
+   - WatcherProcess内蔵、Heartbeat調停で複数インスタンス間を自動協調
+   - MCPサーバからは使用されない（外部クライアント向け）
 
 3. **Embedding Server** (`packages/db-engine/src/python/embedding_server.py`)
    - Ollama API互換のHTTP埋め込みサーバ

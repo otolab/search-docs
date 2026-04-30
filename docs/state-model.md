@@ -6,43 +6,42 @@ search-docs は複数のプロセスとコンポーネントにまたがる状�
 
 | 層 | 状態 | 値 | 所在 |
 |----|------|-----|------|
-| MCP | SystemState | NOT_CONFIGURED / CONFIGURED_SERVER_DOWN / RUNNING | MCPサーバプロセス |
-| Watcher | writerState | sleeping / claiming / watching | JSON-RPCサーバプロセス |
-| DB | connectionState | disconnected / connecting / initializing_model / ready / error | JSON-RPCサーバプロセス |
-| Worker | IndexWorker | isRunning × isProcessing | JSON-RPCサーバプロセス |
-| Worker | FileWatcher | 起動 / 停止 | JSON-RPCサーバプロセス |
-| Worker | StartupSyncWorker | isSyncing | JSON-RPCサーバプロセス |
-| Embedding | EmbeddingServerProcess | detecting → ready / error | JSON-RPCサーバプロセス |
+| MCP | SystemState | NOT_CONFIGURED / RUNNING | MCPサーバプロセス |
+| Watcher | writerState | sleeping / claiming / watching | MCPサーバプロセス（in-process WatcherProcess） |
+| DB | connectionState | disconnected / connecting / initializing_model / ready / error | MCPサーバプロセス（in-process DBEngine） |
+| Worker | IndexWorker | isRunning × isProcessing | MCPサーバプロセス（in-process WatcherProcess） |
+| Worker | FileWatcher | 起動 / 停止 | MCPサーバプロセス（in-process WatcherProcess） |
+| Worker | StartupSyncWorker | isSyncing | MCPサーバプロセス（in-process WatcherProcess） |
+| Embedding | EmbeddingServerProcess | detecting → ready / error | MCPサーバプロセス（in-process） |
 
 ## プロセス構成と状態の所在
 
 ```
 MCPサーバプロセス (stdio)
 │  SystemState を管理
-│  ServerManager でJSON-RPCサーバへの接続を管理
+│  ServerManager で関連プロジェクトへのURL接続を管理
 │
-│  ── JSON-RPC ──▶  JSON-RPCサーバプロセス (HTTP)
-│                   │
-│                   ├─ EmbeddingServerProcess (最初に起動)
-│                   │    外部検出 or ローカルspawn → URL確定
-│                   │
-│                   ├─ SearchDocsServer (読み取り専用)
-│                   │    connectionState を参照
-│                   │    GetStatusResponse を構築
-│                   │
-│                   ├─ WatcherProcess
-│                   │    writerState を管理
-│                   │    │
-│                   │    ├─ DBEngine (connectionState)
-│                   │    ├─ FileWatcher (subscription)
-│                   │    ├─ IndexWorker (isRunning, isProcessing)
-│                   │    └─ StartupSyncWorker (isSyncing)
-│                   │
-│                   └─ DBEngine ──spawn──▶ Pythonワーカー (子プロセス)
-│                                          └─ Embeddingサーバ (HTTP, 共有可能)
+├─ in-process: SearchDocsServer (read-only)
+│   connectionState を参照
+│   GetStatusResponse を構築
+│
+├─ in-process: WatcherProcess (write)
+│   writerState を管理
+│   │
+│   ├─ FileWatcher (subscription, master時のみ起動)
+│   ├─ IndexWorker (isRunning, isProcessing, master時のみ起動)
+│   └─ StartupSyncWorker (isSyncing, master時のみ起動)
+│
+├─ in-process: DBEngine
+│   connectionState を管理
+│   └─ subprocess: Pythonワーカー
+│
+└─ in-process: EmbeddingServerProcess
+    外部検出 or ローカルspawn → URL確定
+    └─ subprocess: Embeddingサーバ (HTTP, 共有可能)
 ```
 
-MCPサーバとJSON-RPCサーバは別プロセスとして動作する。MCPサーバはJSON-RPCサーバの起動・停止を管理し、JSON-RPC経由で状態を取得する。
+MCPサーバは**SearchDocsServerをin-processで直接保持**します。HTTPデーモンのspawnは不要です。`server start` CLIコマンドは引き続きHTTPサーバとしてSearchDocsServerをexposeする用途で存続します。
 
 ## 各状態の詳細
 
@@ -51,29 +50,27 @@ MCPサーバとJSON-RPCサーバは別プロセスとして動作する。MCPサ
 MCPサーバが自身の動作モードを決定するための状態。
 
 ```
-                      ┌──────────────────┐
-                      │  NOT_CONFIGURED  │  設定ファイルなし
-                      └──────┬───────────┘
-                             │ init実行
-                             ▼
-┌──────────────────────────────────────────┐
-│         CONFIGURED_SERVER_DOWN           │  設定あり、サーバ未起動
-│  （自動起動を試みる一時的な状態）          │
-└──────────────────┬───────────────────────┘
-                   │ healthCheck成功
-                   ▼
-              ┌─────────┐
-              │ RUNNING  │  サーバ稼働中
-              └─────────┘
+┌──────────────────┐
+│  NOT_CONFIGURED  │  設定ファイルなし
+└──────┬───────────┘
+       │ init実行
+       │ (設定ファイル作成)
+       ▼
+  ┌─────────┐
+  │ RUNNING  │  設定あり、サーバ稼働中（in-process）
+  └─────────┘
 ```
 
-**定義**: `packages/mcp-server/src/state.ts` L11
+**定義**: `packages/mcp-server/src/state.ts` L14
 
 - **NOT_CONFIGURED**: `ConfigLoader.resolve()` で設定ファイルが見つからない
-- **CONFIGURED_SERVER_DOWN**: 設定ファイルは存在するが `healthCheck()` が失敗。MCPサーバ起動時に自動起動を試みるため、通常は一時的な状態
-- **RUNNING**: `healthCheck()` が成功。各ツールが利用可能
+- **RUNNING**: 設定ファイルが存在し、in-processでSearchDocsServerが稼働中
 
-**判定**: `detectSystemState(cwd)` が起動時と `refreshSystemState()` 呼び出し時に実行。
+**判定**: `detectSystemState(cwd)` が起動時に実行。設定ファイルが存在する場合、`createService()` でin-processのSearchDocsServerインスタンスを作成し、RUNNING状態になります。
+
+**変更点（v1.9.0以降）**:
+- `CONFIGURED_SERVER_DOWN` 状態を削除（in-process化により不要）
+- 設定ファイルが存在すればin-processで起動するため、サーバダウン状態は発生しません
 
 ### 2. writerState（Watcher層）
 
@@ -196,24 +193,20 @@ bin/server.ts が最初に起動するコンポーネント。Embeddingサーバ
 
 MCPサーバ起動
 │
-├─ detectSystemState()
-│    設定ファイル確認 → healthCheck
-│    → CONFIGURED_SERVER_DOWN
+├─ detectSystemState(cwd)
+│    設定ファイル確認
+│    → NOT_CONFIGURED または RUNNING準備
 │
-├─ serverManager.startServer()
-│    CLI経由でJSON-RPCサーバをspawn
-│    healthCheck待ち（最大30秒）
-│
-│    JSON-RPCサーバ起動
+├─ (RUNNING準備の場合) createService()
 │    │
 │    ├─ EmbeddingServerProcess.start()
 │    │    外部検出 or ローカルspawn → URL確定
 │    │
-│    ├─ SearchDocsServer.start()
+│    ├─ SearchDocsServer作成・起動
 │    │    DBEngine.connect(embeddingUrl) [バックグラウンド]
 │    │    connectionState: disconnected → connecting
 │    │
-│    ├─ WatcherProcess.start()
+│    ├─ WatcherProcess作成・起動
 │    │    DBEngine.waitForConnection() 待ち
 │    │
 │    │    ... Pythonワーカー起動 ...
@@ -224,17 +217,22 @@ MCPサーバ起動
 │    │    checkAndClaimMaster()
 │    │    writerState: sleeping → claiming → watching
 │    │
+│    │    (master獲得の場合)
 │    │    FileWatcher.start()
 │    │    IndexWorker.start()
 │    │    StartupSyncWorker.startSync()
 │    │
-│    └─ healthCheck応答可能に
+│    └─ ServiceInstances返却
 │
-├─ detectSystemState() 再実行
-│    → RUNNING
+├─ SystemState: RUNNING
 │
-└─ MCPツール利用可能
+└─ MCPツール利用可能（in-processで即座に実行）
 ```
+
+**変更点（v1.9.0以降）**:
+- HTTPデーモンのspawnが不要に（in-process化）
+- healthCheck待ちが不要に（同一プロセス内で直接実行）
+- 起動が高速化（プロセス間通信のオーバーヘッドなし）
 
 ## 状態公開API
 
