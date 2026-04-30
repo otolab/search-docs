@@ -32,7 +32,7 @@ async function showEmbeddingStatus(options: EmbeddingStatusOptions): Promise<voi
   } catch { /* no pid file */ }
 
   // ヘルスチェック
-  const health = await checkEmbeddingHealth('localhost', port);
+  const health = await checkEmbeddingHealth('127.0.0.1', port);
 
   if (!health) {
     if (pidFile && !isProcessAlive(pidFile.pid)) {
@@ -47,7 +47,7 @@ async function showEmbeddingStatus(options: EmbeddingStatusOptions): Promise<voi
   console.log('Embedding server: Running');
   console.log(`  Model: ${health.model}`);
   console.log(`  Dimension: ${health.vectorDimension}`);
-  console.log(`  URL: http://localhost:${port}`);
+  console.log(`  URL: http://127.0.0.1:${port}`);
 
   if (pidFile && isProcessAlive(pidFile.pid)) {
     console.log(`  PID: ${pidFile.pid}`);

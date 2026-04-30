@@ -133,7 +133,7 @@ async function main() {
     // SearchDocsサーバ初期化
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
 
-    // Docker環境ではIPv4/IPv6両方でリッスン（localhostだとIPv6のみになる場合がある）
+    // Docker環境では全インターフェースでリッスン（コンテナ外からアクセス可能にする）
     const serverHost = process.env.IS_DOCKER === 'true' ? '0.0.0.0' : config.server.host;
 
     // JSON-RPCサーバ初期化
