@@ -4,11 +4,11 @@ version = "0.1.0"
 description = "🐕️ ローカル文書検索システム - Markdown文書に対するVector検索機能を提供"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "lancedb==0.25.3",
+    "lancedb==0.30.2",
+    "pylance==0.39.0",
     "pyarrow==22.0.0",
     "pandas==2.3.3",
     "numpy==2.3.5",
-    "sentence-transformers==5.1.2",
     "protobuf==6.33.1",
     "sentencepiece==0.2.1",
     "pytest==9.0.1",
