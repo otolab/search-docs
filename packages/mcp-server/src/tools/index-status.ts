@@ -66,7 +66,7 @@ export function registerIndexStatusTool(context: ToolRegistrationContext): Regis
           systemState.config?.relatedProjects,
           systemState.configPath
         );
-        const relatedClient = await context.serverManager.getOrStartRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
 
         try {
           const response = await relatedClient.getStatus();

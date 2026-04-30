@@ -64,15 +64,11 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
         resultText += '**indexing.maxTokensPerSection**: セクションの最大トークン数\n';
         resultText += '  - デフォルト: 2000トークン\n';
         resultText += '  - 大きくすると粗い分割、小さくすると細かい分割になります\n\n';
-        resultText += '📌 重要: 新しいツール（server_start, server_stop）が利用可能になりました。\n';
-        resultText += '   Claude Codeを再接続すると表示されます。\n';
-        resultText += '   （Claude Codeは現時点でMCP通知に未対応のため、reconnectが必要です）\n\n';
         resultText += '次のステップ:\n';
         resultText += '  1. 設定を調整（必要に応じて）: .search-docs/config.json を編集\n';
         resultText += '  2. **Claude Codeを再接続してツールリストを更新**\n';
-        resultText += '  3. サーバを起動: server_start\n';
-        resultText += '  4. システム状態を確認: get_system_status\n';
-        resultText += '  5. 文書を検索: search\n';
+        resultText += '  3. システム状態を確認: get_system_status\n';
+        resultText += '  4. 文書を検索: search\n';
 
         return {
           content: [

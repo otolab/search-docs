@@ -41,7 +41,7 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
           systemState.config?.relatedProjects,
           systemState.configPath
         );
-        const relatedClient = await context.serverManager.getOrStartRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
 
         // 関連プロジェクトからアウトラインを取得
         try {

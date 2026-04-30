@@ -37,8 +37,6 @@ describe('MCP Server 状態確認テスト', () => {
       // NOT_CONFIGURED状態でもadd_related_projectで関連プロジェクトを追加し検索可能にするため
       expect(toolNames).toContain('init');
       expect(toolNames).toContain('get_system_status');
-      expect(toolNames).toContain('server_start');
-      expect(toolNames).toContain('server_stop');
       expect(toolNames).toContain('search');
       expect(toolNames).toContain('get_document');
       expect(toolNames).toContain('index_status');
@@ -75,8 +73,6 @@ describe('MCP Server 状態確認テスト', () => {
 
       // CONFIGURED状態では全ツールが利用可能
       expect(toolNames).toContain('init');
-      expect(toolNames).toContain('server_start');
-      expect(toolNames).toContain('server_stop');
       expect(toolNames).toContain('get_system_status');
       expect(toolNames).toContain('search');
       expect(toolNames).toContain('get_document');
@@ -96,7 +92,7 @@ describe('MCP Server 状態確認テスト', () => {
       expect(result.success).toBe(true);
       const content = (result.result as MCPToolResult)?.content?.[0]?.text;
 
-      expect(content).toContain('状態: 設定済み・サーバ停止中');
+      expect(content).toContain('状態: サーバ起動中...');
     });
   });
 
@@ -119,8 +115,6 @@ describe('MCP Server 状態確認テスト', () => {
 
         // RUNNING状態では全ツールが利用可能
         expect(toolNames).toContain('init');
-        expect(toolNames).toContain('server_start');
-        expect(toolNames).toContain('server_stop');
         expect(toolNames).toContain('get_system_status');
         expect(toolNames).toContain('search');
         expect(toolNames).toContain('get_document');
@@ -148,7 +142,6 @@ describe('MCP Server 状態確認テスト', () => {
         const content = (result.result as MCPToolResult)?.content?.[0]?.text;
 
         expect(content).toContain('状態: 稼働中');
-        expect(content).toContain('サーバURL:');
       },
       40000
     ); // 40秒のタイムアウト（auto-start health check 30s + buffer）

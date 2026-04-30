@@ -317,9 +317,9 @@ export class ServerManager {
   }
 
   /**
-   * 関連プロジェクトのサーバを取得、未起動なら自動起動
+   * 関連プロジェクトのサーバに接続（URL指定のみ）
    */
-  async getOrStartRelatedServer(
+  async connectRelatedServer(
     projectName: string,
     allRelated: Record<string, RelatedProjectConfig>
   ): Promise<SearchDocsClient> {
@@ -336,55 +336,39 @@ export class ServerManager {
       );
     }
 
-    // URL指定の場合は直接クライアント作成
-    if (relatedConfig.url) {
-      const baseUrl = ServerManager.resolveDockerUrl(relatedConfig.url);
-      console.error(`[mcp-server] Connecting to URL for project: ${projectName} (${baseUrl})`);
-      const client = new SearchDocsClient({ baseUrl });
-
-      // 接続確認
-      try {
-        await client.healthCheck();
-        console.error(`[mcp-server] ✓ Connection established for project: ${projectName}`);
-      } catch (error) {
-        throw new Error(
-          `関連プロジェクト "${projectName}" のサーバ (URL: ${relatedConfig.url}) に接続できません。\n` +
-          `エラー: ${(error as Error).message}`
-        );
-      }
-
-      // キャッシュに保存（URL接続の場合はport不要、projectRootは空文字列）
-      const serverInfo: ServerInfo = {
-        client,
-        port: 0, // URL接続時はポート番号不要
-        projectRoot: '', // URL接続時はプロジェクトルート不要
-        projectName,
-      };
-      this.servers.set(projectName, serverInfo);
-      console.error(`[mcp-server] URL client cached for project: ${projectName}`);
-
-      return client;
-    }
-
-    // dir指定の場合は既存の起動処理
-    if (!relatedConfig.dir) {
+    if (!relatedConfig.url) {
       throw new Error(
-        `関連プロジェクト "${projectName}" の設定に "dir" または "url" が必要です。`
+        `関連プロジェクト "${projectName}" にはサーバURLが設定されていません。\n\n` +
+        `対象プロジェクトで search-docs server start を実行してから、\n` +
+        `add_related_project で url を指定して追加してください。`
       );
     }
 
-    // ConfigLoader で設定を解決
-    const resolved = await ConfigLoader.resolve({
-      cwd: relatedConfig.dir,
-      traverseUp: false,
-    });
+    const baseUrl = ServerManager.resolveDockerUrl(relatedConfig.url);
+    console.error(`[mcp-server] Connecting to URL for project: ${projectName} (${baseUrl})`);
+    const client = new SearchDocsClient({ baseUrl });
 
-    return await this.getOrStartServer(
+    try {
+      await client.healthCheck();
+      console.error(`[mcp-server] ✓ Connection established for project: ${projectName}`);
+    } catch (error) {
+      throw new Error(
+        `関連プロジェクト "${projectName}" のサーバ (URL: ${relatedConfig.url}) に接続できません。\n` +
+        `対象プロジェクトで search-docs server start を実行してください。\n` +
+        `エラー: ${(error as Error).message}`
+      );
+    }
+
+    const serverInfo: ServerInfo = {
+      client,
+      port: 0,
+      projectRoot: '',
       projectName,
-      resolved.projectRoot,
-      resolved.config.server.port,
-      resolved.configPath ?? undefined
-    );
+    };
+    this.servers.set(projectName, serverInfo);
+    console.error(`[mcp-server] URL client cached for project: ${projectName}`);
+
+    return client;
   }
 
   /**

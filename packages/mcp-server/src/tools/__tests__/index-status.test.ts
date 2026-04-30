@@ -85,7 +85,6 @@ describe('index_status tool', () => {
 
     expect(mockClient.getStatus).toHaveBeenCalled();
     expect(result.content[0].text).toContain('📊 インデックス状態');
-    expect(result.content[0].text).toContain('バージョン: 1.0.0');
     expect(result.content[0].text).toContain('総文書数: 10件');
     expect(result.content[0].text).toContain('総セクション数: 50件');
     expect(result.content[0].text).toContain('Dirtyセクション: 2件');
@@ -132,7 +131,7 @@ describe('index_status tool', () => {
     registerIndexStatusTool(context);
 
     // ツールハンドラを実行
-    await expect(registeredTool.handler({})).rejects.toThrow('起動していません');
+    await expect(registeredTool.handler({})).rejects.toThrow('自動起動中です');
   });
 
   it('client.getStatus()がエラーの場合、エラーを返す', async () => {

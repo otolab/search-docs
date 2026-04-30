@@ -42,7 +42,7 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
           systemState.config?.relatedProjects,
           systemState.configPath
         );
-        const relatedClient = await context.serverManager.getOrStartRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
 
         // 関連プロジェクトから文書を取得
         try {
