@@ -15,25 +15,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# ONNX Runtime（CPU or GPU）
+# pyproject.toml から依存関係をインストール（二重管理を排除）
+COPY packages/db-engine/pyproject.toml ./pyproject.toml
 RUN if [ "$RUNTIME_TYPE" = "gpu" ]; then \
-      uv pip install --system "onnxruntime-gpu>=1.20.0"; \
+      uv pip install --system ".[gpu]"; \
     else \
-      uv pip install --system "onnxruntime>=1.20.0"; \
+      uv pip install --system .; \
     fi
-
-# Python依存関係をシステムに直接インストール（.venv を作らない）
-# torch/sentence-transformers は不要（ONNX Runtime + transformers tokenizer のみ）
-RUN uv pip install --system \
-    "lancedb==0.25.3" \
-    "pyarrow==22.0.0" \
-    "pandas==2.3.3" \
-    "numpy==2.3.5" \
-    "transformers>=4.48.0" \
-    "huggingface-hub>=0.27.0" \
-    "protobuf==6.33.1" \
-    "sentencepiece==0.2.1" \
-    "psutil==7.1.3"
 
 # ONNXモデルを事前ダウンロード（ビルド時にイメージに焼き込み）
 RUN python -c "from huggingface_hub import snapshot_download; \
