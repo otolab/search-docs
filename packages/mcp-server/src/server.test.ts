@@ -46,18 +46,7 @@ describe('search-docs MCP Server E2E Tests', () => {
     // サーバーが準備完了するまで待機
     await tester.waitUntilReady();
 
-    // search-docsサーバが起動していない場合は起動
-    // (CONFIGURED_SERVER_DOWN状態でインデックスが存在しない場合)
-    const statusResult = await tester.callTool('get_system_status', {});
-    if (statusResult.success) {
-      const content = (statusResult.result as MCPToolResult)?.content?.[0]?.text || '';
-      if (content.includes('サーバ停止中') || content.includes('サーバを起動してください')) {
-        // サーバを起動
-        await tester.callTool('server_start', {});
-      }
-    }
-
-    // DB接続完了を待機（最大20秒ポーリング）
+    // サーバ自動起動後、DB接続完了を待機（最大20秒ポーリング）
     const startTime = Date.now();
     while (Date.now() - startTime < 20000) {
       const checkResult = await tester.callTool('get_system_status', {});

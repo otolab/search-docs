@@ -131,8 +131,7 @@ describe('state', () => {
       const message = getStateErrorMessage('CONFIGURED_SERVER_DOWN', '検索');
 
       expect(message).toContain('検索を実行できません');
-      expect(message).toContain('起動していません');
-      expect(message).toContain('server_start');
+      expect(message).toContain('自動起動中です');
     });
 
     it('RUNNING状態のエラーメッセージを返す', () => {

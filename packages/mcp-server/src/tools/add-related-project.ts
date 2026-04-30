@@ -127,7 +127,7 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
       }
       resultText += `\n⚠️  この追加はセッション中のみ有効です。永続化するには設定ファイルを編集してください。\n\n`;
       resultText += '次のステップ:\n';
-      resultText += `  - サーバを起動: server_start(project: "${name}")\n`;
+      resultText += `  - サーバを起動: ホスト側で search-docs server start を実行\n`;
       resultText += `  - 一覧を確認: list_related_projects\n`;
 
       return {

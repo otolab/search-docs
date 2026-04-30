@@ -14,7 +14,7 @@ describe('config init', () => {
   beforeEach(async () => {
     // 各テストで独立したディレクトリを作成
     testDir = path.join('/tmp', `.test-config-init-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    configPath = path.join(testDir, '.search-docs.json');
+    configPath = path.join(testDir, '.search-docs', 'config.json');
     await fs.mkdir(testDir, { recursive: true });
   });
 

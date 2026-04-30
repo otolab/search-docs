@@ -6,7 +6,7 @@ import { readFile, unlink } from 'fs/promises';
 import { isProcessAlive, killProcess } from '../../utils/process.js';
 import { embeddingPidPath } from '../../utils/embedding.js';
 
-export interface EmbeddingStopOptions {}
+export type EmbeddingStopOptions = Record<string, never>;
 
 export async function executeEmbeddingStop(_options: EmbeddingStopOptions): Promise<void> {
   try {

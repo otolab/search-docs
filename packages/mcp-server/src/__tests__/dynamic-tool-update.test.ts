@@ -18,7 +18,7 @@ describe('動的ツール更新テスト', () => {
     }
   });
 
-  test('init実行後にserver_startが利用可能になる', async () => {
+  test('init実行後に全ツールが利用可能', async () => {
     // NOT_CONFIGURED状態で起動
     env = await setupTestEnvironment({
       prefix: 'dynamic-init',
@@ -32,7 +32,6 @@ describe('動的ツール更新テスト', () => {
 
     expect(toolNames).toContain('init');
     expect(toolNames).toContain('get_system_status');
-    expect(toolNames).toContain('server_start');
 
     // init実行
     const initResult = await env.tester.callTool('init', {});
@@ -48,8 +47,6 @@ describe('動的ツール更新テスト', () => {
     // init実行後も全ツールが利用可能
     expect(toolNames).toContain('init');
     expect(toolNames).toContain('get_system_status');
-    expect(toolNames).toContain('server_start');
-    expect(toolNames).toContain('server_stop');
     expect(toolNames).toContain('search');
     expect(toolNames).toContain('get_document');
     expect(toolNames).toContain('index_status');
@@ -70,8 +67,6 @@ describe('動的ツール更新テスト', () => {
 
     // 全ツールが利用可能
     expect(toolNames).toContain('init');
-    expect(toolNames).toContain('server_start');
-    expect(toolNames).toContain('server_stop');
     expect(toolNames).toContain('get_system_status');
     expect(toolNames).toContain('search');
     expect(toolNames).toContain('get_document');

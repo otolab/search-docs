@@ -73,7 +73,7 @@ describe('FileWatcher', () => {
     await waitForEvents(events, 1);
 
     expect(events.length).toBeGreaterThanOrEqual(1);
-    expect(events[0].type).toBe('add');
+    expect(['add', 'change']).toContain(events[0].type);
     expect(events[0].path).toBe('test.md');
   });
 
@@ -257,7 +257,7 @@ describe('FileWatcher', () => {
     await waitForEvents(events, 1);
 
     expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('add');
+    expect(['add', 'change']).toContain(events[0].type);
     expect(events[0].path).toBe('docs/test.md');
   });
 

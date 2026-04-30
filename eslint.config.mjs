@@ -32,6 +32,7 @@ export default tseslint.config(
       '**/*.mjs',
       '**/*.cjs',
       '**/*.config.ts',
+      '**/*.config.*.ts',
       '**/__tests__/**',
       '**/bin/**',
     ],

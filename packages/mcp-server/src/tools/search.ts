@@ -63,7 +63,7 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
           systemState.config?.relatedProjects,
           systemState.configPath
         );
-        const relatedClient = await context.serverManager.getOrStartRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
 
         // 関連プロジェクトで検索を実行
         try {

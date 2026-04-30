@@ -240,7 +240,7 @@ export class JsonRpcServer {
    * サーバ起動
    */
   async start(): Promise<void> {
-    await this.searchDocsServer.start();
+    this.searchDocsServer.start();
 
     return new Promise((resolve) => {
       this.server = this.app.listen(this.port, this.host, () => {
@@ -254,7 +254,7 @@ export class JsonRpcServer {
    * サーバ停止
    */
   async stop(): Promise<void> {
-    await this.searchDocsServer.stop();
+    this.searchDocsServer.stop();
 
     if (this.server) {
       return new Promise((resolve, reject) => {
