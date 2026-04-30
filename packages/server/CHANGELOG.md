@@ -1,5 +1,15 @@
 # @search-docs/server
 
+## 1.4.4
+
+### Patch Changes
+
+- 33563c9: fix: ConfigLoader.resolve()で config.project.root を絶対パスに解決するよう修正。Docker 環境で WatcherProcess が正しいディレクトリをスキャンしない問題を修正。
+- Updated dependencies [33563c9]
+  - @search-docs/types@1.4.3
+  - @search-docs/db-engine@1.5.4
+  - @search-docs/storage@1.0.21
+
 ## 1.4.3
 
 ### Patch Changes
