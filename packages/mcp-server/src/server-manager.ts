@@ -417,6 +417,6 @@ export class ServerManager {
    */
   static resolveDockerUrl(url: string): string {
     if (process.env.IS_DOCKER !== 'true') return url;
-    return url.replace(/\/\/(localhost|127\.0\.0\.1)([:\/]|$)/, '//host.docker.internal$2');
+    return url.replace(/\/\/(localhost|127\.0\.0\.1)([:/]|$)/, '//host.docker.internal$2');
   }
 }

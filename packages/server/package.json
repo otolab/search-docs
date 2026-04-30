@@ -12,6 +12,7 @@
     "build": "tsc --build --force",
     "clean": "tsc --build --clean",
     "test": "vitest",
+    "test:unit": "vitest run --config vitest.config.unit.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",

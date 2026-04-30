@@ -41,7 +41,7 @@ export class SearchDocsServer {
   /**
    * サーバ起動
    */
-  async start(): Promise<void> {
+  start(): void {
     this.startTime = Date.now();
 
     // DB接続をバックグラウンドで開始（サーバ起動をブロックしない）
@@ -53,7 +53,7 @@ export class SearchDocsServer {
   /**
    * サーバ停止
    */
-  async stop(): Promise<void> {
+  stop(): void {
     this.dbEngine.disconnect();
   }
 

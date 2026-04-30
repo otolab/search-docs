@@ -87,7 +87,7 @@ export class WatcherProcess {
     this.startupSyncWorker = new StartupSyncWorker();
   }
 
-  async start(): Promise<void> {
+  start(): void {
     console.log(`[WatcherProcess] Writer ID: ${this.writerId}`);
 
     // DB接続をバックグラウンドで開始
@@ -277,18 +277,20 @@ export class WatcherProcess {
   private startHeartbeat(): void {
     if (this.heartbeatTimer) return;
 
-    this.heartbeatTimer = setInterval(async () => {
-      try {
-        await this.dbEngine.updateHeartbeat({
-          writerId: this.writerId,
-          host: os.hostname(),
-          pid: process.pid,
-          state: 'watching',
-        });
-      } catch (error) {
-        console.error('[WatcherProcess] Heartbeat update failed:', error);
-        await this.transitionToSleeping();
-      }
+    this.heartbeatTimer = setInterval(() => {
+      void (async () => {
+        try {
+          await this.dbEngine.updateHeartbeat({
+            writerId: this.writerId,
+            host: os.hostname(),
+            pid: process.pid,
+            state: 'watching',
+          });
+        } catch (error) {
+          console.error('[WatcherProcess] Heartbeat update failed:', error);
+          await this.transitionToSleeping();
+        }
+      })();
     }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
   }
 
@@ -305,8 +307,8 @@ export class WatcherProcess {
   private startMasterCheck(): void {
     if (this.masterCheckTimer) return;
 
-    this.masterCheckTimer = setInterval(async () => {
-      await this.checkAndClaimMaster();
+    this.masterCheckTimer = setInterval(() => {
+      void this.checkAndClaimMaster();
     }, WatcherProcess.MASTER_CHECK_INTERVAL_MS);
   }
 

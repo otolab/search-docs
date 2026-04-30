@@ -10,6 +10,15 @@ export interface EmbeddingStatusOptions {
   port?: string;
 }
 
+interface PidFileInfo {
+  pid: number;
+  port: number;
+  startedAt: string;
+  model: string;
+  dimension: number;
+  logPath?: string;
+}
+
 export async function executeEmbeddingStatus(options: EmbeddingStatusOptions): Promise<void> {
   try {
     await showEmbeddingStatus(options);
@@ -24,11 +33,11 @@ async function showEmbeddingStatus(options: EmbeddingStatusOptions): Promise<voi
 
   // PIDファイル確認
   const pidFilePath = embeddingPidPath();
-  let pidFile: { pid: number; port: number; startedAt: string; model: string; dimension: number; logPath?: string } | null = null;
+  let pidFile: PidFileInfo | null = null;
 
   try {
     const content = await readFile(pidFilePath, 'utf-8');
-    pidFile = JSON.parse(content);
+    pidFile = JSON.parse(content) as PidFileInfo;
   } catch { /* no pid file */ }
 
   // ヘルスチェック

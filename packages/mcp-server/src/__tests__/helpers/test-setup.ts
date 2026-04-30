@@ -125,15 +125,7 @@ export async function setupTestEnvironment(
 
   // クリーンアップ関数
   const cleanup = async () => {
-    // サーバが起動している場合は停止
     if (tester) {
-      try {
-        await tester.callTool('server_stop', {});
-      } catch (error) {
-        // サーバが既に停止している場合はエラーを無視
-        console.error('Note: server_stop failed (may already be stopped):', error);
-      }
-
       await tester.cleanup();
     }
 
