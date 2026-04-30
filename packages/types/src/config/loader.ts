@@ -117,6 +117,9 @@ export class ConfigLoader {
       ? await this.load(configPath)
       : this.getDefaultConfig();
 
+    // config.project.root を解決済み絶対パスに置換
+    config.project.root = projectRoot;
+
     return { config, configPath, projectRoot };
   }
 
