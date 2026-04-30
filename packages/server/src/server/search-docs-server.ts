@@ -8,6 +8,7 @@ import type {
   OutlineItem,
   GetStatusResponse,
   SearchDocsConfig,
+  SearchDocsService,
 } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
@@ -19,7 +20,7 @@ import type { WatcherProcess } from '../watcher/watcher-process.js';
  * 検索・文書取得・アウトライン取得・ステータス取得を担当。
  * ファイル監視・インデックス更新は WatcherProcess が担当。
  */
-export class SearchDocsServer {
+export class SearchDocsServer implements SearchDocsService {
   private startTime: number = 0;
   private watcherProcess?: WatcherProcess;
   private requestStats = {

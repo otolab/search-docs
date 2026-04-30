@@ -10,7 +10,7 @@ import { Command } from 'commander';
 import { createRequire } from 'module';
 import * as path from 'path';
 
-import { detectSystemState, type SystemState } from './state.js';
+import { detectSystemState, createService, stopService, type SystemState, type ServiceInstances } from './state.js';
 import { ServerManager } from './server-manager.js';
 import {
   registerInitTool,
@@ -137,38 +137,25 @@ async function main() {
   debugLog(`Working directory: ${cwd}`);
 
   // システム状態を判定
-  let systemState = await detectSystemState(cwd);
+  const systemState = await detectSystemState(cwd);
+  let serviceInstances: ServiceInstances | null = null;
+
   debugLog('='.repeat(60));
   debugLog(`System state detected: ${systemState.state}`);
   debugLog(`Project root: ${systemState.projectRoot}`);
   debugLog(`Config exists: ${systemState.config ? 'YES' : 'NO'}`);
   debugLog(`Config path: ${systemState.configPath || '(none)'}`);
 
-  // CONFIGURED_SERVER_DOWNの場合、サーバを自動起動
-  debugLog(`Checking auto-start condition: state === CONFIGURED_SERVER_DOWN && config exists`);
-  debugLog(`  - state === CONFIGURED_SERVER_DOWN: ${systemState.state === 'CONFIGURED_SERVER_DOWN'}`);
-  debugLog(`  - config exists: ${!!systemState.config}`);
-
-  if (systemState.state === 'CONFIGURED_SERVER_DOWN' && systemState.config) {
-    debugLog('✓ Config exists, attempting auto-start...');
-
-    const serverManager = new ServerManager();
+  // 設定があればin-processでサービスを起動
+  if (systemState.state === 'RUNNING' && systemState.config) {
+    debugLog('Creating in-process service...');
     try {
-      debugLog(`Auto-start params: projectRoot=${systemState.projectRoot}, port=${systemState.config.server.port}, configPath=${systemState.configPath}`);
-      await serverManager.startServer(
-        systemState.projectRoot,
-        systemState.config.server.port,
-        systemState.configPath
-      );
-
-      // 自動起動成功、状態を再判定
-      systemState = await detectSystemState(cwd);
-      debugLog(`System state after auto-start: ${systemState.state}`);
-    } catch (startError) {
-      debugLog(`Auto-start failed: ${(startError as Error).message}`);
+      serviceInstances = await createService(systemState.config, systemState.projectRoot, VERSION);
+      systemState.service = serviceInstances.service;
+      debugLog('✓ In-process service created successfully');
+    } catch (error) {
+      debugLog(`✗ Service creation failed: ${(error as Error).message}`);
     }
-  } else {
-    debugLog('✗ Auto-start condition not met, skipping auto-start');
   }
   debugLog('='.repeat(60));
 
@@ -190,9 +177,28 @@ async function main() {
 
   // システム状態を再検出する関数
   const refreshSystemState = async () => {
+    // 既存サービスを停止
+    if (serviceInstances) {
+      debugLog('Stopping existing service before refresh...');
+      await stopService(serviceInstances);
+      serviceInstances = null;
+    }
+
     const newState = await detectSystemState(cwd);
     // systemStateオブジェクトのプロパティを更新
     Object.assign(systemState, newState);
+
+    // 設定があればサービスを再作成
+    if (systemState.state === 'RUNNING' && systemState.config) {
+      try {
+        serviceInstances = await createService(systemState.config, systemState.projectRoot, VERSION);
+        systemState.service = serviceInstances.service;
+        debugLog('✓ Service recreated after refresh');
+      } catch (error) {
+        debugLog(`✗ Service recreation failed: ${(error as Error).message}`);
+      }
+    }
+
     debugLog(`System state refreshed: ${systemState.state}`);
 
     // ツールの有効/無効を更新
@@ -222,6 +228,18 @@ async function main() {
 
   // 初期状態に応じてツールの有効/無効を設定
   updateToolAvailability(systemState.state, toolHandles);
+
+  // プロセス終了時のクリーンアップ
+  const cleanup = async () => {
+    debugLog('Cleaning up...');
+    if (serviceInstances) {
+      await stopService(serviceInstances);
+      serviceInstances = null;
+    }
+  };
+
+  process.on('SIGINT', () => void cleanup());
+  process.on('SIGTERM', () => void cleanup());
 
   // サーバの起動
   const transport = new StdioServerTransport();

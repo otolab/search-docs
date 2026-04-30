@@ -43,11 +43,7 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
                 statusText += ` - ${projectConfig.description}`;
               }
               statusText += '\n';
-              if (projectConfig.url) {
-                statusText += `    URL: ${projectConfig.url}\n`;
-              } else {
-                statusText += `    ディレクトリ: ${projectConfig.dir}\n`;
-              }
+              statusText += `    URL: ${projectConfig.url}\n`;
               if (serverInfo) {
                 try {
                   await serverInfo.client.healthCheck();
@@ -65,20 +61,13 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
           break;
         }
 
-        case 'CONFIGURED_SERVER_DOWN':
-          statusText += '状態: サーバ起動中...\n\n';
-          statusText += `設定ファイル: ${systemState.configPath}\n`;
-          statusText += `プロジェクト: ${systemState.config?.project.name}\n\n`;
-          statusText += 'サーバを自動起動中です。しばらくお待ちください。\n';
-          break;
-
         case 'RUNNING':
           statusText += '状態: 稼働中 ✅\n\n';
           statusText += `設定ファイル: ${systemState.configPath}\n`;
           statusText += `プロジェクト: ${systemState.config?.project.name}\n\n`;
 
           try {
-            const status = await systemState.client!.getStatus();
+            const status = await systemState.service!.getStatus();
 
             if (status.database.connectionState === 'ready') {
               statusText += 'インデックス情報:\n';
@@ -113,7 +102,7 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
 
           // 関連プロジェクト情報
           {
-            const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects, systemState.configPath);
+            const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
             const relatedProjectNames = Object.keys(allRelatedProjects);
             if (relatedProjectNames.length > 0) {
               statusText += '\n関連プロジェクト:\n';

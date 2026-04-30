@@ -58,8 +58,7 @@ describe('index_status tool', () => {
       config: {} as any,
       configPath: '/test/.search-docs.json',
       projectRoot: '/test',
-      serverUrl: 'http://localhost:24280',
-      client: mockClient as any,
+      service: mockClient as any,
     };
 
     const context: ToolRegistrationContext = {
@@ -111,30 +110,7 @@ describe('index_status tool', () => {
     await expect(registeredTool.handler({})).rejects.toThrow('セットアップされていません');
   });
 
-  it('CONFIGURED_SERVER_DOWN状態の場合、エラーを返す', async () => {
-    const systemState: SystemStateInfo = {
-      state: 'CONFIGURED_SERVER_DOWN',
-      config: {} as any,
-      configPath: '/test/.search-docs.json',
-      projectRoot: '/test',
-      serverUrl: 'http://localhost:24280',
-    };
-
-    const context: ToolRegistrationContext = {
-      server: mockServer,
-      systemState,
-      refreshSystemState: async () => {},
-      serverManager: mockServerManager,
-    };
-
-    // ツール登録
-    registerIndexStatusTool(context);
-
-    // ツールハンドラを実行
-    await expect(registeredTool.handler({})).rejects.toThrow('自動起動中です');
-  });
-
-  it('client.getStatus()がエラーの場合、エラーを返す', async () => {
+  it('service.getStatus()がエラーの場合、エラーを返す', async () => {
     const mockClient = {
       getStatus: vi.fn().mockRejectedValue(new Error('Connection error')),
     };
@@ -144,8 +120,7 @@ describe('index_status tool', () => {
       config: {} as any,
       configPath: '/test/.search-docs.json',
       projectRoot: '/test',
-      serverUrl: 'http://localhost:24280',
-      client: mockClient as any,
+      service: mockClient as any,
     };
 
     const context: ToolRegistrationContext = {

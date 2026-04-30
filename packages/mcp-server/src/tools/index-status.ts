@@ -63,10 +63,9 @@ export function registerIndexStatusTool(context: ToolRegistrationContext): Regis
 
       if (project) {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
-        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedProject(project, allRelated);
 
         try {
           const response = await relatedClient.getStatus();
@@ -81,17 +80,16 @@ export function registerIndexStatusTool(context: ToolRegistrationContext): Regis
       // 状態チェック
       if (systemState.state !== 'RUNNING') {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
         const relatedNames = Object.keys(allRelated);
         throw new Error(getStateErrorMessage(systemState.state, 'インデックス状態の確認', relatedNames));
       }
 
-      const client = systemState.client!;
+      const service = systemState.service!;
 
       try {
-        const response = await client.getStatus();
+        const response = await service.getStatus();
         let statusText = '📊 インデックス状態\n\n';
         statusText += formatIndexStatus(response);
         return { content: [{ type: 'text' as const, text: statusText }] };

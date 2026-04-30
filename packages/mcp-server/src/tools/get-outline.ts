@@ -38,10 +38,9 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
       // プロジェクト指定がある場合は関連プロジェクトから取得
       if (project) {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
-        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedProject(project, allRelated);
 
         // 関連プロジェクトからアウトラインを取得
         try {
@@ -74,17 +73,16 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
       // 状態チェック
       if (systemState.state !== 'RUNNING') {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
         const relatedNames = Object.keys(allRelated);
         throw new Error(getStateErrorMessage(systemState.state, '文書構造の取得', relatedNames));
       }
 
-      const client = systemState.client!;
+      const service = systemState.service!;
 
       try {
-        const response = await client.getOutline({ path: documentPath, sectionId });
+        const response = await service.getOutline({ path: documentPath, sectionId });
 
         let resultText = '';
         if (documentPath) {

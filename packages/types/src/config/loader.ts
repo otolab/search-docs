@@ -243,37 +243,6 @@ export class ConfigLoader {
     return await this.normalizeProjectRoot(configDir);
   }
 
-  /**
-   * 関連プロジェクトの設定を解決
-   * @param projectName プロジェクト名
-   * @param baseConfigPath ベース設定ファイルのパス
-   * @param relatedProjects 関連プロジェクト設定
-   */
-  static async resolveRelatedProject(
-    projectName: string,
-    baseConfigPath: string,
-    relatedProjects: Record<string, import('../config.js').RelatedProjectConfig>
-  ): Promise<{
-    config: SearchDocsConfig;
-    configPath: string | null;
-    projectRoot: string;
-  } | null> {
-    const relatedProject = relatedProjects[projectName];
-    if (!relatedProject || !relatedProject.dir) {
-      return null;
-    }
-
-    // ベース設定ファイルのディレクトリを基準に相対パスを解決
-    const baseDir = path.dirname(baseConfigPath);
-    const projectDir = path.resolve(baseDir, relatedProject.dir);
-
-    // 関連プロジェクトの設定を読み込む
-    return await this.resolve({
-      cwd: projectDir,
-      traverseUp: false, // 関連プロジェクトでは上位ディレクトリを探索しない
-      requireConfig: false,
-    });
-  }
 
   /**
    * 設定とデフォルト値をマージ

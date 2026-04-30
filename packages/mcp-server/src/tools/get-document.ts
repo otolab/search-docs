@@ -39,10 +39,9 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
       // プロジェクト指定がある場合は関連プロジェクトから取得
       if (project) {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
-        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedProject(project, allRelated);
 
         // 関連プロジェクトから文書を取得
         try {
@@ -96,17 +95,16 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
       // 状態チェック
       if (systemState.state !== 'RUNNING') {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
         const relatedNames = Object.keys(allRelated);
         throw new Error(getStateErrorMessage(systemState.state, '文書の取得', relatedNames));
       }
 
-      const client = systemState.client!;
+      const service = systemState.service!;
 
       try {
-        const response = await client.getDocument({ path: documentPath, sectionId });
+        const response = await service.getDocument({ path: documentPath, sectionId });
 
         if (!response.document && !response.section) {
           throw new Error(`Document or section not found`);

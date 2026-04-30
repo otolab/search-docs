@@ -60,10 +60,9 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
       // プロジェクト指定がある場合は関連プロジェクトを検索
       if (project) {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
-        const relatedClient = await context.serverManager.connectRelatedServer(project, allRelated);
+        const relatedClient = await context.serverManager.connectRelatedProject(project, allRelated);
 
         // 関連プロジェクトで検索を実行
         try {
@@ -143,17 +142,16 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
       // 状態チェック
       if (systemState.state !== 'RUNNING') {
         const allRelated = context.serverManager.getAllRelatedProjects(
-          systemState.config?.relatedProjects,
-          systemState.configPath
+          systemState.config?.relatedProjects
         );
         const relatedNames = Object.keys(allRelated);
         throw new Error(getStateErrorMessage(systemState.state, '文書の検索', relatedNames));
       }
 
-      const client = systemState.client!;
+      const service = systemState.service!;
 
       try {
-        const response = await client.search({
+        const response = await service.search({
           query,
           options: {
             depth,

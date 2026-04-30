@@ -50,6 +50,9 @@ export type {
   JsonRpcError,
 } from './api.js';
 
+// Service
+export type { SearchDocsService } from './service.js';
+
 // Storage
 export type { DocumentStorage } from './storage.js';
 
