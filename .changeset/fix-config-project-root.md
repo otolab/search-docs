@@ -1,5 +1,6 @@
 ---
 "@search-docs/types": patch
+"@search-docs/server": patch
 "@search-docs/mcp-server": patch
 ---
 
