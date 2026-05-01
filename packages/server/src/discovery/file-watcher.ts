@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
+import { extractDirectoryPrefixes, resolveSubscribeRoots } from './include-scope.js';
 
 export interface FileWatcherOptions {
   /** プロジェクトルート */
@@ -25,7 +26,7 @@ export interface FileChangeEvent {
  * @parcel/watcherを使用してMarkdownファイルの変更を監視
  */
 export class FileWatcher extends EventEmitter {
-  private subscription: watcher.AsyncSubscription | null = null;
+  private subscriptions: watcher.AsyncSubscription[] = [];
   private debounceTimers = new Map<string, NodeJS.Timeout>();
   private rootDir: string;
   private filesConfig: FilesConfig;
@@ -42,37 +43,45 @@ export class FileWatcher extends EventEmitter {
    * 監視を開始
    */
   isRunning(): boolean {
-    return this.subscription !== null;
+    return this.subscriptions.length > 0;
   }
 
   async start(): Promise<void> {
-    // ignoreパターンの構築
     const ignorePatterns = this.buildIgnorePatterns();
 
-    this.subscription = await watcher.subscribe(
-      this.rootDir,
-      (err, events) => {
-        if (err) {
-          this.emit('error', err);
-          return;
-        }
+    const prefixes = extractDirectoryPrefixes(this.filesConfig.include);
+    const subscribeRoots = resolveSubscribeRoots(this.rootDir, prefixes);
 
-        for (const event of events) {
-          // イベントタイプの変換
-          const eventType = this.convertEventType(event.type);
-
-          // 追加のフィルタリング（.md拡張子チェック）
-          if (!this.shouldProcessFile(event.path)) {
-            continue;
-          }
-
-          this.handleFileEvent(eventType, event.path);
-        }
-      },
-      {
-        ignore: ignorePatterns,
+    const callback: watcher.SubscribeCallback = (err, events) => {
+      if (err) {
+        this.emit('error', err);
+        return;
       }
-    );
+
+      for (const event of events) {
+        const eventType = this.convertEventType(event.type);
+
+        if (!this.shouldProcessFile(event.path)) {
+          continue;
+        }
+
+        this.handleFileEvent(eventType, event.path);
+      }
+    };
+
+    const opts: watcher.Options = { ignore: ignorePatterns };
+
+    for (const subscribeRoot of subscribeRoots) {
+      try {
+        if (!fs.existsSync(subscribeRoot)) {
+          continue;
+        }
+        const sub = await watcher.subscribe(subscribeRoot, callback, opts);
+        this.subscriptions.push(sub);
+      } catch (err) {
+        this.emit('error', err);
+      }
+    }
 
     this.emit('ready');
   }
@@ -87,11 +96,11 @@ export class FileWatcher extends EventEmitter {
     }
     this.debounceTimers.clear();
 
-    // subscriptionを停止
-    if (this.subscription) {
-      await this.subscription.unsubscribe();
-      this.subscription = null;
+    // 全subscriptionを停止
+    for (const sub of this.subscriptions) {
+      await sub.unsubscribe();
     }
+    this.subscriptions = [];
   }
 
   /**
@@ -101,17 +110,25 @@ export class FileWatcher extends EventEmitter {
     const patterns: string[] = [];
 
     // 一般的な除外ディレクトリ（最優先）
+    // inotifyバックエンド(Linux)ではsubscribe時に全ディレクトリを走査して
+    // watchを設定するため、不要なディレクトリの除外がパフォーマンスに直結する
     const commonIgnores = [
       '**/node_modules/**',
       '**/.git/**',
+      '**/.pnpm-store/**',
+      '**/.yarn/**',
       '**/.venv/**',
+      '**/.uv/**',
       '**/dist/**',
       '**/build/**',
       '**/.next/**',
       '**/.turbo/**',
       '**/coverage/**',
       '**/.cache/**',
-      '**/.search-docs/**',  // search-docs自身のディレクトリ
+      '**/.search-docs/**',
+      '**/__pycache__/**',
+      '**/.mypy_cache/**',
+      '**/.pytest_cache/**',
     ];
     patterns.push(...commonIgnores);
 
