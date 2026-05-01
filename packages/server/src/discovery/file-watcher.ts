@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
-import { extractDirectoryPrefixes, resolveSubscribeRoots } from './include-scope.js';
+import { buildWatchTargets } from './include-scope.js';
 
 export interface FileWatcherOptions {
   /** プロジェクトルート */
@@ -47,10 +47,7 @@ export class FileWatcher extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    const ignorePatterns = this.buildIgnorePatterns();
-
-    const prefixes = extractDirectoryPrefixes(this.filesConfig.include);
-    const subscribeRoots = resolveSubscribeRoots(this.rootDir, prefixes);
+    const { subscribeRoots, ignorePatterns } = buildWatchTargets(this.rootDir, this.filesConfig);
 
     const callback: watcher.SubscribeCallback = (err, events) => {
       if (err) {
@@ -101,44 +98,6 @@ export class FileWatcher extends EventEmitter {
       await sub.unsubscribe();
     }
     this.subscriptions = [];
-  }
-
-  /**
-   * ignoreパターンを構築
-   */
-  private buildIgnorePatterns(): string[] {
-    const patterns: string[] = [];
-
-    // 一般的な除外ディレクトリ（最優先）
-    // inotifyバックエンド(Linux)ではsubscribe時に全ディレクトリを走査して
-    // watchを設定するため、不要なディレクトリの除外がパフォーマンスに直結する
-    const commonIgnores = [
-      '**/node_modules/**',
-      '**/.git/**',
-      '**/.pnpm-store/**',
-      '**/.yarn/**',
-      '**/.venv/**',
-      '**/.uv/**',
-      '**/dist/**',
-      '**/build/**',
-      '**/.next/**',
-      '**/.turbo/**',
-      '**/coverage/**',
-      '**/.cache/**',
-      '**/.search-docs/**',
-      '**/__pycache__/**',
-      '**/.mypy_cache/**',
-      '**/.pytest_cache/**',
-    ];
-    patterns.push(...commonIgnores);
-
-    // ユーザー設定のexcludeパターン
-    patterns.push(...this.filesConfig.exclude);
-
-    // .md以外のファイルフィルタはshouldProcessFile()で行う
-    // extglobパターン（!(...)）はpicomatch→C++ regexで極端に遅延するため使用しない
-
-    return patterns;
   }
 
   /**

@@ -1,6 +1,69 @@
 import * as path from 'path';
+import type { FilesConfig } from '@search-docs/types';
 
 const GLOB_METACHARACTERS = new Set(['*', '?', '{', '[']);
+
+/**
+ * @parcel/watcher の inotify初期走査で常に除外すべきディレクトリ群。
+ * inotifyバックエンド(Linux)では subscribe() 時に全ディレクトリを再帰走査して
+ * watchを設定するため、不要なディレクトリの除外がパフォーマンスに直結する。
+ */
+export const COMMON_IGNORES = [
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/.pnpm-store/**',
+  '**/.yarn/**',
+  '**/.venv/**',
+  '**/.uv/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/.next/**',
+  '**/.turbo/**',
+  '**/coverage/**',
+  '**/.cache/**',
+  '**/.search-docs/**',
+  '**/__pycache__/**',
+  '**/.mypy_cache/**',
+  '**/.pytest_cache/**',
+] as const;
+
+export interface WatchTargets {
+  subscribeRoots: string[];
+  ignorePatterns: string[];
+}
+
+/**
+ * FilesConfigからFileWatcherのsubscribeルートとignoreパターンを決定する。
+ *
+ * 2層の協調で監視スコープを制御する:
+ *
+ * Layer 1 — subscribeルート（粗いスコープ制限）:
+ *   includeパターンの静的プレフィックスでsubscribe先を限定する。
+ *   docs/** も docs/* も同じ "docs/" をsubscribeする。
+ *   スコープ外のディレクトリは最初から走査されない。
+ *
+ * Layer 2 — shouldProcessFile（精密なフィルタ、この関数の範囲外）:
+ *   includeパターンの詳細マッチ + .md拡張子チェック。
+ *   docs/** は docs/sub/file.md を通すが、docs/* は弾く。
+ *
+ * ignorePatterns:
+ *   COMMON_IGNORES（パフォーマンス最適化）+ files.exclude（ユーザー設定）。
+ *   @parcel/watcher に渡され、subscribe先内部の不要サブツリーを枝刈りする。
+ */
+export function buildWatchTargets(
+  rootDir: string,
+  filesConfig: FilesConfig
+): WatchTargets {
+  const prefixes = extractDirectoryPrefixes(filesConfig.include);
+  const subscribeRoots = resolveSubscribeRoots(rootDir, prefixes);
+
+  const ignorePatterns: string[] = [
+    ...COMMON_IGNORES,
+    ...filesConfig.exclude,
+  ];
+
+  return { subscribeRoots, ignorePatterns };
+}
 
 /**
  * includeパターンからglobメタ文字の手前までの静的ディレクトリプレフィックスを抽出する。
