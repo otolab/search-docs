@@ -1,5 +1,5 @@
 import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import type { FilesConfig } from '@search-docs/types';
 
 export const COMMON_IGNORES = [
@@ -82,38 +82,36 @@ export function analyzePattern(pattern: string): PatternAnalysis {
 }
 
 export interface FileSystemOps {
-  readdir(dir: string): { name: string; isDirectory: boolean }[];
-  isDirectory(dir: string): boolean;
+  readdir(dir: string): Promise<{ name: string; isDirectory: boolean }[]>;
+  isDirectory(dir: string): Promise<boolean>;
 }
 
 const defaultFsOps: FileSystemOps = {
-  readdir(dir: string) {
+  async readdir(dir: string) {
     try {
-      return fs.readdirSync(dir).map(name => {
-        try {
-          return { name, isDirectory: fs.statSync(path.join(dir, name)).isDirectory() };
-        } catch {
-          return { name, isDirectory: false };
-        }
-      });
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      return entries.map(entry => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory(),
+      }));
     } catch {
       return [];
     }
   },
-  isDirectory(dir: string) {
+  async isDirectory(dir: string) {
     try {
-      return fs.statSync(dir).isDirectory();
+      return (await fs.stat(dir)).isDirectory();
     } catch {
       return false;
     }
   },
 };
 
-export function buildWatchTargets(
+export async function buildWatchTargets(
   rootDir: string,
   filesConfig: FilesConfig,
   fsOps?: FileSystemOps,
-): WatchTarget[] {
+): Promise<WatchTarget[]> {
   const ops = fsOps ?? defaultFsOps;
 
   // パターン解析
@@ -127,7 +125,7 @@ export function buildWatchTargets(
   const deepRoots = new Set<string>();
 
   for (const analysis of deepAnalyses) {
-    const resolvedPaths = resolveSubscribeRoots(rootDir, analysis, ops);
+    const resolvedPaths = await resolveSubscribeRoots(rootDir, analysis, ops);
     resolvedPaths.forEach(p => deepRoots.add(p));
   }
 
@@ -138,7 +136,7 @@ export function buildWatchTargets(
   const shallowRoots = new Set<string>();
 
   for (const analysis of shallowAnalyses) {
-    const resolvedPaths = resolveSubscribeRoots(rootDir, analysis, ops);
+    const resolvedPaths = await resolveSubscribeRoots(rootDir, analysis, ops);
     resolvedPaths.forEach(p => shallowRoots.add(p));
   }
 
@@ -150,7 +148,7 @@ export function buildWatchTargets(
 
   // deep targets
   for (const root of dedupedDeepRoots) {
-    if (!ops.isDirectory(root)) continue;
+    if (!await ops.isDirectory(root)) continue;
 
     targets.push({
       root,
@@ -160,11 +158,16 @@ export function buildWatchTargets(
     });
   }
 
-  // shallow targets
+  // shallow targets（deep に包含されるものは除外）
   for (const root of shallowRoots) {
-    if (!ops.isDirectory(root)) continue;
+    if (!await ops.isDirectory(root)) continue;
 
-    const entries = ops.readdir(root);
+    const coveredByDeep = dedupedDeepRoots.some(
+      deepRoot => root === deepRoot || root.startsWith(deepRoot + '/'),
+    );
+    if (coveredByDeep) continue;
+
+    const entries = await ops.readdir(root);
     const ignorePaths = entries
       .filter(e => e.isDirectory)
       .map(e => path.join(root, e.name));
@@ -180,11 +183,11 @@ export function buildWatchTargets(
   return targets;
 }
 
-function resolveSubscribeRoots(
+async function resolveSubscribeRoots(
   rootDir: string,
   analysis: PatternAnalysis,
   ops: FileSystemOps,
-): string[] {
+): Promise<string[]> {
   const { staticPrefix, pattern, type } = analysis;
 
   if (!staticPrefix) {
@@ -212,11 +215,11 @@ function resolveSubscribeRoots(
   return walkToResolve(prefixPath, middleSegments, ops);
 }
 
-function walkToResolve(
+async function walkToResolve(
   basePath: string,
   segments: string[],
   ops: FileSystemOps,
-): string[] {
+): Promise<string[]> {
   if (segments.length === 0) {
     return [basePath];
   }
@@ -224,11 +227,11 @@ function walkToResolve(
   const [current, ...rest] = segments;
 
   if (current === '*') {
-    const entries = ops.readdir(basePath);
+    const entries = await ops.readdir(basePath);
     const results: string[] = [];
     for (const entry of entries) {
       if (entry.isDirectory) {
-        results.push(...walkToResolve(path.join(basePath, entry.name), rest, ops));
+        results.push(...await walkToResolve(path.join(basePath, entry.name), rest, ops));
       }
     }
     return results;

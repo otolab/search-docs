@@ -9,6 +9,7 @@ export interface ConfigDeprecation {
   field: string;
   message: string;
   migration: string;
+  currentValue?: unknown;
 }
 
 export function checkConfigDeprecations(rawConfig: unknown): ConfigDeprecation[] {
@@ -20,8 +21,9 @@ export function checkConfigDeprecations(rawConfig: unknown): ConfigDeprecation[]
       if (f.include !== undefined && f.sources === undefined) {
         deprecations.push({
           field: 'files.include',
-          message: 'files.include は非推奨です。files.sources に変更してください。',
-          migration: '設定ファイルの "files"."include" を "files"."sources" にリネームしてください。',
+          message: '"files"."include" は v1.9.0 で "files"."sources" にリネームされました。',
+          migration: '設定ファイルの "include" キーを "sources" に変更してください。後方互換は維持されていますが、将来のバージョンで削除予定です。',
+          currentValue: f.include,
         });
       }
     }

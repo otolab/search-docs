@@ -67,9 +67,16 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
           statusText += `プロジェクト: ${systemState.config?.project.name}\n\n`;
 
           if (systemState.deprecations && systemState.deprecations.length > 0) {
+            statusText += '⚠️ 非推奨設定の検出:\n\n';
             for (const dep of systemState.deprecations) {
-              statusText += `⚠️  ${dep.message}\n`;
-              statusText += `   ${dep.migration}\n\n`;
+              statusText += `  ${dep.message}\n`;
+              statusText += `  ${dep.migration}\n`;
+              if (dep.currentValue) {
+                const valueStr = JSON.stringify(dep.currentValue);
+                statusText += `\n  修正方法（${systemState.configPath ?? '設定ファイル'}）:\n`;
+                statusText += `    "include": ${valueStr}  →  "sources": ${valueStr}\n`;
+              }
+              statusText += '\n';
             }
           }
 

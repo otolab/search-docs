@@ -9,7 +9,8 @@ describe('checkConfigDeprecations', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].field).toBe('files.include');
-    expect(result[0].message).toContain('非推奨');
+    expect(result[0].message).toContain('リネーム');
+    expect(result[0].currentValue).toEqual(['**/*.md']);
   });
 
   it('sources あり → 警告なし', () => {

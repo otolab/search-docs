@@ -40,7 +40,7 @@ export class FileWatcher extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    const targets = buildWatchTargets(this.rootDir, this.filesConfig);
+    const targets = await buildWatchTargets(this.rootDir, this.filesConfig);
 
     const callback: watcher.SubscribeCallback = (err, events) => {
       if (err) {

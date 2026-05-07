@@ -68,7 +68,7 @@ export class FileDiscovery {
    */
   matchesPattern(filePath: string): boolean {
     // sourcesパターンにマッチするか
-    const matchesInclude = this.config.sources.some((pattern) => {
+    const matchesSources = this.config.sources.some((pattern) => {
       // minimatchはfast-globと異なり、**/patternがルートレベルにマッチしない
       // fast-globの挙動に合わせるため、**/で始まるパターンは
       // ルートレベルとネストレベルの両方をチェック
@@ -79,7 +79,7 @@ export class FileDiscovery {
       return minimatch(filePath, pattern);
     });
 
-    if (!matchesInclude) {
+    if (!matchesSources) {
       return false;
     }
 
