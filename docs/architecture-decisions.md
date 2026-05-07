@@ -2090,9 +2090,9 @@ systems/ → app-a/docs/ → deep
 
 **テストファイル**: `packages/server/src/discovery/__tests__/watch-targets.test.ts`
 
-**テストケース**（全25テスト）:
-- ✅ パターン解析（analyzePattern）: 14テスト
-- ✅ WatchTargets構築（buildWatchTargets）: 11テスト
+**テストケース**:
+- ✅ パターン解析（analyzePattern）: deep/shallow判定、globプレフィックス抽出、特殊ケースを網羅
+- ✅ WatchTargets構築（buildWatchTargets）: deep/shallow分離、glob展開、複合パターン、除外処理、重複排除を網羅
 
 ### 関連ドキュメント
 

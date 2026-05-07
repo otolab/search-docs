@@ -162,9 +162,11 @@ export async function buildWatchTargets(
   for (const root of shallowRoots) {
     if (!await ops.isDirectory(root)) continue;
 
-    const coveredByDeep = dedupedDeepRoots.some(
-      deepRoot => root === deepRoot || root.startsWith(deepRoot + '/'),
-    );
+    const coveredByDeep = dedupedDeepRoots.some(deepRoot => {
+      if (root === deepRoot) return true;
+      const rel = path.relative(deepRoot, root);
+      return rel !== '' && !rel.startsWith('..');
+    });
     if (coveredByDeep) continue;
 
     const entries = await ops.readdir(root);

@@ -71,10 +71,10 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
             for (const dep of systemState.deprecations) {
               statusText += `  ${dep.message}\n`;
               statusText += `  ${dep.migration}\n`;
-              if (dep.currentValue) {
+              if (dep.currentValue !== undefined) {
                 const valueStr = JSON.stringify(dep.currentValue);
                 statusText += `\n  修正方法（${systemState.configPath ?? '設定ファイル'}）:\n`;
-                statusText += `    "include": ${valueStr}  →  "sources": ${valueStr}\n`;
+                statusText += `    "files": { "include": ${valueStr} }  →  "files": { "sources": ${valueStr} }\n`;
               }
               statusText += '\n';
             }

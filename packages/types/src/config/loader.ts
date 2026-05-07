@@ -22,7 +22,7 @@ export function checkConfigDeprecations(rawConfig: unknown): ConfigDeprecation[]
         deprecations.push({
           field: 'files.include',
           message: '"files"."include" は v1.9.0 で "files"."sources" にリネームされました。',
-          migration: '設定ファイルの "include" キーを "sources" に変更してください。後方互換は維持されていますが、将来のバージョンで削除予定です。',
+          migration: '設定ファイルの "files"."include" を "files"."sources" に変更してください。後方互換は維持されていますが、将来のバージョンで削除予定です。',
           currentValue: f.include,
         });
       }

@@ -254,11 +254,9 @@ SearchDocsServer.deleteDocument(path)
 - ✅ サブディレクトリのファイルも検出できる
 - ✅ 停止後はイベントを検出しない
 
-**テストケース（watch-targets.test.ts）**（全25テスト）:
-- ✅ パターン解析（analyzePattern）: 14テスト
-  - deep/shallow判定、globプレフィックス抽出、特殊ケース
-- ✅ WatchTargets構築（buildWatchTargets）: 11テスト
-  - deep/shallow分離、glob展開、複合パターン、除外処理
+**テストケース（watch-targets.test.ts）**:
+- ✅ パターン解析（analyzePattern）: deep/shallow判定、globプレフィックス抽出、特殊ケースを網羅
+- ✅ WatchTargets構築（buildWatchTargets）: deep/shallow分離、glob展開、複合パターン、除外処理、重複排除を網羅
 
 ## 後方互換
 
