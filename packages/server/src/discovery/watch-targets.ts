@@ -90,9 +90,16 @@ const defaultFsOps: FileSystemOps = {
   async readdir(dir: string) {
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      return entries.map(entry => ({
-        name: entry.name,
-        isDirectory: entry.isDirectory(),
+      return Promise.all(entries.map(async entry => {
+        let isDir = entry.isDirectory();
+        if (!isDir && entry.isSymbolicLink()) {
+          try {
+            isDir = (await fs.stat(path.join(dir, entry.name))).isDirectory();
+          } catch {
+            // リンク先が壊れている場合はファイル扱い
+          }
+        }
+        return { name: entry.name, isDirectory: isDir };
       }));
     } catch {
       return [];
