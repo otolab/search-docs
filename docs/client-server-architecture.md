@@ -217,7 +217,7 @@ search-docs-server start --port 24280
     }
   },
   "files": {
-    "include": [
+    "sources": [
       "**/*.md",
       "docs/**/*.txt"
     ],
@@ -350,8 +350,8 @@ class FileDiscovery {
   constructor(private config: SearchDocsConfig) {}
 
   async discoverFiles(): Promise<string[]> {
-    // 1. includeパターンでファイル検索
-    const included = await this.globFiles(this.config.files.include);
+    // 1. sourcesパターンでファイル検索
+    const included = await this.globFiles(this.config.files.sources);
 
     // 2. excludeパターンで除外
     const excluded = await this.globFiles(this.config.files.exclude);

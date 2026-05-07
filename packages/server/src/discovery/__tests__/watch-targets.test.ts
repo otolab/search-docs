@@ -7,7 +7,7 @@ import {
   type FileSystemOps,
   type PatternAnalysis,
   type WatchTarget,
-} from '../include-scope.js';
+} from '../watch-targets.js';
 import type { FilesConfig } from '@search-docs/types';
 
 const ROOT = '/project';

@@ -66,6 +66,13 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
           statusText += `設定ファイル: ${systemState.configPath}\n`;
           statusText += `プロジェクト: ${systemState.config?.project.name}\n\n`;
 
+          if (systemState.deprecations && systemState.deprecations.length > 0) {
+            for (const dep of systemState.deprecations) {
+              statusText += `⚠️  ${dep.message}\n`;
+              statusText += `   ${dep.migration}\n\n`;
+            }
+          }
+
           try {
             const status = await systemState.service!.getStatus();
 

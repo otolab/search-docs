@@ -1,2 +1,2 @@
-export { ConfigLoader, type ResolveConfigOptions } from './loader.js';
+export { ConfigLoader, checkConfigDeprecations, type ResolveConfigOptions, type ConfigDeprecation } from './loader.js';
 export { validateConfig } from './validator.js';

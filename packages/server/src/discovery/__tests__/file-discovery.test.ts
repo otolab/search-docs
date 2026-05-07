@@ -30,7 +30,7 @@ describe('FileDiscovery', () => {
   });
 
   describe('findFiles', () => {
-    it('includeパターンでファイルを検索できる', async () => {
+    it('sourcesパターンでファイルを検索できる', async () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {

@@ -123,7 +123,7 @@ npx @search-docs/cli config init
 {
   "version": "1.0",
   "files": {
-    "include": ["**/*.md"],
+    "sources": ["**/*.md"],
     "exclude": ["**/node_modules/**"]
   }
 }

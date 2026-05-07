@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
-import { buildWatchTargets } from './include-scope.js';
+import { buildWatchTargets } from './watch-targets.js';
 
 export interface FileWatcherOptions {
   /** プロジェクトルート */
