@@ -3,7 +3,7 @@
  */
 
 import * as path from 'path';
-import { ConfigLoader, type SearchDocsConfig, type SearchDocsService } from '@search-docs/types';
+import { ConfigLoader, type ConfigDeprecation, type SearchDocsConfig, type SearchDocsService } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess } from '@search-docs/server';
@@ -27,6 +27,8 @@ export interface SystemStateInfo {
   projectRoot: string;
   /** サービスインスタンス（サーバが稼働中の場合） */
   service?: SearchDocsService;
+  /** 非推奨設定の警告 */
+  deprecations?: ConfigDeprecation[];
 }
 
 /**
@@ -72,6 +74,7 @@ export async function detectSystemState(cwd: string): Promise<SystemStateInfo> {
       config: result.config,
       configPath: result.configPath ?? undefined,
       projectRoot: result.projectRoot,
+      deprecations: result.deprecations.length > 0 ? result.deprecations : undefined,
     };
   } catch (_error) {
     // 設定ファイル読み込みエラー

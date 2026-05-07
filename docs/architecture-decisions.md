@@ -1702,6 +1702,8 @@ const mergedExcludePaths = [
 - 2025-10-31: ADR-015追加（CLI設定管理とサーバ起動の改善）
 - 2025-11-07: ADR-016追加（LanceDBインデックス戦略と前方一致検索）
 - 2026-01-15: ADR-017追加（@parcel/watcherによるファイル監視）
+- 2026-05-07: ADR-018追加（CoreML GPU最適化のための静的形状オーバーライド）
+- 2026-05-07: ADR-019追加（files.sources リネームとツリーウォーク監視）
 
 ---
 
@@ -1810,6 +1812,145 @@ Facebook製の高性能ファイル監視デーモン。
 
 - 実装ファイル: `packages/server/src/discovery/file-watcher.ts`
 - Nuxt.jsでの採用: `experimental: { watcher: 'parcel' }`
+
+---
+
+## ADR-019: files.sources リネームとツリーウォーク監視
+
+**日付**: 2026-05-07
+**状態**: 採用
+**決定者**: 実装チーム
+**関連**: Issue #99, PR #100
+
+### コンテキスト
+
+Issue #97で`files.include`パターンのスコープ最適化を検討した際、以下の課題が明らかになった：
+
+1. **意味的な問題**: `include`という名称は「どのファイルをインデックス化するか」を定義するが、ファイルウォッチャーの監視対象は「どのディレクトリをウォッチするか」も含むため、意味が曖昧。
+2. **パフォーマンス問題**: `docs/**/*.md`のような深い再帰パターンと、`*.md`のような直下のみのパターンが同じ扱いで、無駄な監視が発生。
+3. **glob展開の必要性**: `systems/*/docs/**`のような中間globパターンを、ファイルウォッチャーが正しく扱えない。
+
+### 検討した選択肢
+
+#### 1. include のまま最適化を実装（採用しない）
+
+**内容**: `include`という名称を維持しつつ、内部実装でパターン解析とツリーウォークを実装。
+
+**短所**:
+- `include`という名称は「包含条件」を連想させ、「監視対象ソース」という意味が伝わりにくい
+- 設定ファイルの意図が不明確
+
+#### 2. sources にリネーム + ツリーウォーク（採用）
+
+**内容**:
+- `files.include` → `files.sources` にリネーム
+- `sources`は「監視対象のソースパターン」という明確な意味
+- パターンの `**` 有無で shallow/deep 監視を自動判定するツリーウォーク方式を導入
+- 後方互換として `include` を `sources` にマッピング
+
+**長所**:
+- 設定ファイルの意図が明確（「どのソースを監視するか」）
+- パターン解析により無駄な監視を削減
+- glob中間パターンを実ディレクトリに展開
+- 後方互換により既存プロジェクトが壊れない
+
+### 決定
+
+`files.include` → `files.sources` にリネームし、ツリーウォークベースのshallow/deep監視を実装。
+
+**理由**:
+1. **意味の明確化**: `sources`は「監視対象のソース」という明確な意味
+2. **パフォーマンス向上**: shallow/deep分離により無駄な監視を削減
+3. **柔軟性**: glob中間パターンを実ディレクトリに展開
+4. **後方互換**: 既存の`include`も動作維持
+
+### 実装内容
+
+#### 1. sources リネーム
+
+**変更ファイル**:
+- `packages/types/src/config.ts`: `FilesConfig.include` → `FilesConfig.sources`
+- `packages/types/src/config/loader.ts`: 後方互換マッピング
+- `packages/types/src/config/validator.ts`: `sources` + `include` 両方バリデーション
+
+**後方互換マッピング**:
+```typescript
+if (config.files?.include && !config.files.sources) {
+  config.files.sources = config.files.include;
+}
+```
+
+#### 2. ツリーウォーク方式の3層構造
+
+```
+Layer 0: ツリーウォーク（buildWatchTargets）
+  パターン解析 + ディレクトリ走査で deep/shallow subscription を決定。
+  shallow root には全サブディレクトリを ignore に追加。
+
+Layer 1: @parcel/watcher subscription
+  deep root: 再帰監視（COMMON_IGNORES + exclude のみ）
+  shallow root: 直下ファイルのみ（全サブディレクトリを ignore）
+
+Layer 2: shouldProcessFile（精密フィルタ）
+  sources パターンの minimatch + .md 拡張子チェック。
+```
+
+**実装ファイル**:
+- `packages/server/src/discovery/include-scope.ts`:
+  - `analyzePattern()`: パターン解析（deep/shallow判定）
+  - `buildWatchTargets()`: WatchTarget構築（ツリーウォーク）
+  - `COMMON_IGNORES`: 共通除外パターン
+- `packages/server/src/discovery/file-watcher.ts`: 複数subscription対応
+
+#### 3. shallow/deep 判定ルール
+
+| パターン | 判定 | 意味 |
+|---------|------|------|
+| `docs/**` | deep | docs/ 以下を再帰的に監視 |
+| `docs/**/*.md` | deep | 同上 |
+| `*.md` | shallow | ルート直下のみ |
+| `docs/*` | shallow | docs/ 直下のみ |
+| `README.md` | shallow | ルート直下の特定ファイル |
+
+#### 4. glob プレフィックス解決
+
+`systems/*/docs/**` のように中間に glob を含むパターンは、ディレクトリ走査で実パスを解決:
+
+```
+systems/ → app-a/docs/ → deep
+        → app-b/docs/ → deep
+```
+
+### 影響
+
+**ポジティブ**:
+- 設定ファイルの意図が明確になる
+- shallow/deep分離により監視対象が最適化
+- glob中間パターンに対応
+- 後方互換により既存プロジェクトが壊れない
+
+**ネガティブ**:
+- 設定ファイルの書き方が変わる（ただし後方互換あり）
+- ツリーウォークのディスクI/Oコスト（起動時のみ）
+
+**トレードオフ**:
+- 設定ファイルの変更（新規推奨: `sources`） vs 意味の明確化
+- ツリーウォークのI/O vs 無駄な監視の削減
+
+### テスト
+
+**テストファイル**: `packages/server/src/discovery/__tests__/include-scope.test.ts`
+
+**テストケース**（全25テスト）:
+- ✅ パターン解析（analyzePattern）: 14テスト
+- ✅ WatchTargets構築（buildWatchTargets）: 11テスト
+
+### 関連ドキュメント
+
+- 詳細設計: `docs/file-watcher-design.md`
+- 実装: `packages/server/src/discovery/include-scope.ts`
+- 関連Issue: #99
+- 関連PR: #100
 
 ---
 

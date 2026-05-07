@@ -65,7 +65,7 @@ export async function setupTestEnvironment(
         root: '.',
       },
       files: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: ['**/node_modules/**'],
         ignoreGitignore: true,
         maxFileSize: 10 * 1024 * 1024,

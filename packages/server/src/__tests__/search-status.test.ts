@@ -32,7 +32,7 @@ describe('Phase 5: 検索時のindexStatus機能', () => {
       root: testDir,
     },
     files: {
-      include: ['**/*.md'],
+      sources: ['**/*.md'],
       exclude: [],
       ignoreGitignore: false,
       maxFileSize: 10 * 1024 * 1024,

@@ -25,8 +25,10 @@ export type {
 export { DEFAULT_CONFIG } from './config.js';
 export {
   ConfigLoader,
+  checkConfigDeprecations,
   validateConfig,
   type ResolveConfigOptions,
+  type ConfigDeprecation,
 } from './config/index.js';
 
 // API

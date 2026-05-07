@@ -22,6 +22,7 @@ describe('state', () => {
         config: null as any,
         configPath: null,
         projectRoot: '/test/project',
+        deprecations: [],
       });
 
       const result = await detectSystemState('/test/project');
@@ -59,6 +60,7 @@ describe('state', () => {
         config: mockConfig,
         configPath: '/test/project/.search-docs.json',
         projectRoot: '/test/project',
+        deprecations: [],
       });
 
       const result = await detectSystemState('/test/project');
@@ -68,6 +70,49 @@ describe('state', () => {
       expect(result.configPath).toBe('/test/project/.search-docs.json');
       expect(result.projectRoot).toBe('/test/project');
       expect(result.service).toBeUndefined();
+    });
+
+    it('非推奨フィールドがある場合、deprecationsを返す', async () => {
+      const mockConfig = {
+        version: '1.0',
+        server: { host: 'localhost', port: 24280, protocol: 'json-rpc' as const },
+      } as any;
+      const mockDeprecations = [{
+        field: 'files.include',
+        message: 'files.include は非推奨です。files.sources に変更してください。',
+        migration: '設定ファイルの "files"."include" を "files"."sources" にリネームしてください。',
+      }];
+
+      vi.mocked(ConfigLoader.resolve).mockResolvedValue({
+        config: mockConfig,
+        configPath: '/test/project/.search-docs.json',
+        projectRoot: '/test/project',
+        deprecations: mockDeprecations,
+      });
+
+      const result = await detectSystemState('/test/project');
+
+      expect(result.state).toBe('RUNNING');
+      expect(result.deprecations).toEqual(mockDeprecations);
+    });
+
+    it('非推奨フィールドがない場合、deprecationsはundefined', async () => {
+      const mockConfig = {
+        version: '1.0',
+        server: { host: 'localhost', port: 24280, protocol: 'json-rpc' as const },
+      } as any;
+
+      vi.mocked(ConfigLoader.resolve).mockResolvedValue({
+        config: mockConfig,
+        configPath: '/test/project/.search-docs.json',
+        projectRoot: '/test/project',
+        deprecations: [],
+      });
+
+      const result = await detectSystemState('/test/project');
+
+      expect(result.state).toBe('RUNNING');
+      expect(result.deprecations).toBeUndefined();
     });
   });
 

@@ -30,7 +30,7 @@ describe('getOutline API', () => {
       root: testDir,
     },
     files: {
-      include: ['**/*.md'],
+      sources: ['**/*.md'],
       exclude: [],
       ignoreGitignore: false,
       maxFileSize: 10 * 1024 * 1024,
@@ -470,7 +470,7 @@ describe('maxDepth検証: Issue #30', () => {
       root: testDir,
     },
     files: {
-      include: ['**/*.md'],
+      sources: ['**/*.md'],
       exclude: [],
       ignoreGitignore: false,
       maxFileSize: 10 * 1024 * 1024,

@@ -1,9 +1,33 @@
 import { readFile, access } from 'fs/promises';
 import { constants } from 'fs';
 import * as path from 'path';
-import type { SearchDocsConfig } from '../config.js';
+import type { SearchDocsConfig, FilesConfig } from '../config.js';
 import { DEFAULT_CONFIG } from '../config.js';
 import { validateConfig } from './validator.js';
+
+export interface ConfigDeprecation {
+  field: string;
+  message: string;
+  migration: string;
+}
+
+export function checkConfigDeprecations(rawConfig: unknown): ConfigDeprecation[] {
+  const deprecations: ConfigDeprecation[] = [];
+  if (rawConfig && typeof rawConfig === 'object') {
+    const files = (rawConfig as Record<string, unknown>).files;
+    if (files && typeof files === 'object') {
+      const f = files as Record<string, unknown>;
+      if (f.include !== undefined && f.sources === undefined) {
+        deprecations.push({
+          field: 'files.include',
+          message: 'files.include は非推奨です。files.sources に変更してください。',
+          migration: '設定ファイルの "files"."include" を "files"."sources" にリネームしてください。',
+        });
+      }
+    }
+  }
+  return deprecations;
+}
 
 /**
  * Config解決オプション
@@ -67,6 +91,7 @@ export class ConfigLoader {
     config: SearchDocsConfig;
     configPath: string | null;
     projectRoot: string;
+    deprecations: ConfigDeprecation[];
   }> {
     const { configPath: explicitPath, traverseUp = true, cwd = process.cwd(), requireConfig = false } = options;
 
@@ -112,15 +137,25 @@ export class ConfigLoader {
       projectRoot = await this.normalizeProjectRoot(cwd);
     }
 
-    // 3. ConfigLoaderで読み込み
+    // 3. ConfigLoaderで読み込み + 非推奨チェック
+    let deprecations: ConfigDeprecation[] = [];
     const config = configPath
       ? await this.load(configPath)
       : this.getDefaultConfig();
 
+    if (configPath) {
+      try {
+        const rawContent = await readFile(configPath, 'utf-8');
+        deprecations = checkConfigDeprecations(JSON.parse(rawContent));
+      } catch {
+        // 読み込みエラーは無視（loadが既にハンドル済み）
+      }
+    }
+
     // config.project.root を解決済み絶対パスに置換
     config.project.root = projectRoot;
 
-    return { config, configPath, projectRoot };
+    return { config, configPath, projectRoot, deprecations };
   }
 
   /**
@@ -259,7 +294,10 @@ export class ConfigLoader {
       },
       relatedProjects: config.relatedProjects,
       files: {
-        include: config.files?.include ?? DEFAULT_CONFIG.files.include,
+        sources: (() => {
+          const raw = config.files as (Partial<FilesConfig> & { include?: string[] }) | undefined;
+          return raw?.sources ?? raw?.include ?? DEFAULT_CONFIG.files.sources;
+        })(),
         exclude: config.files?.exclude ?? DEFAULT_CONFIG.files.exclude,
         ignoreGitignore: config.files?.ignoreGitignore ?? DEFAULT_CONFIG.files.ignoreGitignore,
         maxFileSize: config.files?.maxFileSize ?? DEFAULT_CONFIG.files.maxFileSize,

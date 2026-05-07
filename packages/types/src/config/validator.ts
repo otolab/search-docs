@@ -81,6 +81,18 @@ function validateFilesConfig(files: unknown): void {
 
   const f = files as Record<string, unknown>;
 
+  if (f.sources !== undefined && !Array.isArray(f.sources)) {
+    throw new Error('config.files.sources must be an array');
+  }
+
+  if (f.sources !== undefined) {
+    const sources = f.sources as unknown[];
+    if (!sources.every((item) => typeof item === 'string')) {
+      throw new Error('config.files.sources must be an array of strings');
+    }
+  }
+
+  // 後方互換: include も受け付ける（非推奨）
   if (f.include !== undefined && !Array.isArray(f.include)) {
     throw new Error('config.files.include must be an array');
   }

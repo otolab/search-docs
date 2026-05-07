@@ -52,15 +52,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "chore: version packages to v${{ steps.version.outputs.version }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: version packages to v${{ steps.version.outputs.version }}"
+            git push
+          fi
 
       - name: Create Pull Request
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr create \
-            --title "Release v${{ steps.version.outputs.version }}" \
-            --body "Release version ${{ steps.version.outputs.version }}" \
-            --base main \
-            --head ${{ github.ref_name }}
+          EXISTING=$(gh pr list --head "${{ github.ref_name }}" --base main --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "PR #$EXISTING already exists"
+          else
+            gh pr create \
+              --title "Release v${{ steps.version.outputs.version }}" \
+              --body "Release version ${{ steps.version.outputs.version }}" \
+              --base main \
+              --head ${{ github.ref_name }}
+          fi

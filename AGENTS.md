@@ -176,7 +176,9 @@ claude mcp add npx -- -y @search-docs/mcp-server
 
 ### 4. 設定ファイル
 - ✅ `.search-docs.json` (推奨) または `search-docs.json`
-- ✅ ファイル検索ルール（include/exclude glob）
+- ✅ ファイル検索ルール（sources/exclude glob）
+  - v1.8.6以降: `files.sources`（推奨）、`files.include`（後方互換）
+  - shallow/deep監視の自動判定（`**`有無）
 - ✅ .gitignoreの尊重
 
 ### 5. LanceDBインデックス戦略

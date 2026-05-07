@@ -48,7 +48,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
@@ -85,7 +85,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
@@ -123,7 +123,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
@@ -159,7 +159,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: ['**/node_modules/**'],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
@@ -192,7 +192,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
@@ -229,7 +229,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
@@ -267,7 +267,7 @@ describe('FileWatcher', () => {
     watcher = new FileWatcher({
       rootDir: tmpDir,
       filesConfig: {
-        include: ['**/*.md'],
+        sources: ['**/*.md'],
         exclude: [],
         ignoreGitignore: false,
         maxFileSize: 10 * 1024 * 1024,
