@@ -1,5 +1,29 @@
 # @search-docs/mcp-server
 
+## 1.9.0
+
+### Minor Changes
+
+- b46906e: feat: files.include → files.sources リネーム + shallow/deep ツリーウォーク監視
+
+  - `files.include` を `files.sources` にリネーム（`include` は非推奨、後方互換あり）
+  - パターンの `**` 有無で shallow/deep 監視を自動判定
+  - ツリーウォーク方式でディレクトリを枝刈りしながら監視ターゲットを構築
+  - shallow subscription に暗黙的 ignore を追加し、不要な inotify 走査を排除
+  - COMMON_IGNORES 拡充（`.pnpm-store`, `.yarn`, `.uv`, `__pycache__`等）
+  - CI: release-prepare で changeset 消費済みの場合にコミットをスキップ
+
+### Patch Changes
+
+- Updated dependencies [c97661d]
+- Updated dependencies [b46906e]
+  - @search-docs/db-engine@1.5.5
+  - @search-docs/server@1.5.0
+  - @search-docs/types@1.5.0
+  - @search-docs/cli@1.2.0
+  - @search-docs/client@1.0.24
+  - @search-docs/storage@1.0.22
+
 ## 1.8.4
 
 ### Patch Changes

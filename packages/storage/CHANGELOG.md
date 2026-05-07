@@ -1,5 +1,12 @@
 # @search-docs/storage
 
+## 1.0.22
+
+### Patch Changes
+
+- Updated dependencies [b46906e]
+  - @search-docs/types@1.5.0
+
 ## 1.0.21
 
 ### Patch Changes
