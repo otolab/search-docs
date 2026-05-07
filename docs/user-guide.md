@@ -100,9 +100,10 @@ search-docsを使う前に、基本的な構成要素を理解しましょう。
 - 複数プロジェクトを同時に使用可能
 
 **ファイル監視**:
-- chokidarによるリアルタイム監視
-- debounce処理（デフォルト1秒）で連続変更を効率的に処理
+- @parcel/watcherによるリアルタイム監視（ネイティブC++実装）
+- debounce処理（デフォルト300ms）で連続変更を効率的に処理
 - 変更検知後、該当Documentを自動的にDirtyにマーク
+- **includeスコープ最適化**: includeパターンから静的プレフィックスを抽出し、監視範囲を限定（v1.8.6）
 
 **バックグラウンド更新**:
 - IndexWorkerが定期的に（デフォルト5秒間隔）Dirtyセクションを処理
@@ -345,6 +346,27 @@ search-docs server stop
 1. `exclude`パターン（最優先）
 2. `.gitignore`（`ignoreGitignore: true`の場合）
 3. `include`パターン
+
+**includeパターンによるディレクトリスコープ最適化** (v1.8.6):
+
+`files.include` は実質的な**ディレクトリスコープ宣言**として機能します。FileWatcherは includeパターンから静的ディレクトリプレフィックスを抽出し、監視範囲を限定します。
+
+- `["docs/**/*.md"]` → `docs/` のみ監視
+- `["**/*.md"]` → プロジェクト全体を監視（デフォルト）
+- `["docs/**", "blog/**"]` → `docs/` と `blog/` を監視
+
+**大規模プロジェクト・モノレポでの推奨設定**:
+
+```json
+{
+  "files": {
+    "include": ["docs/**"],
+    "exclude": ["**/node_modules/**", "**/.git/**", "**/dist/**"]
+  }
+}
+```
+
+より具体的な `include` パターンを設定することで、FileWatcherの監視スコープが狭まり、パフォーマンスが向上します。特にDocker環境（virtiofs）で効果的です。
 
 #### indexing
 

@@ -1708,6 +1708,7 @@ const mergedExcludePaths = [
 ## ADR-017: @parcel/watcherによるファイル監視
 
 **日付**: 2026-01-15
+**更新**: 2026-05-07 (v1.8.6 - includeスコープ最適化)
 **状態**: 採用
 **決定者**: 実装チーム
 
@@ -1720,6 +1721,7 @@ Markdownファイルの変更を検出し、自動的にインデックスを更
 - 除外パターン（node_modules、.gitなど）のサポート
 - クロスプラットフォーム対応（Windows/macOS/Linux）
 - メモリ・CPU効率が良い
+- **Docker環境（virtiofs）での inotify 初期化の性能問題への対処** (v1.8.6)
 
 ### 検討した選択肢
 
@@ -1777,11 +1779,14 @@ Facebook製の高性能ファイル監視デーモン。
 
 **依存関係**: `@parcel/watcher@^2.5.1`
 
-**実装ファイル**: `packages/server/src/discovery/file-watcher.ts`
+**実装ファイル**: 
+- `packages/server/src/discovery/file-watcher.ts` - FileWatcher本体
+- `packages/server/src/discovery/include-scope.ts` - プレフィックス抽出ロジック (v1.8.6)
 
 **主な機能**:
 - イベント検出: ファイルの追加・変更・削除
-- ignoreパターンによる除外フィルタリング
+- **複数subscribeルート**: includeパターンから静的プレフィックスを抽出し、各ルートで監視 (v1.8.6)
+- ignoreパターンによる除外フィルタリング（COMMON_IGNORES + files.exclude）
 - includeパターンによる対象絞り込み（minimatch使用）
 - デバウンス機能（デフォルト300ms）
 
@@ -1796,6 +1801,52 @@ Facebook製の高性能ファイル監視デーモン。
 - chokidarより採用実績が少ない（リスクは低い）
 - ネイティブモジュールのため、プラットフォーム依存あり（プリビルドバイナリで軽減）
 
+### includeスコープ最適化 (v1.8.6)
+
+**背景**: Docker環境（virtiofs）での @parcel/watcher の inotify 初期化がCPUを大量消費する問題（Issue #97）。
+
+**問題**: 
+- @parcel/watcher の `subscribe()` は監視ルート以下の**全ディレクトリを再帰走査**し、各ディレクトリに `inotify_add_watch()` を設定
+- virtiofs経由のFS操作はホストとのIPC往復があり、ディレクトリ数に比例して遅くなる
+- 従来は `project.root` 全体を subscribe し、イベント受信後に `shouldProcessFile()` でフィルタしていた
+
+**解決策**: 2層の協調によるスコープ制限
+
+1. **Layer 1 - subscribeルート（粗いスコープ制限）**
+   - `files.include` パターンから静的ディレクトリプレフィックスを抽出
+   - 例: `"docs/**/*.md"` → `"docs"`、`"**/*.md"` → `""` (プロジェクトルート)
+   - プレフィックスごとに `watcher.subscribe()` を実行
+   - **スコープ外のディレクトリは最初から inotify 走査の対象にならない**
+
+2. **Layer 2 - shouldProcessFile（精密なフィルタ）**
+   - `files.include` パターンの詳細マッチ + `.md` 拡張子チェック
+   - 例: `docs/**` は `docs/sub/file.md` を通すが、`docs/*` は弾く
+
+**実装**:
+```typescript
+// subscription (単一) → subscriptions (配列) に変更
+private subscriptions: watcher.AsyncSubscription[] = [];
+
+async start(): Promise<void> {
+  const { subscribeRoots, ignorePatterns } = buildWatchTargets(
+    this.rootDir,
+    this.filesConfig
+  );
+
+  for (const subscribeRoot of subscribeRoots) {
+    const sub = await watcher.subscribe(subscribeRoot, callback, opts);
+    this.subscriptions.push(sub);
+  }
+}
+```
+
+**効果**:
+- Docker環境（virtiofs）での inotify 初期化時のCPU消費を大幅削減
+- 大規模モノレポでの監視スコープ最適化
+- `files.include` が実質的な**ディレクトリスコープ宣言**として機能
+
+**関連**: Issue #97, PR #98, commit e659d40
+
 ### 今後の検討事項
 
 1. **Watchmanの推奨**
@@ -1809,7 +1860,10 @@ Facebook製の高性能ファイル監視デーモン。
 ### 参考資料
 
 - 実装ファイル: `packages/server/src/discovery/file-watcher.ts`
+- プレフィックス抽出: `packages/server/src/discovery/include-scope.ts` (v1.8.6)
 - Nuxt.jsでの採用: `experimental: { watcher: 'parcel' }`
+- Issue #97: Docker環境でFileWatcherのinotify初期化がCPUを大量消費
+- task44: `prompts/tasks/task44.filewatcher-include-scope-optimization.v1.md`
 
 ---
 

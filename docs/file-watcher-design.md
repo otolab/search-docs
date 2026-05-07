@@ -22,9 +22,9 @@ Markdownファイルの変更を監視し、自動的にインデックスを更
 
 ```
 FileWatcher (@parcel/watcher)
-  ├─ subscription (ネイティブC++監視)
-  ├─ ignoreパターン (除外フィルタ)
-  ├─ shouldProcessFile (includeパターンチェック)
+  ├─ subscriptions (複数ルート監視、includeスコープ最適化)
+  ├─ ignoreパターン (COMMON_IGNORES + files.exclude)
+  ├─ shouldProcessFile (includeパターン詳細マッチ)
   └─ デバウンス (300ms)
        ↓
   FileChangeEvent発火
@@ -34,39 +34,85 @@ FileWatcher (@parcel/watcher)
        └─ unlink → deleteDocument()
 ```
 
+### include スコープ最適化 (v1.8.6以降)
+
+**2層の協調によるスコープ制限**:
+
+1. **Layer 1 - subscribeルート（粗いスコープ制限）**
+   - `files.include` パターンから静的ディレクトリプレフィックスを抽出
+   - 例: `docs/**/*.md` → `docs/`、`**/*.md` → プロジェクトルート
+   - プレフィックスごとに `watcher.subscribe()` を実行
+   - **スコープ外のディレクトリは最初から inotify 走査の対象にならない**
+
+2. **Layer 2 - shouldProcessFile（精密なフィルタ）**
+   - `files.include` パターンの詳細マッチ + `.md` 拡張子チェック
+   - 例: `docs/**` は `docs/sub/file.md` を通すが、`docs/*` は弾く
+
+**効果**:
+- Docker環境（virtiofs）での inotify 初期化時のCPU消費を大幅削減
+- 大規模モノレポでの監視スコープ最適化
+- `files.include` が実質的な**ディレクトリスコープ宣言**として機能
+
+詳細: [Issue #97](https://github.com/otolab/search-docs/issues/97), [PR #98](https://github.com/otolab/search-docs/pull/98)
+
 ### 実装ファイル
 
-**場所**: `packages/server/src/discovery/file-watcher.ts`
+**場所**: 
+- `packages/server/src/discovery/file-watcher.ts` - FileWatcher本体
+- `packages/server/src/discovery/include-scope.ts` - プレフィックス抽出ロジック
 
 **主要クラス**: `FileWatcher`
 
 ```typescript
 export class FileWatcher extends EventEmitter {
-  private subscription: watcher.AsyncSubscription | null = null;
+  private subscriptions: watcher.AsyncSubscription[] = [];
   private debounceTimers = new Map<string, NodeJS.Timeout>();
 
   async start(): Promise<void> {
-    const ignorePatterns = this.buildIgnorePatterns();
-
-    this.subscription = await watcher.subscribe(
+    const { subscribeRoots, ignorePatterns } = buildWatchTargets(
       this.rootDir,
-      (err, events) => {
-        for (const event of events) {
-          const eventType = this.convertEventType(event.type);
-          if (this.shouldProcessFile(event.path)) {
-            this.handleFileEvent(eventType, event.path);
-          }
-        }
-      },
-      { ignore: ignorePatterns }
+      this.filesConfig
     );
+
+    for (const subscribeRoot of subscribeRoots) {
+      const sub = await watcher.subscribe(
+        subscribeRoot,
+        (err, events) => {
+          for (const event of events) {
+            const eventType = this.convertEventType(event.type);
+            if (this.shouldProcessFile(event.path)) {
+              this.handleFileEvent(eventType, event.path);
+            }
+          }
+        },
+        { ignore: ignorePatterns }
+      );
+      this.subscriptions.push(sub);
+    }
   }
 
   async stop(): Promise<void> {
-    await this.subscription?.unsubscribe();
+    for (const sub of this.subscriptions) {
+      await sub.unsubscribe();
+    }
+    this.subscriptions = [];
   }
 }
 ```
+
+**プレフィックス抽出ロジック**:
+
+`buildWatchTargets()` は以下の処理を行います:
+
+1. `extractDirectoryPrefixes()`: includeパターンから静的プレフィックスを抽出
+   - 例: `"docs/**/*.md"` → `"docs"`
+   - 例: `"**/*.md"` → `""` (空 = プロジェクトルート)
+   - 重複排除・包含関係の解決（親が含まれていれば子は不要）
+
+2. `resolveSubscribeRoots()`: プレフィックスを絶対パスに解決
+   - 例: `"docs"` → `/path/to/project/docs`
+
+3. ignoreパターンの構築: `COMMON_IGNORES + files.exclude`
 
 ### 主な機能
 
@@ -77,18 +123,32 @@ export class FileWatcher extends EventEmitter {
 
 2. **除外パターン**
    ```typescript
-   const commonIgnores = [
+   // packages/server/src/discovery/include-scope.ts
+   export const COMMON_IGNORES = [
      '**/node_modules/**',
      '**/.git/**',
+     '**/.pnpm-store/**',
+     '**/.yarn/**',
      '**/.venv/**',
+     '**/.uv/**',
      '**/dist/**',
      '**/build/**',
+     '**/.next/**',
+     '**/.turbo/**',
+     '**/coverage/**',
+     '**/.cache/**',
      '**/.search-docs/**',
+     '**/__pycache__/**',
+     '**/.mypy_cache/**',
+     '**/.pytest_cache/**',
    ];
    ```
 
+   **注**: COMMON_IGNORES はパフォーマンス最適化のために定義されており、@parcel/watcherのinotify初期走査時にサブツリー全体をスキップします。
+
 3. **includeパターンのフィルタリング**
-   - `filesConfig.include`に基づいて監視対象を絞り込み
+   - `files.include`パターンから静的プレフィックスを抽出し、subscribeルートを限定（Layer 1）
+   - `shouldProcessFile()`で詳細マッチ（Layer 2）
    - `minimatch`による柔軟なパターンマッチング
 
 4. **デバウンス機能**

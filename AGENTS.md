@@ -178,6 +178,7 @@ claude mcp add npx -- -y @search-docs/mcp-server
 - ✅ `.search-docs.json` (推奨) または `search-docs.json`
 - ✅ ファイル検索ルール（include/exclude glob）
 - ✅ .gitignoreの尊重
+- ✅ includeスコープ最適化（v1.8.6）: includeパターンから静的プレフィックスを抽出し、FileWatcherの監視範囲を限定
 
 ### 5. LanceDBインデックス戦略
 - ✅ カーディナリティベースのインデックスタイプ選択（BTREE/BITMAP）
