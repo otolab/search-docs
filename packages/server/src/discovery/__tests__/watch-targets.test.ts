@@ -35,10 +35,10 @@ function mockFsOps(
   dirTree: Record<string, { name: string; isDirectory: boolean }[]>,
 ): FileSystemOps {
   return {
-    readdir(dir: string) {
+    async readdir(dir: string) {
       return dirTree[dir] ?? [];
     },
-    isDirectory(dir: string) {
+    async isDirectory(dir: string) {
       // dirTreeのキーとして存在するか、
       // 親ディレクトリのエントリに含まれているかで判定
       if (dirTree[dir] !== undefined) return true;
@@ -157,13 +157,13 @@ describe('buildWatchTargets', () => {
   // A. subscribeルートの決定
 
   describe('subscribe ルートの決定', () => {
-    it('単一 deep パターン → そのディレクトリを deep subscribe', () => {
+    it('単一 deep パターン → そのディレクトリを deep subscribe', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('src')],
         [`${ROOT}/docs`]: [file('README.md')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
 
       expect(targets).toHaveLength(1);
       expect(targets[0]).toMatchObject({
@@ -172,14 +172,14 @@ describe('buildWatchTargets', () => {
       });
     });
 
-    it('独立した複数 deep パターン → 複数 deep subscribe', () => {
+    it('独立した複数 deep パターン → 複数 deep subscribe', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('blog')],
         [`${ROOT}/docs`]: [],
         [`${ROOT}/blog`]: [],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['docs/**', 'blog/**']),
         fs,
@@ -193,26 +193,26 @@ describe('buildWatchTargets', () => {
       ]);
     });
 
-    it('ルートパターン（**/*.md）→ ルート全体を deep subscribe', () => {
+    it('ルートパターン（**/*.md）→ ルート全体を deep subscribe', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('src')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['**/*.md']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['**/*.md']), fs);
 
       const deepTargets = targets.filter(t => t.depth === 'deep');
       expect(deepTargets).toHaveLength(1);
       expect(deepTargets[0].root).toBe(ROOT);
     });
 
-    it('包含関係のある deep パターン → 親に集約', () => {
+    it('包含関係のある deep パターン → 親に集約', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs')],
         [`${ROOT}/docs`]: [dir('api')],
         [`${ROOT}/docs/api`]: [],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['docs/**', 'docs/api/**']),
         fs,
@@ -233,13 +233,13 @@ describe('buildWatchTargets', () => {
      * shallowの実現方法: 全サブディレクトリを ignorePaths に追加。
      */
 
-    it('docs/** は deep subscription を生成', () => {
+    it('docs/** は deep subscription を生成', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs')],
         [`${ROOT}/docs`]: [dir('sub'), file('README.md')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
 
       expect(targets).toHaveLength(1);
       expect(targets[0]).toMatchObject({
@@ -249,13 +249,13 @@ describe('buildWatchTargets', () => {
       });
     });
 
-    it('docs/* は shallow subscription を生成（サブディレクトリを ignorePaths に追加）', () => {
+    it('docs/* は shallow subscription を生成（サブディレクトリを ignorePaths に追加）', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs')],
         [`${ROOT}/docs`]: [dir('sub'), dir('guides'), file('README.md')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['docs/*']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['docs/*']), fs);
 
       expect(targets).toHaveLength(1);
       expect(targets[0]).toMatchObject({
@@ -270,14 +270,14 @@ describe('buildWatchTargets', () => {
       );
     });
 
-    it('deep + shallow 混在 → 両方のターゲットを生成', () => {
+    it('deep + shallow 混在 → 両方のターゲットを生成', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('blog'), file('README.md')],
         [`${ROOT}/docs`]: [dir('sub')],
         [`${ROOT}/blog`]: [dir('2024')],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['docs/**', 'blog/*', '*.md']),
         fs,
@@ -303,7 +303,7 @@ describe('buildWatchTargets', () => {
     // systems/{*}/docs/{**} のように中間に glob を含むパターンは、
     // ディレクトリを走査して実パスを解決する。
 
-    it('systems/*/docs/** → 各サブプロジェクトの docs/ を deep subscribe', () => {
+    it('systems/*/docs/** → 各サブプロジェクトの docs/ を deep subscribe', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('systems')],
         [`${ROOT}/systems`]: [dir('app-a'), dir('app-b'), file('README.md')],
@@ -313,7 +313,7 @@ describe('buildWatchTargets', () => {
         [`${ROOT}/systems/app-b/docs`]: [],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['systems/*/docs/**']),
         fs,
@@ -326,12 +326,12 @@ describe('buildWatchTargets', () => {
       ]);
     });
 
-    it('存在しないディレクトリはスキップ', () => {
+    it('存在しないディレクトリはスキップ', async () => {
       const fs = mockFsOps({
         [ROOT]: [],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['nonexistent/**']),
         fs,
@@ -344,24 +344,24 @@ describe('buildWatchTargets', () => {
   // D. ignore パターンの構成
 
   describe('ignore パターンの構成', () => {
-    it('exclude 空 → COMMON_IGNORES のみ', () => {
+    it('exclude 空 → COMMON_IGNORES のみ', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs')],
         [`${ROOT}/docs`]: [],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
 
       expect(targets[0].ignorePatterns).toEqual([...COMMON_IGNORES]);
     });
 
-    it('exclude 指定 → COMMON_IGNORES + ユーザー設定', () => {
+    it('exclude 指定 → COMMON_IGNORES + ユーザー設定', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs')],
         [`${ROOT}/docs`]: [],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['docs/**'], ['**/drafts/**']),
         fs,
@@ -383,12 +383,12 @@ describe('buildWatchTargets', () => {
   // E. shallow の ignorePaths
 
   describe('shallow の ignorePaths', () => {
-    it('shallow root の全サブディレクトリを ignorePaths に含める', () => {
+    it('shallow root の全サブディレクトリを ignorePaths に含める', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('blog'), dir('src'), dir('tools'), file('README.md')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['*.md']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['*.md']), fs);
 
       const shallowTarget = targets.find(t => t.depth === 'shallow');
       expect(shallowTarget).toBeDefined();
@@ -404,13 +404,13 @@ describe('buildWatchTargets', () => {
       expect(shallowTarget!.ignorePaths).not.toContain(`${ROOT}/README.md`);
     });
 
-    it('deep root は ignorePaths を持たない', () => {
+    it('deep root は ignorePaths を持たない', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs')],
         [`${ROOT}/docs`]: [dir('sub'), dir('guides')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['docs/**']), fs);
 
       const deepTarget = targets.find(t => t.depth === 'deep');
       expect(deepTarget!.ignorePaths).toEqual([]);
@@ -420,14 +420,14 @@ describe('buildWatchTargets', () => {
   // F. 結合検証
 
   describe('結合検証', () => {
-    it('Issue #99 の代表例: docs/** + blog/* + *.md', () => {
+    it('Issue #99 の代表例: docs/** + blog/* + *.md', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('blog'), dir('src'), dir('tools'), file('README.md')],
         [`${ROOT}/docs`]: [dir('sub'), file('guide.md')],
         [`${ROOT}/blog`]: [dir('2024'), file('post.md')],
       });
 
-      const targets = buildWatchTargets(
+      const targets = await buildWatchTargets(
         ROOT,
         makeConfig(['docs/**', 'blog/*', '*.md'], ['src/**']),
         fs,
@@ -463,12 +463,51 @@ describe('buildWatchTargets', () => {
       expect(blogShallow.ignorePaths).toEqual([`${ROOT}/blog/2024`]);
     });
 
-    it('デフォルト設定（**/*.md）→ ルート全体を deep subscribe', () => {
+    it('deep + shallow 同一ディレクトリ → deep が優先（重複排除）', async () => {
+      const fs = mockFsOps({
+        [ROOT]: [dir('docs')],
+        [`${ROOT}/docs`]: [dir('sub'), file('README.md')],
+      });
+
+      const targets = await buildWatchTargets(
+        ROOT,
+        makeConfig(['docs/**', 'docs/*']),
+        fs,
+      );
+
+      expect(targets).toHaveLength(1);
+      expect(targets[0]).toMatchObject({
+        root: `${ROOT}/docs`,
+        depth: 'deep',
+      });
+    });
+
+    it('deep 親が shallow 子を包含 → shallow は生成されない', async () => {
+      const fs = mockFsOps({
+        [ROOT]: [dir('docs'), dir('src')],
+        [`${ROOT}/docs`]: [dir('api'), file('README.md')],
+        [`${ROOT}/docs/api`]: [file('guide.md')],
+      });
+
+      const targets = await buildWatchTargets(
+        ROOT,
+        makeConfig(['docs/**', 'docs/api/*']),
+        fs,
+      );
+
+      const deep = targets.filter(t => t.depth === 'deep');
+      const shallow = targets.filter(t => t.depth === 'shallow');
+      expect(deep).toHaveLength(1);
+      expect(deep[0].root).toBe(`${ROOT}/docs`);
+      expect(shallow).toHaveLength(0);
+    });
+
+    it('デフォルト設定（**/*.md）→ ルート全体を deep subscribe', async () => {
       const fs = mockFsOps({
         [ROOT]: [dir('docs'), dir('src')],
       });
 
-      const targets = buildWatchTargets(ROOT, makeConfig(['**/*.md']), fs);
+      const targets = await buildWatchTargets(ROOT, makeConfig(['**/*.md']), fs);
 
       expect(targets).toHaveLength(1);
       expect(targets[0]).toMatchObject({

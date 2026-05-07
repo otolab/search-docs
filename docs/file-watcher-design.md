@@ -243,7 +243,7 @@ SearchDocsServer.deleteDocument(path)
 
 **テストファイル**:
 - `packages/server/src/discovery/__tests__/file-watcher.test.ts`
-- `packages/server/src/discovery/__tests__/include-scope.test.ts`
+- `packages/server/src/discovery/__tests__/watch-targets.test.ts`
 
 **テストケース（file-watcher.test.ts）**（全7テスト）:
 - ✅ ファイル追加を検出できる
@@ -254,11 +254,9 @@ SearchDocsServer.deleteDocument(path)
 - ✅ サブディレクトリのファイルも検出できる
 - ✅ 停止後はイベントを検出しない
 
-**テストケース（include-scope.test.ts）**（全25テスト）:
-- ✅ パターン解析（analyzePattern）: 14テスト
-  - deep/shallow判定、globプレフィックス抽出、特殊ケース
-- ✅ WatchTargets構築（buildWatchTargets）: 11テスト
-  - deep/shallow分離、glob展開、複合パターン、除外処理
+**テストケース（watch-targets.test.ts）**:
+- ✅ パターン解析（analyzePattern）: deep/shallow判定、globプレフィックス抽出、特殊ケースを網羅
+- ✅ WatchTargets構築（buildWatchTargets）: deep/shallow分離、glob展開、複合パターン、除外処理、重複排除を網羅
 
 ## 後方互換
 
@@ -285,10 +283,10 @@ Issue #99で `files.include` → `files.sources` にリネームされました�
   - [ADR-019](./architecture-decisions.md#adr-019-files-sources-リネームとツリーウォーク監視) - sources リネーム + ツリーウォーク
 - **実装ファイル**:
   - `packages/server/src/discovery/file-watcher.ts`
-  - `packages/server/src/discovery/include-scope.ts`
+  - `packages/server/src/discovery/watch-targets.ts`
 - **テストファイル**:
   - `packages/server/src/discovery/__tests__/file-watcher.test.ts`
-  - `packages/server/src/discovery/__tests__/include-scope.test.ts`
+  - `packages/server/src/discovery/__tests__/watch-targets.test.ts`
 - **関連Issue/PR**:
   - Issue #99: files.include → files.sources リネーム + shallow/deep ツリーウォーク監視
   - PR #100: 実装完了
