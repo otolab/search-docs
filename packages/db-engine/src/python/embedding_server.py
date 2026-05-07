@@ -156,7 +156,7 @@ class EmbeddingRequestHandler(BaseHTTPRequestHandler):
 
 
 def resolve_onnx_model_path() -> str:
-    """ONNXモデルのパスを解決。Docker → プロジェクトキャッシュ → HuggingFace Hub"""
+    """ONNXモデルのパスを解決。Docker → HuggingFace Hub"""
     import os
 
     # 1. Docker内蔵パス
@@ -164,12 +164,7 @@ def resolve_onnx_model_path() -> str:
     if os.path.exists(os.path.join(docker_path, 'onnx', 'model.onnx')):
         return docker_path
 
-    # 2. プロジェクトキャッシュ（cwd/.cache/models/）
-    project_path = os.path.join(os.getcwd(), '.cache', 'models', 'ruri-v3-30m-onnx')
-    if os.path.exists(os.path.join(project_path, 'onnx', 'model.onnx')):
-        return project_path
-
-    # 3. HuggingFace Hubからダウンロード
+    # 2. HuggingFace Hubからダウンロード（キャッシュ済みなら即時返却）
     from huggingface_hub import snapshot_download
     sys.stderr.write("[EmbeddingServer] Downloading ONNX model from HuggingFace Hub...\n")
     sys.stderr.flush()
