@@ -18,20 +18,28 @@ Markdownファイルの変更を監視し、自動的にインデックスを更
 
 ## 実装
 
-### アーキテクチャ
+### アーキテクチャ（3層構造）
+
+Issue #99で導入されたツリーウォークベースの3層フィルタリング構造：
 
 ```
-FileWatcher (@parcel/watcher)
-  ├─ subscription (ネイティブC++監視)
-  ├─ ignoreパターン (除外フィルタ)
-  ├─ shouldProcessFile (includeパターンチェック)
-  └─ デバウンス (300ms)
-       ↓
+Layer 0: ツリーウォーク（buildWatchTargets）
+  パターン解析 + ディレクトリ走査
+    ↓
+  deep/shallow subscription を決定
+    ↓
+Layer 1: @parcel/watcher subscription
+  deep root: 再帰監視（COMMON_IGNORES + exclude のみ）
+  shallow root: 直下ファイルのみ（全サブディレクトリを ignore）
+    ↓
+Layer 2: shouldProcessFile（精密フィルタ）
+  sources パターンの minimatch + .md 拡張子チェック
+    ↓
   FileChangeEvent発火
-       ↓
+    ↓
   SearchDocsServer
-       ├─ add/change → markDirty()
-       └─ unlink → deleteDocument()
+    ├─ add/change → markDirty()
+    └─ unlink → deleteDocument()
 ```
 
 ### 実装ファイル
@@ -75,9 +83,20 @@ export class FileWatcher extends EventEmitter {
    - 変更（`change`）: 既存ファイルの更新
    - 削除（`unlink`）: ファイルの削除
 
-2. **除外パターン**
+2. **3層フィルタリング**
+   - **Layer 0**: ツリーウォーク（`buildWatchTargets`）
+     - `sources`パターンを解析し、shallow/deepを判定
+     - glob中間パターンを実ディレクトリに展開
+     - subscription単位（deep root, shallow root）を決定
+   - **Layer 1**: @parcel/watcher subscription
+     - deep root: 再帰監視（COMMON_IGNORES + exclude のみ）
+     - shallow root: 直下ファイルのみ（全サブディレクトリをignore）
+   - **Layer 2**: 精密フィルタ（`shouldProcessFile`）
+     - `sources`パターンの minimatch + .md 拡張子チェック
+
+3. **共通除外パターン（COMMON_IGNORES）**
    ```typescript
-   const commonIgnores = [
+   export const COMMON_IGNORES = [
      '**/node_modules/**',
      '**/.git/**',
      '**/.venv/**',
@@ -87,11 +106,26 @@ export class FileWatcher extends EventEmitter {
    ];
    ```
 
-3. **includeパターンのフィルタリング**
-   - `filesConfig.include`に基づいて監視対象を絞り込み
-   - `minimatch`による柔軟なパターンマッチング
+4. **shallow/deep 監視の自動判定**
+   - パターンに `**` が含まれる → deep（再帰監視）
+   - `**` がない → shallow（直下のみ）
 
-4. **デバウンス機能**
+   | パターン | 判定 | 意味 |
+   |---------|------|------|
+   | `docs/**` | deep | docs/ 以下を再帰的に監視 |
+   | `docs/**/*.md` | deep | 同上 |
+   | `*.md` | shallow | ルート直下のみ |
+   | `docs/*` | shallow | docs/ 直下のみ |
+   | `README.md` | shallow | ルート直下の特定ファイル |
+
+5. **glob プレフィックス解決**
+   `systems/*/docs/**` のように中間にglobを含むパターンは、ディレクトリ走査で実パスに展開：
+   ```
+   systems/ → app-a/docs/ → deep
+           → app-b/docs/ → deep
+   ```
+
+6. **デバウンス機能**
    - デフォルト300ms
    - 短時間の連続変更をまとめて1回の処理に
 
@@ -119,16 +153,36 @@ watcher: {
 
 ## 処理フロー
 
-### ファイル追加/変更時
+### 起動時（Layer 0: ツリーウォーク）
+
+```
+FileWatcher.start()
+  ↓
+buildWatchTargets(projectRoot, sources, exclude)
+  ↓
+パターン解析（analyzePattern）
+  - `**` 有無で shallow/deep 判定
+  - glob プレフィックスを実ディレクトリに展開
+  ↓
+WatchTarget[] を生成
+  - deep: { type: 'deep', root: 'docs/' }
+  - shallow: { type: 'shallow', root: './', ignore: ['docs/', 'prompts/'] }
+  ↓
+各 WatchTarget に対して subscription 作成
+```
+
+### ファイル追加/変更時（Layer 1 → Layer 2）
 
 ```
 ファイル保存
   ↓
 @parcel/watcher (ネイティブC++)がイベント検出
   ↓
-ignoreパターンでフィルタリング
+Layer 1: subscription のignoreパターンでフィルタリング
+  - deep: COMMON_IGNORES + exclude のみ
+  - shallow: COMMON_IGNORES + exclude + 全サブディレクトリ
   ↓
-shouldProcessFile() (includeパターン・拡張子チェック)
+Layer 2: shouldProcessFile() (sources パターン・拡張子チェック)
   ↓
 デバウンス（300ms）
   ↓
@@ -145,6 +199,8 @@ IndexWorkerがバックグラウンドで再インデックス
 ファイル削除
   ↓
 @parcel/watcherがunlinkイベント検出
+  ↓
+Layer 1 → Layer 2 フィルタリング（同上）
   ↓
 デバウンス（300ms）
   ↓
@@ -185,9 +241,11 @@ SearchDocsServer.deleteDocument(path)
 
 ## テスト
 
-**テストファイル**: `packages/server/src/discovery/__tests__/file-watcher.test.ts`
+**テストファイル**:
+- `packages/server/src/discovery/__tests__/file-watcher.test.ts`
+- `packages/server/src/discovery/__tests__/include-scope.test.ts`
 
-**テストケース**（全7テスト）:
+**テストケース（file-watcher.test.ts）**（全7テスト）:
 - ✅ ファイル追加を検出できる
 - ✅ ファイル変更を検出できる
 - ✅ ファイル削除を検出できる
@@ -195,6 +253,20 @@ SearchDocsServer.deleteDocument(path)
 - ✅ デバウンスが機能する
 - ✅ サブディレクトリのファイルも検出できる
 - ✅ 停止後はイベントを検出しない
+
+**テストケース（include-scope.test.ts）**（全25テスト）:
+- ✅ パターン解析（analyzePattern）: 14テスト
+  - deep/shallow判定、globプレフィックス抽出、特殊ケース
+- ✅ WatchTargets構築（buildWatchTargets）: 11テスト
+  - deep/shallow分離、glob展開、複合パターン、除外処理
+
+## 後方互換
+
+Issue #99で `files.include` → `files.sources` にリネームされましたが、後方互換性を維持：
+
+- `files.include` は `files.sources` にマッピングされて動作
+- バリデーターは両方を受け付ける
+- 既存プロジェクトはそのまま動作
 
 ## 今後の検討事項
 
@@ -208,6 +280,15 @@ SearchDocsServer.deleteDocument(path)
 
 ## 関連ドキュメント
 
-- **アーキテクチャ決定記録**: [ADR-017](./architecture-decisions.md#adr-017-parcelwatcherによるファイル監視) - 技術選定の詳細
-- **実装ファイル**: `packages/server/src/discovery/file-watcher.ts`
-- **テストファイル**: `packages/server/src/discovery/__tests__/file-watcher.test.ts`
+- **アーキテクチャ決定記録**:
+  - [ADR-017](./architecture-decisions.md#adr-017-parcelwatcherによるファイル監視) - 技術選定の詳細
+  - [ADR-019](./architecture-decisions.md#adr-019-files-sources-リネームとツリーウォーク監視) - sources リネーム + ツリーウォーク
+- **実装ファイル**:
+  - `packages/server/src/discovery/file-watcher.ts`
+  - `packages/server/src/discovery/include-scope.ts`
+- **テストファイル**:
+  - `packages/server/src/discovery/__tests__/file-watcher.test.ts`
+  - `packages/server/src/discovery/__tests__/include-scope.test.ts`
+- **関連Issue/PR**:
+  - Issue #99: files.include → files.sources リネーム + shallow/deep ツリーウォーク監視
+  - PR #100: 実装完了

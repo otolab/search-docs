@@ -330,21 +330,48 @@ search-docs server stop
 ```json
 {
   "files": {
-    "include": ["**/*.md"],
+    "sources": ["**/*.md"],
     "exclude": ["**/node_modules/**"],
     "ignoreGitignore": true
   }
 }
 ```
 
-- `include`: インデックス対象のglobパターン
+- `sources`: 監視対象のglobパターン（推奨、v1.8.6以降）
+- `include`: `sources`の旧名称（後方互換のため動作するが非推奨）
 - `exclude`: 除外するglobパターン
 - `ignoreGitignore`: `.gitignore`のパターンを尊重するか
+
+**sourcesパターンの監視方式**（v1.8.6以降）:
+
+`sources`パターンの `**` 有無により、shallow（直下のみ）/deep（再帰的）監視を自動判定します。
+
+| パターン | 監視方式 | 意味 |
+|---------|---------|------|
+| `docs/**` | deep | docs/ 以下を再帰的に監視 |
+| `docs/**/*.md` | deep | 同上 |
+| `*.md` | shallow | ルート直下のみ監視 |
+| `docs/*` | shallow | docs/ 直下のみ監視 |
+| `README.md` | shallow | ルート直下の特定ファイル |
+
+**glob中間パターンの展開**:
+
+`systems/*/docs/**` のように中間にglobを含むパターンは、起動時にディレクトリ走査で実パスに展開されます。
+
+```json
+{
+  "files": {
+    "sources": ["systems/*/docs/**"]
+  }
+}
+```
+
+→ `systems/app-a/docs/**`, `systems/app-b/docs/**` に展開
 
 **優先順位**:
 1. `exclude`パターン（最優先）
 2. `.gitignore`（`ignoreGitignore: true`の場合）
-3. `include`パターン
+3. `sources`パターン
 
 #### indexing
 
