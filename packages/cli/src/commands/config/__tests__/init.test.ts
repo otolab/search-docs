@@ -117,7 +117,7 @@ describe('config init', () => {
     // 各セクションの必須フィールド
     expect(config.project).toHaveProperty('name');
     expect(config.project).toHaveProperty('root');
-    expect(config.files).toHaveProperty('include');
+    expect(config.files).toHaveProperty('sources');
     expect(config.files).toHaveProperty('exclude');
     expect(config.server).toHaveProperty('host');
     expect(config.server).toHaveProperty('port');

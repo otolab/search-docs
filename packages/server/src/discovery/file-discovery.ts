@@ -45,7 +45,7 @@ export class FileDiscovery {
     }
 
     // fast-globで検索
-    const files = await fg(this.config.include, {
+    const files = await fg(this.config.sources, {
       cwd: this.rootDir,
       ignore: this.config.exclude,
       absolute: false, // 相対パスを返す
@@ -68,7 +68,7 @@ export class FileDiscovery {
    */
   matchesPattern(filePath: string): boolean {
     // includeパターンにマッチするか
-    const matchesInclude = this.config.include.some((pattern) => {
+    const matchesInclude = this.config.sources.some((pattern) => {
       // minimatchはfast-globと異なり、**/patternがルートレベルにマッチしない
       // fast-globの挙動に合わせるため、**/で始まるパターンは
       // ルートレベルとネストレベルの両方をチェック

@@ -42,7 +42,7 @@ function createDefaultConfig(options: {
       root: '.',
     },
     files: {
-      include: [
+      sources: [
         '**/*.md',
         'docs/**/*.txt',
       ],

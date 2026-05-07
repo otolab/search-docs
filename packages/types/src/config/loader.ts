@@ -1,7 +1,7 @@
 import { readFile, access } from 'fs/promises';
 import { constants } from 'fs';
 import * as path from 'path';
-import type { SearchDocsConfig } from '../config.js';
+import type { SearchDocsConfig, FilesConfig } from '../config.js';
 import { DEFAULT_CONFIG } from '../config.js';
 import { validateConfig } from './validator.js';
 
@@ -259,7 +259,10 @@ export class ConfigLoader {
       },
       relatedProjects: config.relatedProjects,
       files: {
-        include: config.files?.include ?? DEFAULT_CONFIG.files.include,
+        sources: (() => {
+          const raw = config.files as (Partial<FilesConfig> & { include?: string[] }) | undefined;
+          return raw?.sources ?? raw?.include ?? DEFAULT_CONFIG.files.sources;
+        })(),
         exclude: config.files?.exclude ?? DEFAULT_CONFIG.files.exclude,
         ignoreGitignore: config.files?.ignoreGitignore ?? DEFAULT_CONFIG.files.ignoreGitignore,
         maxFileSize: config.files?.maxFileSize ?? DEFAULT_CONFIG.files.maxFileSize,

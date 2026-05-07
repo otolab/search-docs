@@ -30,8 +30,8 @@ export interface ProjectConfig {
 }
 
 export interface FilesConfig {
-  /** 含めるファイルパターン（glob） */
-  include: string[];
+  /** ドキュメントソースのglobパターン */
+  sources: string[];
   /** 除外するファイルパターン（glob） */
   exclude: string[];
   /** .gitignoreを尊重するか */
@@ -118,7 +118,7 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     root: '.',
   },
   files: {
-    include: ['**/*.md'],
+    sources: ['**/*.md'],
     exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'],
     ignoreGitignore: true,
     maxFileSize: 10 * 1024 * 1024, // 10MB

@@ -50,9 +50,10 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
         }
 
         resultText += '📝 設定ファイルの重要な項目:\n\n';
-        resultText += '**files.include**: インデックス対象ファイルのパターン\n';
+        resultText += '**files.sources**: ドキュメントソースのパターン\n';
         resultText += '  - デフォルト: ["**/*.md", "docs/**/*.txt"]\n';
-        resultText += '  - プロジェクトに応じてパターンを調整してください\n\n';
+        resultText += '  - ** を含むパターン → 再帰監視（deep）\n';
+        resultText += '  - ** を含まないパターン → 直下のみ監視（shallow）\n\n';
         resultText += '**files.exclude**: 除外するファイルパターン\n';
         resultText += '  - デフォルト: node_modules, .git, dist, buildを除外\n';
         resultText += '  - 必要に応じて追加してください\n\n';

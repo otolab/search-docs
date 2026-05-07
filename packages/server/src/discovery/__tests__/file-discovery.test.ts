@@ -34,7 +34,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: [],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -50,7 +50,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -66,7 +66,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: [],
           ignoreGitignore: true,
           maxFileSize: 10 * 1024 * 1024,
@@ -82,7 +82,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md', '**/*.mdx'],
+          sources: ['**/*.md', '**/*.mdx'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -99,7 +99,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -116,7 +116,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: [],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -132,7 +132,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -149,7 +149,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: ['**/node_modules/**'],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
@@ -165,7 +165,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: TEST_DIR,
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: [],
           ignoreGitignore: true,
           maxFileSize: 10 * 1024 * 1024,
@@ -185,7 +185,7 @@ describe('FileDiscovery', () => {
       const discovery = new FileDiscovery({
         rootDir: path.join(TEST_DIR, 'nonexistent'),
         config: {
-          include: ['**/*.md'],
+          sources: ['**/*.md'],
           exclude: [],
           ignoreGitignore: false,
           maxFileSize: 10 * 1024 * 1024,
