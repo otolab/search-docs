@@ -70,7 +70,9 @@ export class FileWatcher extends EventEmitter {
 
     for (const subscribeRoot of subscribeRoots) {
       try {
-        if (!fs.existsSync(subscribeRoot)) {
+        try {
+          if (!fs.statSync(subscribeRoot).isDirectory()) continue;
+        } catch {
           continue;
         }
         const sub = await watcher.subscribe(subscribeRoot, callback, opts);
@@ -93,9 +95,13 @@ export class FileWatcher extends EventEmitter {
     }
     this.debounceTimers.clear();
 
-    // 全subscriptionを停止
+    // 全subscriptionを停止（途中の例外でリークしないよう個別にtry-catch）
     for (const sub of this.subscriptions) {
-      await sub.unsubscribe();
+      try {
+        await sub.unsubscribe();
+      } catch (err) {
+        this.emit('error', err);
+      }
     }
     this.subscriptions = [];
   }
