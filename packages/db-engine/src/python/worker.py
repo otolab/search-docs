@@ -69,6 +69,14 @@ def _escape_sql(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _escape_like(value: str) -> str:
+    """LIKE句用にメタ文字とシングルクォートをエスケープ"""
+    escaped = value.replace("'", "''")
+    escaped = escaped.replace("%", "\\%")
+    escaped = escaped.replace("_", "\\_")
+    return escaped
+
+
 class PerformanceLogger:
     """パフォーマンスログを定期的に出力するクラス"""
 
@@ -942,14 +950,14 @@ class SearchDocsWorker:
         if include_paths:
             # パス包含フィルタ（前方一致、OR形式）
             # 例: document_path LIKE 'docs/%' OR document_path LIKE 'README.md%'
-            path_conditions = [f"document_path LIKE '{_escape_sql(path)}%'" for path in include_paths]
+            path_conditions = [f"document_path LIKE '{_escape_like(path)}%'" for path in include_paths]
             filters.append(f"({' OR '.join(path_conditions)})")
 
         if exclude_paths:
             # パス除外フィルタ（前方一致、AND形式）
             # 例: document_path NOT LIKE 'docs/internal/%' AND document_path NOT LIKE 'temp/%'
             for path in exclude_paths:
-                filters.append(f"document_path NOT LIKE '{_escape_sql(path)}%'")
+                filters.append(f"document_path NOT LIKE '{_escape_like(path)}%'")
 
         if filters:
             search_query = search_query.where(" AND ".join(filters))
