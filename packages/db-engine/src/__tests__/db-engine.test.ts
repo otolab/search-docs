@@ -278,6 +278,64 @@ describe('DBEngine', () => {
     });
   });
 
+  describe('シングルクォートを含むパスの操作', () => {
+    const quotedPath = "/test/app's-notes/document.md";
+    const quotedHash = 'hash-quoted';
+
+    it('シングルクォートを含むパスでセクションを追加・取得できる', async () => {
+      await engine.addSections([{
+        id: 'quoted-section-1',
+        documentPath: quotedPath,
+        heading: "App's Notes",
+        depth: 1,
+        content: 'シングルクォートを含むパスのテスト',
+        tokenCount: 10,
+        parentId: null,
+        order: 0,
+        isDirty: false,
+        documentHash: quotedHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        startLine: 1,
+        endLine: 5,
+        sectionNumber: [1],
+      }]);
+
+      const result = await engine.getSectionsByPath(quotedPath);
+      expect(result.sections.length).toBe(1);
+      expect(result.sections[0].documentPath).toBe(quotedPath);
+    });
+
+    it('シングルクォートを含むパスでDirtyマークできる', async () => {
+      const result = await engine.markDirty(quotedPath);
+      expect(result.marked).toBe(true);
+    });
+
+    it('シングルクォートを含むパスでfindSectionsByPathAndHashできる', async () => {
+      const result = await engine.findSectionsByPathAndHash(quotedPath, quotedHash);
+      expect(result.length).toBe(1);
+    });
+
+    it('シングルクォートを含むパスでIndexRequestを操作できる', async () => {
+      const created = await engine.createIndexRequest({
+        documentPath: quotedPath,
+        documentHash: quotedHash,
+      });
+      expect(created.documentPath).toBe(quotedPath);
+
+      const found = await engine.findIndexRequests({ documentPath: quotedPath });
+      expect(found.length).toBeGreaterThan(0);
+    });
+
+    it('シングルクォートを含むパスでセクションを削除できる', async () => {
+      const result = await engine.deleteSectionsByPath(quotedPath);
+      expect(result.deleted).toBe(true);
+
+      const remaining = await engine.getSectionsByPath(quotedPath);
+      expect(remaining.sections.length).toBe(0);
+    });
+  });
+
   describe('Section拡張操作', () => {
     const testPath = '/test/hash-test.md';
     const hashV1 = 'hash-v1';
