@@ -64,6 +64,11 @@ from utils.batch_utils import create_token_aware_batches, get_batch_stats
 from utils.section_filter import filter_sections_by_token_limit, get_texts_to_encode
 
 
+def _escape_sql(value: str) -> str:
+    """SQLリテラル用にシングルクォートをエスケープ"""
+    return value.replace("'", "''")
+
+
 class PerformanceLogger:
     """パフォーマンスログを定期的に出力するクラス"""
 
@@ -937,14 +942,14 @@ class SearchDocsWorker:
         if include_paths:
             # パス包含フィルタ（前方一致、OR形式）
             # 例: document_path LIKE 'docs/%' OR document_path LIKE 'README.md%'
-            path_conditions = [f"document_path LIKE '{path}%'" for path in include_paths]
+            path_conditions = [f"document_path LIKE '{_escape_sql(path)}%'" for path in include_paths]
             filters.append(f"({' OR '.join(path_conditions)})")
 
         if exclude_paths:
             # パス除外フィルタ（前方一致、AND形式）
             # 例: document_path NOT LIKE 'docs/internal/%' AND document_path NOT LIKE 'temp/%'
             for path in exclude_paths:
-                filters.append(f"document_path NOT LIKE '{path}%'")
+                filters.append(f"document_path NOT LIKE '{_escape_sql(path)}%'")
 
         if filters:
             search_query = search_query.where(" AND ".join(filters))
@@ -982,7 +987,7 @@ class SearchDocsWorker:
             raise ValueError("documentPath parameter is required")
 
         table = self._get_sections_table()
-        results = table.search().where(f"document_path = '{document_path}'").to_list()
+        results = table.search().where(f"document_path = '{_escape_sql(document_path)}'").to_list()
 
         # 結果をフォーマット
         formatted_sections = [self.format_section(section) for section in results]
@@ -996,7 +1001,7 @@ class SearchDocsWorker:
             raise ValueError("sectionId parameter is required")
 
         table = self._get_sections_table()
-        results = table.search().where(f"id = '{section_id}'").to_list()
+        results = table.search().where(f"id = '{_escape_sql(section_id)}'").to_list()
 
         if not results:
             raise ValueError(f"Section not found: {section_id}")
@@ -1010,7 +1015,7 @@ class SearchDocsWorker:
             raise ValueError("documentPath parameter is required")
 
         table = self._get_sections_table()
-        table.delete(f"document_path = '{document_path}'")
+        table.delete(f"document_path = '{_escape_sql(document_path)}'")
         self._maybe_optimize(table,"sections")
 
         return {"deleted": True}
@@ -1032,7 +1037,7 @@ class SearchDocsWorker:
         limit = params.get("limit", 1)
 
         results = table.search()\
-            .where(f"document_path = '{document_path}' AND document_hash = '{document_hash}'")\
+            .where(f"document_path = '{_escape_sql(document_path)}' AND document_hash = '{_escape_sql(document_hash)}'")\
             .limit(limit)\
             .to_list()
 
@@ -1054,7 +1059,7 @@ class SearchDocsWorker:
         table = self._get_sections_table()
 
         # 指定したhash以外を削除
-        table.delete(f"document_path = '{document_path}' AND document_hash != '{document_hash}'")
+        table.delete(f"document_path = '{_escape_sql(document_path)}' AND document_hash != '{_escape_sql(document_hash)}'")
         self._maybe_optimize(table,"sections")
 
         return {"deleted": True}
@@ -1068,7 +1073,7 @@ class SearchDocsWorker:
         table = self._get_sections_table()
         # LanceDBの更新操作
         table.update(
-            where=f"document_path = '{document_path}'",
+            where=f"document_path = '{_escape_sql(document_path)}'",
             values={"is_dirty": True}
         )
         self._maybe_optimize(table,"sections")
@@ -1169,19 +1174,19 @@ class SearchDocsWorker:
         where_clauses = []
 
         if "document_path" in params:
-            where_clauses.append(f"document_path = '{params['document_path']}'")
+            where_clauses.append(f"document_path = '{_escape_sql(params['document_path'])}'")
 
         if "document_hash" in params:
-            where_clauses.append(f"document_hash = '{params['document_hash']}'")
+            where_clauses.append(f"document_hash = '{_escape_sql(params['document_hash'])}'")
 
         if "status" in params:
             status = params["status"]
             if isinstance(status, list):
                 # 複数のstatusをORで結合
-                status_clauses = [f"status = '{s}'" for s in status]
+                status_clauses = [f"status = '{_escape_sql(s)}'" for s in status]
                 where_clauses.append(f"({' OR '.join(status_clauses)})")
             else:
-                where_clauses.append(f"status = '{status}'")
+                where_clauses.append(f"status = '{_escape_sql(status)}'")
 
         # クエリの実行
         query = table.search()
@@ -1228,19 +1233,19 @@ class SearchDocsWorker:
         where_clauses = []
 
         if "document_path" in params:
-            where_clauses.append(f"document_path = '{params['document_path']}'")
+            where_clauses.append(f"document_path = '{_escape_sql(params['document_path'])}'")
 
         if "document_hash" in params:
-            where_clauses.append(f"document_hash = '{params['document_hash']}'")
+            where_clauses.append(f"document_hash = '{_escape_sql(params['document_hash'])}'")
 
         if "status" in params:
             status = params["status"]
             if isinstance(status, list):
                 # 複数のstatusをORで結合
-                status_clauses = [f"status = '{s}'" for s in status]
+                status_clauses = [f"status = '{_escape_sql(s)}'" for s in status]
                 where_clauses.append(f"({' OR '.join(status_clauses)})")
             else:
-                where_clauses.append(f"status = '{status}'")
+                where_clauses.append(f"status = '{_escape_sql(status)}'")
 
         # count_rows()を使用（インデックスが利用される）
         if where_clauses:
@@ -1271,13 +1276,13 @@ class SearchDocsWorker:
 
         # 更新実行
         table.update(
-            where=f"id = '{request_id}'",
+            where=f"id = '{_escape_sql(request_id)}'",
             values=updates
         )
         self._maybe_optimize(table,"index_requests")
 
         # 更新後のオブジェクトを取得して返す
-        df = table.search().where(f"id = '{request_id}'").limit(1).to_pandas()
+        df = table.search().where(f"id = '{_escape_sql(request_id)}'").limit(1).to_pandas()
         if len(df) == 0:
             raise ValueError(f"Request not found after update: {request_id}")
 
@@ -1307,10 +1312,10 @@ class SearchDocsWorker:
         where_clauses = []
 
         if "document_path" in filter_params:
-            where_clauses.append(f"document_path = '{filter_params['document_path']}'")
+            where_clauses.append(f"document_path = '{_escape_sql(filter_params['document_path'])}'")
 
         if "status" in filter_params:
-            where_clauses.append(f"status = '{filter_params['status']}'")
+            where_clauses.append(f"status = '{_escape_sql(filter_params['status'])}'")
 
         if "created_at" in filter_params:
             created_at = filter_params["created_at"]
@@ -1350,7 +1355,7 @@ class SearchDocsWorker:
         table = self._get_index_requests_table()
 
         # statusフィルタの構築
-        status_clauses = [f"status = '{s}'" for s in statuses]
+        status_clauses = [f"status = '{_escape_sql(s)}'" for s in statuses]
         where_str = " OR ".join(status_clauses)
 
         # クエリ実行（document_pathカラムのみ取得でメモリ効率化）
