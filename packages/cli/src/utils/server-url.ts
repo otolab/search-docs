@@ -2,7 +2,7 @@
  * サーバURL解決ユーティリティ
  */
 
-import { ConfigLoader } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/config';
 
 /**
  * サーバURL解決オプション

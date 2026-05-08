@@ -29,6 +29,7 @@
     "@modelcontextprotocol/sdk": "1.20.2",
     "@search-docs/cli": "workspace:*",
     "@search-docs/client": "workspace:*",
+    "@search-docs/config": "workspace:*",
     "@search-docs/db-engine": "workspace:*",
     "@search-docs/server": "workspace:*",
     "@search-docs/storage": "workspace:*",

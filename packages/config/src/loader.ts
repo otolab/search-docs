@@ -1,8 +1,8 @@
 import { readFile, access } from 'fs/promises';
 import { constants } from 'fs';
 import * as path from 'path';
-import type { SearchDocsConfig, FilesConfig } from '../config.js';
-import { DEFAULT_CONFIG } from '../config.js';
+import type { SearchDocsConfig, FilesConfig } from '@search-docs/types';
+import { DEFAULT_CONFIG } from '@search-docs/types';
 import { validateConfig } from './validator.js';
 
 export interface ConfigDeprecation {
