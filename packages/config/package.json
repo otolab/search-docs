@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/config",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "設定ファイルの読み込み・バリデーション",
   "type": "module",
   "main": "dist/index.js",
