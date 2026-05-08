@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkConfigDeprecations } from '@search-docs/types';
+import { checkConfigDeprecations } from '@search-docs/config';
 
 describe('checkConfigDeprecations', () => {
   it('include のみ → 非推奨警告を返す', () => {

@@ -1,0 +1,41 @@
+{
+  "name": "@search-docs/config",
+  "version": "1.0.0",
+  "description": "設定ファイルの読み込み・バリデーション",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build --force",
+    "clean": "tsc --build --clean",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "build:fast": "tsc --build",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@search-docs/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.12"
+  },
+  "keywords": [
+    "config",
+    "configuration",
+    "search-docs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/config"
+  }
+}

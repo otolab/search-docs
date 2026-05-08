@@ -6,7 +6,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createWriteStream, type WriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
-import { ConfigLoader } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/config';
 import {
   readPidFile,
   deletePidFile,

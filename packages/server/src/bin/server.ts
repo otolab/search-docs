@@ -8,7 +8,8 @@ import * as path from 'path';
 import { readFileSync } from 'fs';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
-import { ConfigLoader, type PidFileContent } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/config';
+import type { PidFileContent } from '@search-docs/types';
 import { SearchDocsServer, JsonRpcServer, WatcherProcess, EmbeddingServerProcess } from '../index.js';
 import {
   writePidFile,

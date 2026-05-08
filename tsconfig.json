@@ -3,6 +3,7 @@
   "include": [],
   "references": [
     { "path": "packages/types" },
+    { "path": "packages/config" },
     { "path": "packages/storage" },
     { "path": "packages/db-engine" },
     { "path": "packages/server" },

@@ -5,10 +5,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { detectSystemState, getStateErrorMessage } from '../state.js';
 import type { SystemState } from '../state.js';
-import { ConfigLoader } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/config';
 
 // モック
-vi.mock('@search-docs/types');
+vi.mock('@search-docs/config');
 
 describe('state', () => {
   describe('detectSystemState', () => {

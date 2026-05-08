@@ -2,7 +2,7 @@
  * server status コマンド
  */
 
-import { ConfigLoader } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/config';
 import { SearchDocsClient } from '@search-docs/client';
 import { readPidFile } from '../../utils/pid.js';
 import { isProcessAlive, checkServerHealth } from '../../utils/process.js';

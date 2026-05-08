@@ -3,7 +3,8 @@
  */
 
 import * as path from 'path';
-import { ConfigLoader, type ConfigDeprecation, type SearchDocsConfig, type SearchDocsService } from '@search-docs/types';
+import { ConfigLoader, type ConfigDeprecation } from '@search-docs/config';
+import type { SearchDocsConfig, SearchDocsService } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess } from '@search-docs/server';

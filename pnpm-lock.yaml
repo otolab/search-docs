@@ -38,6 +38,9 @@ importers:
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
+      '@search-docs/config':
+        specifier: workspace:*
+        version: link:../config
       '@search-docs/server':
         specifier: workspace:*
         version: link:../server
@@ -53,6 +56,16 @@ importers:
         version: 22.18.12
 
   packages/client:
+    dependencies:
+      '@search-docs/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: 22.18.12
+        version: 22.18.12
+
+  packages/config:
     dependencies:
       '@search-docs/types':
         specifier: workspace:*
@@ -86,6 +99,9 @@ importers:
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
+      '@search-docs/config':
+        specifier: workspace:*
+        version: link:../config
       '@search-docs/db-engine':
         specifier: workspace:*
         version: link:../db-engine
@@ -117,6 +133,9 @@ importers:
       '@parcel/watcher':
         specifier: 2.5.6
         version: 2.5.6
+      '@search-docs/config':
+        specifier: workspace:*
+        version: link:../config
       '@search-docs/db-engine':
         specifier: workspace:*
         version: link:../db-engine

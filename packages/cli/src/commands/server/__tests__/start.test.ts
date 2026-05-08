@@ -7,7 +7,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { startServer } from '../start.js';
 import { writePidFile, deletePidFile } from '../../../utils/pid.js';
-import { ConfigLoader } from '@search-docs/types';
+import { ConfigLoader } from '@search-docs/config';
 
 describe('server start - ログ記録', () => {
   let testDir: string;
