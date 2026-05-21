@@ -38,7 +38,7 @@ describe('MCP Server ライフサイクルテスト', () => {
       const content = (result.result as MCPToolResult)?.content?.[0]?.text;
 
       expect(content).toContain('✅ 設定ファイルの初期化が完了しました');
-      expect(content).toContain('📝 設定ファイルの重要な項目');
+      expect(content).toContain('設定リファレンス');
     });
   });
 

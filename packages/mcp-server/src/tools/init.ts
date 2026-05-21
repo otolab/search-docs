@@ -17,7 +17,7 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
     'init',
     {
       description:
-        'search-docsの設定ファイルを初期化します。プロジェクトで初めてsearch-docsを使用する際に実行してください。主要な設定項目の説明と次のステップが返されます。',
+        'search-docsの設定ファイルを初期化します。ローカルプロジェクトの文書を検索対象にする場合に実行してください。',
       inputSchema: {
         port: z
           .number()
@@ -49,27 +49,11 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
           resultText += '既存の設定ファイルを上書きしました。\n\n';
         }
 
-        resultText += '📝 設定ファイルの重要な項目:\n\n';
-        resultText += '**files.sources**: ドキュメントソースのパターン\n';
-        resultText += '  - デフォルト: ["**/*.md", "docs/**/*.txt"]\n';
-        resultText += '  - ** を含むパターン → 再帰監視（deep）\n';
-        resultText += '  - ** を含まないパターン → 直下のみ監視（shallow）\n\n';
-        resultText += '**files.exclude**: 除外するファイルパターン\n';
-        resultText += '  - デフォルト: node_modules, .git, dist, buildを除外\n';
-        resultText += '  - 必要に応じて追加してください\n\n';
-        resultText += '**indexing.maxDepth**: セクション分割の最大深度（0-3）\n';
-        resultText += '  - 0: 文書全体のみ\n';
-        resultText += '  - 1: 章レベルまで分割\n';
-        resultText += '  - 2: 節レベルまで分割\n';
-        resultText += '  - 3: 項レベルまで分割（デフォルト）\n\n';
-        resultText += '**indexing.maxTokensPerSection**: セクションの最大トークン数\n';
-        resultText += '  - デフォルト: 2000トークン\n';
-        resultText += '  - 大きくすると粗い分割、小さくすると細かい分割になります\n\n';
         resultText += '次のステップ:\n';
         resultText += '  1. 設定を調整（必要に応じて）: .search-docs/config.json を編集\n';
-        resultText += '  2. **Claude Codeを再接続してツールリストを更新**\n';
-        resultText += '  3. システム状態を確認: get_system_status\n';
-        resultText += '  4. 文書を検索: search\n';
+        resultText += '  2. Claude Codeを再接続してツールリストを更新\n';
+        resultText += '  3. システム状態を確認: get_system_status\n\n';
+        resultText += '設定項目の詳細はMCPリソース「設定リファレンス」を参照してください。\n';
 
         return {
           content: [

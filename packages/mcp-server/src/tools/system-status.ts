@@ -15,7 +15,7 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
     'get_system_status',
     {
       description:
-        'search-docsの全体状態を確認します。初回セットアップ時や動作確認に使用してください。設定状態、サーバ起動状態、インデックス情報、関連プロジェクト一覧が返されます。',
+        'search-docsの全体状態を確認します。設定状態、インデックス情報、関連プロジェクト一覧が返されます。',
       inputSchema: {},
     },
     async () => {
@@ -23,11 +23,12 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
 
       switch (systemState.state) {
         case 'NOT_CONFIGURED': {
-          statusText += '状態: 未設定\n\n';
-          statusText += 'search-docsがまだセットアップされていません。\n\n';
-          statusText += 'セットアップ方法:\n';
-          statusText += '  - 設定ファイルを作成: init\n';
-          statusText += '  - 関連プロジェクトを追加: add_related_project（dirでローカル追加、urlで起動済みサーバに接続）\n';
+          statusText += '状態: ローカルプロジェクト未設定\n\n';
+          statusText += 'ローカルプロジェクトは設定されていませんが、関連プロジェクトの追加・検索は利用可能です。\n\n';
+          statusText += '利用可能なオプション:\n';
+          statusText += '  - ローカルプロジェクトを設定: init\n';
+          statusText += '  - 関連プロジェクトを追加: add_related_project\n';
+          statusText += '  - 詳しくはMCPリソース「search-docsをはじめる」を参照\n';
 
           // 一時追加の関連プロジェクトがあれば表示
           const notConfiguredRelated = context.serverManager.getAllRelatedProjects();

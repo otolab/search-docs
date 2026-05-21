@@ -50,7 +50,7 @@ export function registerIndexStatusTool(context: ToolRegistrationContext): Regis
     'index_status',
     {
       description:
-        'インデックスの詳細な状態を確認します。文書の更新反映を待っているときや、ワーカーの動作状況を確認したいときに使用します。文書数、セクション数、Dirty数、ワーカー状態が返されます。',
+        'インデックスの詳細な状態を確認します。文書数、セクション数、Dirty数、ワーカー状態が返されます。',
       inputSchema: {
         project: z
           .string()

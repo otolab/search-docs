@@ -18,7 +18,7 @@ export function registerGetDocumentTool(context: ToolRegistrationContext): Regis
     'get_document',
     {
       description:
-        '文書の内容を取得します。searchで見つけたセクションの全文を読む場合はsectionIdを、文書全体を読む場合はpathを指定します。コンテンツ全文が返されます。',
+        '文書の内容を取得します。セクションの全文はsectionId、文書全体はpathを指定します。',
       inputSchema: {
         path: z.string().optional().describe('文書パス（sectionIdを指定しない場合は必須）'),
         sectionId: z.string().optional().describe('セクションID（検索結果から取得。pathを指定しない場合は必須）'),
