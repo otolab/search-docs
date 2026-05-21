@@ -121,7 +121,7 @@ describe('state', () => {
       const message = getStateErrorMessage('NOT_CONFIGURED', '検索');
 
       expect(message).toContain('検索を実行できません');
-      expect(message).toContain('セットアップされていません');
+      expect(message).toContain('ローカルプロジェクトが設定されていない');
       expect(message).toContain('init');
       expect(message).toContain('add_related_project');
     });

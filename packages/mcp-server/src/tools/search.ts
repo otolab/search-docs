@@ -18,7 +18,7 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
     'search',
     {
       description:
-        'プロジェクトのドキュメントから情報を効率的に探せます。Markdown等のインデックス済みファイルからVector検索で関連するセクションが関連性順で返されます。各結果には見出し、セクションID、ファイルパス、行範囲、プレビューが含まれます。',
+        'ドキュメントをVector検索します。関連するセクションが関連性順で返されます。',
       inputSchema: {
         query: z.string().describe('検索クエリ'),
         project: z

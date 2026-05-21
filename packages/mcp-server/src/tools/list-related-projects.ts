@@ -15,7 +15,7 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
     'list_related_projects',
     {
       description:
-        '設定ファイルで定義された関連プロジェクトの一覧を取得します。他プロジェクトの文書を検索・参照する前に、利用可能なプロジェクト名を確認するために使用します。各プロジェクトの名前、説明、サーバ起動状態が返されます。',
+        '関連プロジェクトの一覧を取得します。設定ファイルで定義されたものとadd_related_projectで追加されたものの両方を表示します。',
       inputSchema: {},
     },
     async () => {
@@ -25,8 +25,8 @@ export function registerListRelatedProjectsTool(context: ToolRegistrationContext
       const allRelatedProjects = context.serverManager.getAllRelatedProjects(systemState.config?.relatedProjects);
       if (Object.keys(allRelatedProjects).length === 0) {
         resultText += '📋 関連プロジェクト\n\n';
-        resultText += '関連プロジェクトは設定されていません。\n\n';
-        resultText += '設定ファイルで関連プロジェクトを定義することで、複数のプロジェクトを検索できます。\n';
+        resultText += '関連プロジェクトはありません。\n\n';
+        resultText += 'add_related_projectで追加するか、設定ファイルで定義できます。\n';
 
         return {
           content: [

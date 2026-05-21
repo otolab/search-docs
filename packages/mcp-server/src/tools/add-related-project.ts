@@ -17,8 +17,7 @@ export function registerAddRelatedProjectTool(context: ToolRegistrationContext):
     'add_related_project',
     {
       description:
-        '関連プロジェクトを一時的に追加します。追加されたプロジェクトはセッション中のみ有効で、設定ファイルには保存されません。\n' +
-        '起動済みのsearch-docsサーバに接続します。対象プロジェクトで `search-docs server start` を実行してからURLを指定してください（Docker環境ではlocalhostを自動でhost.docker.internalに補正します）',
+        '関連プロジェクトを一時的に追加します（セッション中のみ有効）。対象プロジェクトの起動済みsearch-docsサーバURLを指定してください。',
       inputSchema: {
         name: z.string().describe('プロジェクト名（一意の識別子）'),
         url: z.string().describe('起動済みサーバのURL（例: http://localhost:<port>）'),
