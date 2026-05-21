@@ -55,7 +55,7 @@ describe('MCP Server 状態確認テスト', () => {
       const content = (result.result as MCPToolResult)?.content?.[0]?.text;
 
       expect(content).toBeDefined();
-      expect(content).toContain('状態: 未設定');
+      expect(content).toContain('状態: ローカルプロジェクト未設定');
     });
   });
 

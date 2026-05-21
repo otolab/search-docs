@@ -160,10 +160,11 @@ export function getStateErrorMessage(state: SystemState, action: string, related
   switch (state) {
     case 'NOT_CONFIGURED': {
       let message =
-        `${action}を実行できません。search-docsがまだセットアップされていません。\n\n` +
-        'セットアップ方法:\n' +
-        '  - 設定ファイルを作成: init\n' +
-        '  - 関連プロジェクトを追加: add_related_project\n';
+        `ローカルプロジェクトが設定されていないため、${action}を実行できません。\n\n` +
+        '利用可能なオプション:\n' +
+        '  - ローカルプロジェクトを設定: init\n' +
+        '  - 関連プロジェクトを追加して検索: add_related_project\n' +
+        '  - 詳しくはMCPリソース「search-docsをはじめる」を参照\n';
 
       if (relatedProjectNames && relatedProjectNames.length > 0) {
         message += `\n利用可能な関連プロジェクト: ${relatedProjectNames.join(', ')}\n`;

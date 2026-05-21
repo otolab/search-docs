@@ -23,6 +23,7 @@ import {
   registerAddRelatedProjectTool,
   type RegisteredTool,
 } from './tools/index.js';
+import { registerResources } from './resources/index.js';
 
 // package.jsonからバージョンを読み込む
 const require = createRequire(import.meta.url);
@@ -168,7 +169,13 @@ async function main() {
     {
       capabilities: {
         tools: {},
+        resources: {},
       },
+      instructions: [
+        'search-docsはプロジェクト内のドキュメントを高速・効率的に検索するシステムです。',
+        'システムの設計や背景知識を探したいときや、ドキュメントのメンテナンス時の作業を強力にアシストします。',
+        '詳しい使い方や設定はこのMCPサーバーのリソース（resources/list）を参照してください。',
+      ].join('\n'),
     }
   );
 
@@ -212,6 +219,9 @@ async function main() {
 
   // ツール登録コンテキスト
   const context = { server, systemState, refreshSystemState, serverManager };
+
+  // リソース登録
+  registerResources(server);
 
   // 全ツールを登録
   debugLog('Registering all tools...');
