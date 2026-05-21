@@ -45,9 +45,13 @@ MCP Server (stdio)
 
 ## Docker構成
 
-1イメージ・2モード:
-- **MCPサーバモード**（デフォルト）: WatcherProcess内蔵、Embedding自動検出・起動
-- **Embeddingサーバモード**（\`--mode=embedding-server\`）: HTTPで待ち受け、複数MCPサーバから共有利用
+DockerイメージはMCPサーバとして動作します。WatcherProcessを内蔵し、Embeddingサーバを自動検出・起動します。
+
+GPU（CoreML/Metal）を活用する場合は、Embeddingサーバをホスト側で起動し、Docker MCPサーバーから接続します:
+\`\`\`
+ホスト: search-docs embedding start
+Docker: EMBEDDING_URL=http://host.docker.internal:24281
+\`\`\`
 
 ## データモデル
 
