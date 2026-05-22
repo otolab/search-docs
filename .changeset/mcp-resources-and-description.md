@@ -1,5 +1,5 @@
 ---
-"@search-docs/mcp-server": minor
+"@search-docs/mcp-server": patch
 ---
 
 feat: MCPリソース追加とdescription/メッセージ整理 (#108)
