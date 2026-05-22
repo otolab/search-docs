@@ -1,5 +1,16 @@
 # @search-docs/mcp-server
 
+## 1.9.2
+
+### Patch Changes
+
+- 23ef9ae: feat: MCP リソース追加と description/メッセージ整理 (#108)
+
+  - MCP サーバーに instructions を追加（サーバー接続時にシステムプロンプトに表示）
+  - MCP リソース 4 種を実装: getting-started, architecture, usage, config-reference
+  - NOT_CONFIGURED 時のメッセージを改善し、関連プロジェクトが利用可能であることを明示
+  - 全ツールの description をコンパクトに簡素化、詳細は MCP リソースへ誘導
+
 ## 1.9.1
 
 ### Patch Changes
