@@ -107,7 +107,7 @@ describe('index_status tool', () => {
     registerIndexStatusTool(context);
 
     // ツールハンドラを実行
-    await expect(registeredTool.handler({})).rejects.toThrow('セットアップされていません');
+    await expect(registeredTool.handler({})).rejects.toThrow('ローカルプロジェクトが設定されていない');
   });
 
   it('service.getStatus()がエラーの場合、エラーを返す', async () => {

@@ -17,7 +17,7 @@ export function registerGetOutlineTool(context: ToolRegistrationContext): Regist
     'get_outline',
     {
       description:
-        '文書の目次構造をトークン数付きで一覧表示します。少ないトークン消費で文書の全体像を把握でき、記述量バランスの確認や読むべきセクションの特定に使えます。各セクションの見出し、行範囲、トークン数、セクションIDが返されます。',
+        '文書の目次構造をトークン数付きで一覧表示します。文書の全体像把握や記述量バランスの確認に使えます。',
       inputSchema: {
         path: z.string().optional().describe('文書パス（sectionIdを指定しない場合は必須）'),
         sectionId: z.string().optional().describe('セクションID（指定した場合、そのセクション配下のみ表示）'),
