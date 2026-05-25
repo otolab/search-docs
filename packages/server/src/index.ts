@@ -12,3 +12,4 @@ export { MarkdownSplitter } from './splitter/markdown-splitter.js';
 export { TokenCounter } from './splitter/token-counter.js';
 export { WatcherProcess } from './watcher/watcher-process.js';
 export { EmbeddingServerProcess, type EmbeddingServerOptions } from './embedding/index.js';
+export { setupLogRedirect } from './utils/log-redirect.js';

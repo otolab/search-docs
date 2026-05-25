@@ -9,6 +9,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Command } from 'commander';
 import { createRequire } from 'module';
 import * as path from 'path';
+import { setupLogRedirect } from '@search-docs/server';
 
 import { detectSystemState, createService, stopService, type SystemState, type ServiceInstances } from './state.js';
 import { ServerManager } from './server-manager.js';
@@ -135,6 +136,12 @@ async function main() {
 
   // プロジェクトディレクトリを決定
   const cwd = projectDir || process.cwd();
+
+  // ログリダイレクト設定（console.log/error/warnをファイルに転送）
+  const logPath = process.env.SEARCH_DOCS_LOG_PATH
+    || path.join(cwd, '.search-docs', 'server.log');
+  setupLogRedirect(logPath);
+
   debugLog(`Working directory: ${cwd}`);
 
   // システム状態を判定
