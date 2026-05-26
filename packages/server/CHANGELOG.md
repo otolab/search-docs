@@ -1,5 +1,11 @@
 # @search-docs/server
 
+## 1.5.2
+
+### Patch Changes
+
+- 967a4f1: MCP サーバに setupLogRedirect を適用し、console 出力をログファイルに転送
+
 ## 1.5.1
 
 ### Patch Changes

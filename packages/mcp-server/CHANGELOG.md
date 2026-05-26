@@ -1,5 +1,14 @@
 # @search-docs/mcp-server
 
+## 1.9.3
+
+### Patch Changes
+
+- 967a4f1: MCP サーバに setupLogRedirect を適用し、console 出力をログファイルに転送
+- Updated dependencies [967a4f1]
+  - @search-docs/server@1.5.2
+  - @search-docs/cli@1.2.2
+
 ## 1.9.2
 
 ### Patch Changes
