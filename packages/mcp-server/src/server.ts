@@ -23,6 +23,7 @@ import {
   registerListRelatedProjectsTool,
   registerAddRelatedProjectTool,
   registerMaintenanceRepairTool,
+  registerIndexPurgeTool,
   type RegisteredTool,
 } from './tools/index.js';
 import { registerResources } from './resources/index.js';
@@ -100,6 +101,7 @@ interface ToolHandles {
   listRelatedProjects: RegisteredTool;
   addRelatedProject: RegisteredTool;
   maintenanceRepair: RegisteredTool;
+  indexPurge: RegisteredTool;
 }
 
 /**
@@ -127,6 +129,7 @@ function updateToolAvailability(_state: SystemState, handles: ToolHandles): void
   handles.listRelatedProjects.enable();
   handles.addRelatedProject.enable();
   handles.maintenanceRepair.enable();
+  handles.indexPurge.enable();
   debugLog('All tools enabled (state check delegated to each tool)');
 }
 
@@ -251,6 +254,7 @@ async function main() {
     listRelatedProjects: registerListRelatedProjectsTool(context),
     addRelatedProject: registerAddRelatedProjectTool(context),
     maintenanceRepair: registerMaintenanceRepairTool(context),
+    indexPurge: registerIndexPurgeTool(context),
   };
 
   // 初期状態に応じてツールの有効/無効を設定
