@@ -538,13 +538,14 @@ class SearchDocsWorker:
             raise
 
     OPTIMIZE_INTERVAL = 20
+    CLEANUP_OLDER_THAN = timedelta(minutes=10)
 
     def _maybe_optimize(self, table, table_name: str) -> None:
         """書き込み回数に応じてスカラーインデックスを増分更新"""
         self._write_counts[table_name] = self._write_counts.get(table_name, 0) + 1
         if self._write_counts[table_name] % self.OPTIMIZE_INTERVAL == 0:
             try:
-                table.optimize(cleanup_older_than=timedelta(days=0))
+                table.optimize(cleanup_older_than=self.CLEANUP_OLDER_THAN)
             except Exception as e:
                 sys.stderr.write(f"[Optimize] Warning: {table_name} optimize failed: {e}\n")
                 sys.stderr.flush()

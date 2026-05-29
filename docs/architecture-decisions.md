@@ -2100,3 +2100,96 @@ systems/ → app-a/docs/ → deep
 - 実装: `packages/server/src/discovery/watch-targets.ts`
 - 関連Issue: #99
 - 関連PR: #100
+
+## ADR-020: LanceDB最適化処理（optimize/cleanup）の安全な運用
+
+### ステータス
+
+承認済み（2026-05-29）
+
+### コンテキスト
+
+ホスト側とDockerコンテナの両方でsearch-docsを動かす環境で、LanceDBのBITMAPインデックスファイルが見つからないエラーが発生した。
+
+```
+LanceError(IO): Object at location .../index_requests.lance/_indices/<uuid>/bitmap_page_lookup.lance not found
+```
+
+原因は `_maybe_optimize()` で使用していた `cleanup_older_than=timedelta(days=0)` にあった。
+
+### `table.optimize()` の動作
+
+`optimize()` は3つの操作を一括実行する:
+
+1. **Compaction**: 小さいデータファイルを大きなファイルにマージ
+2. **Index最適化**: スカラーインデックス（BTREE/BITMAP）の増分更新
+3. **Prune**: `cleanup_older_than` より古いバージョンのファイル（データ + インデックス）を物理削除
+
+`cleanup_older_than=timedelta(days=0)` は最新バージョン以外の全ファイルを即座に削除する。
+
+### `compact_files()` と `cleanup_old_versions()` の違い
+
+| 操作 | ファイルマージ | 古いファイル削除 | ディスク使用量 |
+|------|-------------|----------------|-------------|
+| `compact_files()` | する | しない | 一時的に増加 |
+| `cleanup_old_versions(older_than)` | しない | する | 減少 |
+| `optimize(cleanup_older_than)` | 両方 | 両方 | 増減あり |
+
+### 問題のメカニズム
+
+LanceDBはMVCC（Multi-Version Concurrency Control）を使用しており、各書き込みで新しいバージョンを作成する。リーダーは `read_consistency_interval` ごとに最新バージョンに追従する。
+
+```
+Writer: optimize(cleanup_older_than=0)
+  → 古いバージョンのインデックスファイルを即座に削除
+  → bitmap_page_lookup.lance 消滅
+
+Reader: read_consistency_interval=5s（まだ古いバージョンを参照中）
+  → findIndexRequests()
+  → bitmap_page_lookup.lance → File not found!
+```
+
+現場では index_requests テーブルの `_indices/` 配下に504個の空UUIDディレクトリが残存していた（ファイルだけ削除され、ディレクトリが残った痕跡）。
+
+### 決定
+
+**`cleanup_older_than` を `timedelta(minutes=10)` に変更する。**
+
+```python
+CLEANUP_OLDER_THAN = timedelta(minutes=10)
+
+def _maybe_optimize(self, table, table_name: str) -> None:
+    ...
+    table.optimize(cleanup_older_than=self.CLEANUP_OLDER_THAN)
+```
+
+### 根拠
+
+- LanceDB公式の最小推奨値は10分（[GitHub Discussion #5036](https://github.com/lance-format/lance/discussions/5036)）
+- `cleanup_older_than=0` は進行中のトランザクション参照ファイルも削除する（[GitHub Issue #2470](https://github.com/lancedb/lancedb/issues/2470)）
+- 安全な値の計算式: `read_consistency_interval × 2 + 典型的な書き込み時間` 以上
+- search-docsでは: `5s × 2 + embedding処理時間（数秒〜数十秒）` → 10分は十分な猶予
+
+### search-docsでの最適化処理の全体像
+
+| 処理 | 間隔 | 対象テーブル | 目的 |
+|------|------|------------|------|
+| `_maybe_optimize()` | 20回書き込みごと | 全テーブル | compaction + index最適化 + prune |
+| `compact_files()` | 100回add_sectionsごと | sections | 断片化防止 |
+
+### 結果
+
+**ポジティブ**:
+- マルチプロセス環境でのインデックス破損を防止
+- 古いバージョンのファイルは10分後に安全に削除される
+- ディスク使用量は一時的に増加するが、10分以内に回収される
+
+**ネガティブ**:
+- ディスク使用量が `timedelta(days=0)` 時と比較してわずかに増加（10分分のバージョン）
+
+### 参考情報
+
+- LanceDB Versioning: https://docs.lancedb.com/tables/versioning
+- LanceDB Consistency: https://lancedb.com/docs/tables/consistency/
+- 関連ADR: ADR-016（LanceDBインデックス戦略）
+- 関連タスク: task27（optimize()呼び出し頻度の適正化）、task46（本調査）
