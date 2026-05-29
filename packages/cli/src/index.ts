@@ -165,6 +165,14 @@ indexCmd
   });
 
 indexCmd
+  .command('purge')
+  .description('インデックスファイルを削除')
+  .action(async () => {
+    const { executeIndexPurge } = await import('./commands/index/purge.js');
+    await executeIndexPurge({ config: globalConfigPath });
+  });
+
+indexCmd
   .command('status')
   .description('インデックスのステータスを確認')
   .option('--server <url>', 'サーバURL')
