@@ -101,6 +101,20 @@ export interface StatsResponse {
   totalDocuments: number;
 }
 
+export interface RepairTableResult {
+  status: 'ok' | 'missing' | 'corrupted';
+  action?: 'created' | 'dropped_and_recreated' | 'drop_failed';
+  error?: string;
+  dropError?: string;
+}
+
+export interface RepairTablesResponse {
+  tables: Record<string, RepairTableResult>;
+  repairedCount: number;
+  createdCount?: number;
+  initTablesError?: string;
+}
+
 // Python形式のセクション（snake_case）
 interface PythonSection {
   id: string;
@@ -253,7 +267,7 @@ export class DBEngine extends EventEmitter {
   /**
    * データベースに接続
    */
-  async connect(): Promise<void> {
+  async connect(options?: { skipInitModel?: boolean }): Promise<void> {
     console.log('[DBEngine.connect] Starting connection...');
 
     if (this.worker && this.isReady) {
@@ -465,37 +479,44 @@ export class DBEngine extends EventEmitter {
       throw new Error(String(error));
     }
 
-    // モデルの初期化を確認
-    console.log('[DBEngine.connect] Initializing embedding model...');
-    this.connectionState = 'initializing_model';
-
-    try {
-      const initResult = await this.initModel();
-      if (!initResult.success) {
-        const error = new Error(
-          `Failed to initialize embedding model: ${initResult.model_name}. ` +
-          'Vector search will not function properly. ' +
-          'Please ensure all Python dependencies (protobuf, sentencepiece) are installed.'
-        );
-        this.connectionState = 'error';
-        this.connectionError = error;
-        this.rejectConnected(error);
-        throw error;
-      }
-      console.log(`[DBEngine.connect] Embedding model initialized: ${initResult.model_name} (${initResult.dimension}d)`);
-
-      // 接続完了
+    if (options?.skipInitModel) {
+      // メンテナンス用: embedding model なしで接続完了
+      console.log('[DBEngine.connect] Skipping initModel (maintenance mode)');
       this.connectionState = 'ready';
       this.resolveConnected();
+    } else {
+      // モデルの初期化を確認
+      console.log('[DBEngine.connect] Initializing embedding model...');
+      this.connectionState = 'initializing_model';
 
-      // メモリ監視を開始
-      this.startMemoryMonitoring();
-    } catch (error) {
-      // initModelでエラーが発生した場合
-      this.connectionState = 'error';
-      this.connectionError = error instanceof Error ? error : new Error(String(error));
-      this.rejectConnected(this.connectionError);
-      throw error;
+      try {
+        const initResult = await this.initModel();
+        if (!initResult.success) {
+          const error = new Error(
+            `Failed to initialize embedding model: ${initResult.model_name}. ` +
+            'Vector search will not function properly. ' +
+            'Please ensure all Python dependencies (protobuf, sentencepiece) are installed.'
+          );
+          this.connectionState = 'error';
+          this.connectionError = error;
+          this.rejectConnected(error);
+          throw error;
+        }
+        console.log(`[DBEngine.connect] Embedding model initialized: ${initResult.model_name} (${initResult.dimension}d)`);
+
+        // 接続完了
+        this.connectionState = 'ready';
+        this.resolveConnected();
+
+        // メモリ監視を開始
+        this.startMemoryMonitoring();
+      } catch (error) {
+        // initModelでエラーが発生した場合
+        this.connectionState = 'error';
+        this.connectionError = error instanceof Error ? error : new Error(String(error));
+        this.rejectConnected(this.connectionError);
+        throw error;
+      }
     }
   }
 
@@ -954,7 +975,7 @@ export class DBEngine extends EventEmitter {
   /**
    * JSON-RPCリクエストを送信
    */
-  private async sendRequest(method: string, params?: unknown): Promise<unknown> {
+  private async sendRequest(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
     if (!this.worker || !this.isReady) {
       throw new Error('Not connected to database');
     }
@@ -973,7 +994,7 @@ export class DBEngine extends EventEmitter {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error('Request timeout'));
-      }, 300000); // 300秒のタイムアウト（プロセス分離モード考慮）
+      }, timeoutMs ?? 300000);
 
       this.worker!.stdin?.write(JSON.stringify(request) + '\n');
 
@@ -1210,6 +1231,10 @@ export class DBEngine extends EventEmitter {
     return await this.sendRequest('releaseWriter', {
       writer_id: params.writerId,
     }) as { success: boolean };
+  }
+
+  async repairTables(): Promise<RepairTablesResponse> {
+    return await this.sendRequest('repairTables', undefined, 600000) as RepairTablesResponse;
   }
 }
 

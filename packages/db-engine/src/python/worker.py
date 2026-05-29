@@ -55,6 +55,7 @@ from schemas import (
     SECTIONS_TABLE,
     INDEX_REQUESTS_TABLE,
     WRITER_HEARTBEAT_TABLE,
+    ALL_TABLES,
     validate_section,
     validate_index_request
 )
@@ -672,6 +673,8 @@ class SearchDocsWorker:
                 result = self.get_writer_heartbeat()
             elif method == "releaseWriter":
                 result = self.release_writer(params)
+            elif method == "repairTables":
+                result = self.repair_tables()
             else:
                 return {
                     "jsonrpc": "2.0",
@@ -1441,6 +1444,53 @@ class SearchDocsWorker:
             return {"success": False, "reason": "not_current_master"}
         table.delete("writer_id IS NOT NULL")
         return {"success": True}
+
+
+    def repair_tables(self) -> Dict[str, Any]:
+        """破損テーブルを検出し、drop→再作成で修復する"""
+        results = {}
+
+        try:
+            existing_tables = self.db.table_names()
+        except Exception as e:
+            sys.stderr.write(f"[Repair] Failed to read table list: {e}\n")
+            sys.stderr.flush()
+            return {"tables": {}, "repairedCount": 0, "initTablesError": f"Failed to read table list: {str(e)}"}
+
+        for table_name in ALL_TABLES:
+            try:
+                if table_name not in existing_tables:
+                    results[table_name] = {"status": "missing", "action": "created"}
+                    continue
+
+                table = self.db.open_table(table_name)
+                table.count_rows()
+                results[table_name] = {"status": "ok"}
+            except Exception as e:
+                error_msg = str(e)
+                sys.stderr.write(f"[Repair] Table {table_name} is corrupted: {error_msg}\n")
+                sys.stderr.flush()
+                try:
+                    self.db.drop_table(table_name)
+                    results[table_name] = {"status": "corrupted", "action": "dropped_and_recreated", "error": error_msg}
+                except Exception as drop_err:
+                    results[table_name] = {"status": "corrupted", "action": "drop_failed", "error": error_msg, "dropError": str(drop_err)}
+                    sys.stderr.write(f"[Repair] Failed to drop {table_name}: {drop_err}\n")
+                    sys.stderr.flush()
+
+        self._sections_table = None
+        self._index_requests_table = None
+
+        try:
+            self.init_tables()
+        except Exception as e:
+            sys.stderr.write(f"[Repair] init_tables failed: {e}\n")
+            sys.stderr.flush()
+            return {"tables": results, "repairedCount": 0, "initTablesError": str(e)}
+
+        repaired_count = sum(1 for r in results.values() if r.get("action") in ("dropped_and_recreated", "drop_failed"))
+        created_count = sum(1 for r in results.values() if r.get("action") == "created")
+        return {"tables": results, "repairedCount": repaired_count, "createdCount": created_count}
 
 
 def main():
