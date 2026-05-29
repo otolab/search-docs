@@ -1,5 +1,11 @@
 # @search-docs/db-engine
 
+## 1.5.7
+
+### Patch Changes
+
+- a1fb9b9: fix: LanceDB optimize の cleanup_older_than を 0 → 10 分に変更し、マルチプロセス環境でのインデックス破損を防止
+
 ## 1.5.6
 
 ### Patch Changes

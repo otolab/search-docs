@@ -1,5 +1,13 @@
 # @search-docs/cli
 
+## 1.2.3
+
+### Patch Changes
+
+- Updated dependencies [a1fb9b9]
+  - @search-docs/db-engine@1.5.7
+  - @search-docs/server@1.5.3
+
 ## 1.2.2
 
 ### Patch Changes
