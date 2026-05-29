@@ -32,7 +32,9 @@ export function registerIndexPurgeTool(context: ToolRegistrationContext): Regist
         };
       }
 
-      await fs.rm(indexPath, { recursive: true });
+      await fs.rm(indexPath, { recursive: true, force: true });
+
+      await context.refreshSystemState();
 
       return {
         content: [{

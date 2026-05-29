@@ -28,7 +28,7 @@ export async function executeIndexPurge(
     }
 
     console.log(`インデックスを削除します: ${indexPath}`);
-    fs.rmSync(indexPath, { recursive: true });
+    fs.rmSync(indexPath, { recursive: true, force: true });
     console.log('インデックスを削除しました。');
     console.log('再構築するには: search-docs index rebuild');
   } catch (error) {
