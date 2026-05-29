@@ -41,6 +41,9 @@ importers:
       '@search-docs/config':
         specifier: workspace:*
         version: link:../config
+      '@search-docs/db-engine':
+        specifier: workspace:*
+        version: link:../db-engine
       '@search-docs/server':
         specifier: workspace:*
         version: link:../server

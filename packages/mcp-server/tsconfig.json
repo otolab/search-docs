@@ -9,6 +9,7 @@
   "references": [
     { "path": "../types" },
     { "path": "../config" },
-    { "path": "../client" }
+    { "path": "../client" },
+    { "path": "../db-engine" }
   ]
 }

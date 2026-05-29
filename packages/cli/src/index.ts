@@ -222,5 +222,19 @@ embeddingCmd
   });
 
 
+// maintenance コマンド
+const maintenanceCmd = program
+  .command('maintenance')
+  .description('データベースメンテナンス');
+
+maintenanceCmd
+  .command('repair')
+  .description('LanceDBテーブルの破損を検出・修復')
+  .action(async () => {
+    const { executeMaintenanceRepair } = await import('./commands/maintenance/repair.js');
+    await executeMaintenanceRepair({ config: globalConfigPath });
+  });
+
+
 // コマンドラインを解析
 program.parse(process.argv);

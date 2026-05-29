@@ -3,6 +3,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { DBEngine } from '@search-docs/db-engine';
 import type { SystemStateInfo } from '../state.js';
 import type { ServerManager } from '../server-manager.js';
 
@@ -24,4 +25,6 @@ export interface ToolRegistrationContext {
   refreshSystemState: () => Promise<void>;
   /** サーバマネージャー（複数プロジェクト管理用） */
   serverManager: ServerManager;
+  /** DBEngineインスタンスの取得（メンテナンス操作用） */
+  getDbEngine?: () => DBEngine | null;
 }
