@@ -139,14 +139,30 @@ export async function createService(
 }
 
 /**
- * サービスインスタンスを停止
+ * サービスインスタンスを停止（即座に完了する）
+ *
+ * WatcherProcess（IndexWorker）のタイマーを停止し、新規処理を防ぐ。
+ * 子プロセス（Python worker, Embedding server）にSIGTERMを送信する。
+ * 子プロセスは親プロセス終了時にOSが回収するため、終了待ちは不要。
+ *
+ * FileStorageはatomic write（tmp→rename）のため、書き込み途中でも壊れない。
+ * LanceDBはMVCCのため、書き込み途中でも壊れない。
+ * Writer mastershipは120秒で自動復旧するため、明示的な解放は不要。
  *
  * @param instances - サービスインスタンス群
  */
-export async function stopService(instances: ServiceInstances): Promise<void> {
-  await instances.watcherProcess.stop();
+export function stopService(instances: ServiceInstances): void {
+  // 1. WatcherProcessを停止（タイマー・ワーカー即停止、mastershipは解放しない）
+  instances.watcherProcess.shutdown();
+
+  // 2. 読み取り専用サービスを停止
   instances.service.stop();
-  await instances.embeddingServer.stop();
+
+  // 3. DBEngineを切断（Python workerをkill）
+  instances.dbEngine.disconnect();
+
+  // 4. EmbeddingServerを停止（子プロセスにSIGTERM）
+  instances.embeddingServer.shutdown();
 }
 
 /**

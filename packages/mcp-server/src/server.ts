@@ -200,7 +200,7 @@ async function main() {
     // 既存サービスを停止
     if (serviceInstances) {
       debugLog('Stopping existing service before refresh...');
-      await stopService(serviceInstances);
+      stopService(serviceInstances);
       serviceInstances = null;
     }
 
@@ -261,16 +261,23 @@ async function main() {
   updateToolAvailability(systemState.state, toolHandles);
 
   // プロセス終了時のクリーンアップ
-  const cleanup = async () => {
-    debugLog('Cleaning up...');
+  const shutdown = () => {
+    debugLog('Shutdown signal received');
+    // 全体タイムアウト: 3秒で強制終了
+    setTimeout(() => {
+      debugLog('Shutdown timeout, forcing exit');
+      process.exit(1);
+    }, 3000).unref();
+
     if (serviceInstances) {
-      await stopService(serviceInstances);
+      stopService(serviceInstances);
       serviceInstances = null;
     }
+    process.exit(0);
   };
 
-  process.on('SIGINT', () => void cleanup());
-  process.on('SIGTERM', () => void cleanup());
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   // サーバの起動
   const transport = new StdioServerTransport();
