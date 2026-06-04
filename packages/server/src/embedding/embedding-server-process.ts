@@ -79,6 +79,17 @@ export class EmbeddingServerProcess {
     }
   }
 
+  /**
+   * 即座に停止する（シグナルハンドラ用）
+   * 子プロセスは親プロセス終了時にOSが回収するため、終了待ちは不要。
+   */
+  shutdown(): void {
+    if (this.process) {
+      this.process.kill('SIGTERM');
+      this.process = null;
+    }
+  }
+
   getUrl(): string {
     if (!this.url) {
       throw new Error('[EmbeddingServer] Not started yet');

@@ -132,6 +132,26 @@ export class WatcherProcess {
   }
 
   /**
+   * 即座に停止する（シグナルハンドラ用）
+   *
+   * mastershipの解放は行わない（120秒で自動復旧する）。
+   * タイマーとワーカーを即座に停止し、新規処理を防ぐ。
+   */
+  shutdown(): void {
+    console.log('[WatcherProcess] Shutdown...');
+    this.stopHeartbeat();
+    this.stopMasterCheck();
+
+    if (this.indexWorker) {
+      this.indexWorker.stop();
+    }
+    if (this.watcher?.isRunning()) {
+      // fire-and-forget: watcher.stop()はawaitしない
+      void this.watcher.stop();
+    }
+  }
+
+  /**
    * Master確認とclaim試行
    */
   private async checkAndClaimMaster(): Promise<void> {
