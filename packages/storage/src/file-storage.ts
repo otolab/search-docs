@@ -43,12 +43,10 @@ export class FileStorage implements DocumentStorage {
       },
     };
 
-    // JSON形式で保存
-    await fs.writeFile(
-      filePath,
-      JSON.stringify(docWithHash, null, 2),
-      'utf-8'
-    );
+    // Atomic write: tmp → rename でデータ破損を防止
+    const tmpPath = filePath + '.tmp';
+    await fs.writeFile(tmpPath, JSON.stringify(docWithHash, null, 2), 'utf-8');
+    await fs.rename(tmpPath, filePath);
   }
 
   /**
