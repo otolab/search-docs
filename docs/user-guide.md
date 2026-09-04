@@ -523,14 +523,19 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 | コマンド | 説明 |
 |---------|------|
 | `embedding start [options]` | Embeddingサーバを起動 |
-| `embedding stop` | Embeddingサーバを停止 |
-| `embedding status` | Embeddingサーバの状態を確認 |
+| `embedding stop [options]` | Embeddingサーバを停止 |
+| `embedding status [options]` | Embeddingサーバの状態を確認 |
 
 **主なオプション**:
-- `--port <port>`: ポート番号（デフォルト: 24281）
+- `--port <port>`: ポート番号（startは24281、status/stopはPIDファイルのport、なければ24281）
 - `-f, --foreground`: フォアグラウンドで起動
 - `--runtime <runtime>`: `onnx`（デフォルト、GPU/CoreML対応）または `torch`
 - `--dimension <dim>`: ベクトル次元数（デフォルト: 256）
+- `embedding stop --port <port>`: PIDファイルのない外部サーバをポート指定で停止
+- `embedding stop --force`: SIGKILLで強制停止
+- `embedding status --verbose`: PID、LISTEN、liveness、readinessなどの診断を表示
+- `embedding status --repair`: stale PIDファイルを削除して再確認
+- `embedding status --probe`: 実際の推論パスを確認（`--timeout <ms>`でタイムアウト指定）
 
 詳細は [CLIリファレンス - embedding コマンド](./cli-reference.md#embedding-コマンド) を参照してください。
 

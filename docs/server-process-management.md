@@ -498,6 +498,21 @@ async function isServerHealthy(pidFile: PidFileContent): Promise<boolean> {
 }
 ```
 
+### Embeddingサーバのliveness / readiness
+
+Embeddingサーバはモデルロード後も推論ランタイムの状態を45秒間隔で自己probeします。
+プロセスがHTTP応答できること（liveness）と、直近の推論が成功していること（readiness）を分離して確認できます。
+
+| エンドポイント | 用途 | 成功条件 |
+|---|---|---|
+| `GET /health` | liveness | プロセスとモデルが応答。`status` は `ok` または推論失敗時の `degraded` |
+| `GET /ready` | readiness | 直近の自己probe成功時に200、それ以外は503 |
+| `GET /health?deep=1` | 同期ディープチェック | リクエスト時に短い入力をencodeし、結果を応答へ反映 |
+
+`/health` は既存の `status`、`model`、`vectorDimension` を維持したまま、`ready`、`lastProbe`、
+`consecutiveFailures`、`uptimeSeconds`、`runtime` を追加で返します。CLIの
+`search-docs embedding status --verbose --probe` は、サーバ自己probeと外部推論probeを並べて表示します。
+
 ## クロスプラットフォーム対応
 
 ### Windows

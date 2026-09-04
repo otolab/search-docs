@@ -217,6 +217,8 @@ embeddingCmd
 embeddingCmd
   .command('stop')
   .description('Embeddingサーバを停止')
+  .option('--port <port>', '停止対象のポート番号（PIDファイルがない外部サーバにも使用）')
+  .option('--force', 'SIGKILL/taskkill /Fで直ちに停止')
   .action((options: EmbeddingStopOptions) => {
     void executeEmbeddingStop(options);
   });
@@ -224,7 +226,11 @@ embeddingCmd
 embeddingCmd
   .command('status')
   .description('Embeddingサーバのステータスを確認')
-  .option('--port <port>', 'ポート番号', '24281')
+  .option('--port <port>', 'ポート番号（省略時はPIDファイルのport、なければ24281）')
+  .option('--verbose', '各チェック結果と診断情報を表示')
+  .option('--repair', 'stale PIDファイルを削除して再確認')
+  .option('--probe', '実際の推論パスをプローブ')
+  .option('--timeout <ms>', 'HTTPプローブのタイムアウト（ミリ秒）', '3000')
   .action((options: EmbeddingStatusOptions) => {
     void executeEmbeddingStatus(options);
   });

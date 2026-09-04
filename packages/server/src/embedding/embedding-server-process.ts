@@ -14,6 +14,7 @@ interface HealthResponse {
   status: string;
   model: string;
   vectorDimension: number;
+  ready?: boolean;
 }
 
 export class EmbeddingServerProcess {
@@ -183,7 +184,7 @@ export class EmbeddingServerProcess {
           res.on('end', () => {
             try {
               const json = JSON.parse(data) as HealthResponse;
-              if (json.status === 'ok') {
+              if (json.status === 'ok' || json.status === 'degraded') {
                 resolve(true);
                 return;
               }
@@ -208,7 +209,7 @@ export class EmbeddingServerProcess {
     const maxWaitMs = maxWaitSeconds * 1000;
 
     while (Date.now() - startTime < maxWaitMs) {
-      if (await this.healthCheck(url)) {
+      if (await this.readinessCheck(url)) {
         return;
       }
 
@@ -220,5 +221,65 @@ export class EmbeddingServerProcess {
     }
 
     throw new Error(`[EmbeddingServer] Did not become ready within ${maxWaitSeconds}s at ${url}`);
+  }
+
+  /**
+   * /readyを優先し、旧Embeddingサーバでは/healthへフォールバックする。
+   */
+  private readinessCheck(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const readyUrl = `${url}/ready`;
+      const req = http.get(readyUrl, { timeout: 2000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 404) {
+            void this.legacyReadinessCheck(url).then(resolve);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+          try {
+            const json = JSON.parse(data) as { ready?: boolean };
+            resolve(json.ready === true);
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
+  }
+
+  private legacyReadinessCheck(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const req = http.get(`${url}/health`, { timeout: 2000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+          try {
+            const json = JSON.parse(data) as HealthResponse;
+            resolve(json.ready ?? json.status === 'ok');
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
   }
 }
