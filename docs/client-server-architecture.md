@@ -141,6 +141,7 @@ WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間
 
 3. **watching**: Master状態（FileWatcher/IndexWorker起動）
    - 20秒ごとにheartbeatを更新
+   - heartbeatの書き込み30回ごとに `optimize(cleanup_older_than=10分)` を実行し、古いMVCCバージョンとインデックスファイルを整理
    - Graceful shutdown時にheartbeatをクリア → 即座にfailover
 
 **タイミング定数**:
@@ -148,6 +149,7 @@ WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間
 | 定数 | 値 | 説明 |
 |------|-----|------|
 | `HEARTBEAT_INTERVAL_MS` | 20,000 (20秒) | watching時のheartbeat更新間隔 |
+| `HEARTBEAT_OPTIMIZE_INTERVAL` | 30回 | heartbeatのMVCC世代整理を実行する書き込み間隔 |
 | `MASTER_TIMEOUT_MS` | 120,000 (2分) | Masterの期限切れ判定時間 |
 | `MASTER_CHECK_INTERVAL_MS` | 45,000 (45秒) | sleeping時のmaster確認間隔 |
 | `CLAIM_JITTER_MAX_MS` | 5,000 (5秒) | claim前のランダム待ち時間 |

@@ -252,6 +252,7 @@ heading + "\n" + content
 ### 調停メカニズム
 
 - **writer_heartbeat テーブル**: LanceDBテーブル（1行のみ、mode='overwrite'で上書き）
+- **世代整理**: heartbeat の書き込み30回ごとに `optimize(cleanup_older_than=10分)` を実行し、古いMVCCバージョンとインデックスファイルを整理
 - **状態マシン**: sleeping → claiming → watching
 - **Master期限切れ**: 2分以上更新なし（`MASTER_TIMEOUT_MS = 120000`）
 - **Graceful shutdown**: heartbeatクリア → 即座にfailover
@@ -261,6 +262,7 @@ heading + "\n" + content
 | 定数 | 値 | 説明 |
 |------|-----|------|
 | `HEARTBEAT_INTERVAL_MS` | 20秒 | watching時のheartbeat更新間隔 |
+| `HEARTBEAT_OPTIMIZE_INTERVAL` | 30回 | heartbeatのMVCC世代整理を実行する書き込み間隔 |
 | `MASTER_TIMEOUT_MS` | 120秒 | Master期限切れ判定時間 |
 | `MASTER_CHECK_INTERVAL_MS` | 45秒 | sleeping時のmaster確認間隔 |
 | `CLAIM_JITTER_MAX_MS` | 5秒 | claim前のランダム待ち時間（thundering herd対策） |

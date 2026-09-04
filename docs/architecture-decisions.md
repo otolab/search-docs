@@ -2174,18 +2174,18 @@ def _maybe_optimize(self, table, table_name: str) -> None:
 
 | 処理 | 間隔 | 対象テーブル | 目的 |
 |------|------|------------|------|
-| `_maybe_optimize()` | 20回書き込みごと | 全テーブル | compaction + index最適化 + prune |
+| `_maybe_optimize()` | sections / index_requests は20回、writer_heartbeat は30回書き込みごと | 全テーブル | compaction + index最適化 + prune |
 | `compact_files()` | 100回add_sectionsごと | sections | 断片化防止 |
 
 ### 結果
 
 **ポジティブ**:
 - マルチプロセス環境でのインデックス破損を防止
-- 古いバージョンのファイルは10分後に安全に削除される
-- ディスク使用量は一時的に増加するが、10分以内に回収される
+- 古いバージョンのファイルは10分以上経過した世代を次回のoptimizeで安全に削除する
+- ディスク使用量は一時的に増加するが、安定稼働時は最大概ね20分で回収される
 
 **ネガティブ**:
-- ディスク使用量が `timedelta(days=0)` 時と比較してわずかに増加（10分分のバージョン）
+- ディスク使用量が `timedelta(days=0)` 時と比較して一時的に増加（保持閾値と次回optimizeまでの待ち時間分）
 
 ### 参考情報
 
