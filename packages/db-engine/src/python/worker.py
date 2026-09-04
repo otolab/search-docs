@@ -262,7 +262,11 @@ class SearchDocsWorker:
         self._add_count = 0  # add_sections()の呼び出し回数
 
         # optimize呼び出し頻度管理
-        self._write_counts = {"sections": 0, "index_requests": 0}
+        self._write_counts = {
+            "sections": 0,
+            "index_requests": 0,
+            WRITER_HEARTBEAT_TABLE: 0,
+        }
 
         # パフォーマンスロガー
         self.perf_logger = PerformanceLogger(interval=1.0)
@@ -539,12 +543,19 @@ class SearchDocsWorker:
             raise
 
     OPTIMIZE_INTERVAL = 20
+    # heartbeat は 20 秒間隔で更新されるため、約 10 分ごとに最適化する
+    HEARTBEAT_OPTIMIZE_INTERVAL = 30
     CLEANUP_OLDER_THAN = timedelta(minutes=10)
 
     def _maybe_optimize(self, table, table_name: str) -> None:
-        """書き込み回数に応じてスカラーインデックスを増分更新"""
+        """テーブルごとの書き込み回数に応じて最適化する"""
         self._write_counts[table_name] = self._write_counts.get(table_name, 0) + 1
-        if self._write_counts[table_name] % self.OPTIMIZE_INTERVAL == 0:
+        interval = (
+            self.HEARTBEAT_OPTIMIZE_INTERVAL
+            if table_name == WRITER_HEARTBEAT_TABLE
+            else self.OPTIMIZE_INTERVAL
+        )
+        if self._write_counts[table_name] % interval == 0:
             try:
                 table.optimize(cleanup_older_than=self.CLEANUP_OLDER_THAN)
             except Exception as e:
@@ -1391,6 +1402,7 @@ class SearchDocsWorker:
             "state": "claiming",
             "updated_at": now,
         }], mode='overwrite')
+        self._maybe_optimize(table, WRITER_HEARTBEAT_TABLE)
         return {"success": True, "writer_id": writer_id, "state": "claiming"}
 
     def update_heartbeat(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1407,6 +1419,7 @@ class SearchDocsWorker:
             "state": state,
             "updated_at": now,
         }], mode='overwrite')
+        self._maybe_optimize(table, WRITER_HEARTBEAT_TABLE)
         return {"success": True, "updated_at": now.isoformat()}
 
     def get_writer_heartbeat(self) -> Dict[str, Any]:
@@ -1444,6 +1457,7 @@ class SearchDocsWorker:
         if len(results) > 0 and results[0]["writer_id"] != writer_id:
             return {"success": False, "reason": "not_current_master"}
         table.delete("writer_id IS NOT NULL")
+        self._maybe_optimize(table, WRITER_HEARTBEAT_TABLE)
         return {"success": True}
 
 

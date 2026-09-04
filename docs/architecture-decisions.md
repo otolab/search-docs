@@ -2174,7 +2174,7 @@ def _maybe_optimize(self, table, table_name: str) -> None:
 
 | 処理 | 間隔 | 対象テーブル | 目的 |
 |------|------|------------|------|
-| `_maybe_optimize()` | 20回書き込みごと | 全テーブル | compaction + index最適化 + prune |
+| `_maybe_optimize()` | sections / index_requests は20回、writer_heartbeat は30回書き込みごと | 全テーブル | compaction + index最適化 + prune |
 | `compact_files()` | 100回add_sectionsごと | sections | 断片化防止 |
 
 ### 結果
