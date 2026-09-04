@@ -307,11 +307,35 @@ export class WatcherProcess {
             state: 'watching',
           });
         } catch (error) {
-          console.error('[WatcherProcess] Heartbeat update failed:', error);
-          await this.transitionToSleeping();
+          await this.handleHeartbeatUpdateFailure(error);
         }
       })();
     }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
+  }
+
+  /**
+   * Heartbeat更新の最終失敗を処理する。
+   *
+   * Python側では一時的なcommit競合をリトライするため、ここに到達した時点で
+   * リトライが枯渇している。再読込で自分のmastershipが残っている場合は、
+   * 競合後のheartbeatがまだ反映されている可能性があるためFileWatcherを維持する。
+   */
+  private async handleHeartbeatUpdateFailure(error: unknown): Promise<void> {
+    console.error('[WatcherProcess] Heartbeat update failed after retries:', error);
+
+    try {
+      const current = await this.dbEngine.getWriterHeartbeat();
+      if (current.exists && current.heartbeat?.writerId === this.writerId) {
+        console.warn('[WatcherProcess] Mastership is still held; keeping FileWatcher running');
+        return;
+      }
+
+      console.log('[WatcherProcess] Mastership lost after heartbeat update failure');
+    } catch (readbackError) {
+      console.error('[WatcherProcess] Failed to verify mastership after heartbeat update failure:', readbackError);
+    }
+
+    await this.transitionToSleeping();
   }
 
   private stopHeartbeat(): void {

@@ -7,6 +7,7 @@ export default defineConfig({
     include: [
       'src/splitter/__tests__/**/*.test.ts',
       'src/discovery/__tests__/**/*.test.ts',
+      'src/__tests__/watcher-process.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },

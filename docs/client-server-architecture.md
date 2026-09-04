@@ -136,11 +136,13 @@ WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間
 2. **claiming**: Master獲得試行
    - ランダムjitter待機（0～5秒、thundering herd対策）
    - `claimWriter()` でheartbeatを書き込み（mode='overwrite'）
+   - `Retryable commit conflict` / `Please retry` が返った場合は、最大5試行（50→100→200ms、以降200ms上限）で再試行
    - 4秒待機後にreadback確認
    - 自分のwriterIdが残っていればwatchingへ、他者なら敗北でsleepingへ
 
 3. **watching**: Master状態（FileWatcher/IndexWorker起動）
    - 20秒ごとにheartbeatを更新
+   - heartbeat更新がリトライ後も失敗した場合はmastershipを再読込し、自分がmasterであればFileWatcherを維持、master喪失または確認不能時のみsleepingへ遷移
    - heartbeatの書き込み30回ごとに `optimize(cleanup_older_than=10分)` を実行し、古いMVCCバージョンとインデックスファイルを整理
    - Graceful shutdown時にheartbeatをクリア → 即座にfailover
 
