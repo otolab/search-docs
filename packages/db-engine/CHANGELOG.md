@@ -1,5 +1,12 @@
 # @search-docs/db-engine
 
+## 1.5.8
+
+### Patch Changes
+
+- f5dfff1: Embedding サーバの状態診断・停止後検証・readiness 自己 probe を強化
+- 51a9282: writer_heartbeat の MVCC 世代を定期的に整理し、インデックスファイルの肥大化を抑制
+
 ## 1.5.7
 
 ### Patch Changes

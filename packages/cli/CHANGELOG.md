@@ -1,5 +1,17 @@
 # @search-docs/cli
 
+## 1.2.4
+
+### Patch Changes
+
+- 855fd39: config init が既存設定を保持した場合の実行結果を MCP に通知し、警告を返すように改善
+- f5dfff1: Embedding サーバの状態診断・停止後検証・readiness 自己 probe を強化
+- Updated dependencies [f5dfff1]
+- Updated dependencies [40abf80]
+- Updated dependencies [51a9282]
+  - @search-docs/server@1.5.4
+  - @search-docs/db-engine@1.5.8
+
 ## 1.2.3
 
 ### Patch Changes

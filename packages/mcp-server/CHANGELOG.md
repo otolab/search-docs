@@ -1,5 +1,25 @@
 # @search-docs/mcp-server
 
+## 1.9.5
+
+### Patch Changes
+
+- 855fd39: config init が既存設定を保持した場合の実行結果を MCP に通知し、警告を返すように改善
+- 40abf80: MCP サーバ停止プロセス改善
+
+  - FileStorage を atomic write（tmp→rename）に変更し、kill 時のデータ破損を防止
+  - MCP サーバのシグナルハンドラを改善し、即座に終了するように
+  - stopService を同期化（mastership リリース・子プロセス終了待ちを廃止）
+
+- Updated dependencies [855fd39]
+- Updated dependencies [f5dfff1]
+- Updated dependencies [40abf80]
+- Updated dependencies [51a9282]
+  - @search-docs/cli@1.2.4
+  - @search-docs/server@1.5.4
+  - @search-docs/db-engine@1.5.8
+  - @search-docs/storage@1.0.24
+
 ## 1.9.4
 
 ### Patch Changes

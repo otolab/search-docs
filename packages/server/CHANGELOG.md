@@ -1,5 +1,22 @@
 # @search-docs/server
 
+## 1.5.4
+
+### Patch Changes
+
+- f5dfff1: Embedding サーバの状態診断・停止後検証・readiness 自己 probe を強化
+- 40abf80: MCP サーバ停止プロセス改善
+
+  - FileStorage を atomic write（tmp→rename）に変更し、kill 時のデータ破損を防止
+  - MCP サーバのシグナルハンドラを改善し、即座に終了するように
+  - stopService を同期化（mastership リリース・子プロセス終了待ちを廃止）
+
+- Updated dependencies [f5dfff1]
+- Updated dependencies [40abf80]
+- Updated dependencies [51a9282]
+  - @search-docs/db-engine@1.5.8
+  - @search-docs/storage@1.0.24
+
 ## 1.5.3
 
 ### Patch Changes
