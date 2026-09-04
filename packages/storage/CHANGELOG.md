@@ -1,5 +1,15 @@
 # @search-docs/storage
 
+## 1.0.24
+
+### Patch Changes
+
+- 40abf80: MCP サーバ停止プロセス改善
+
+  - FileStorage を atomic write（tmp→rename）に変更し、kill 時のデータ破損を防止
+  - MCP サーバのシグナルハンドラを改善し、即座に終了するように
+  - stopService を同期化（mastership リリース・子プロセス終了待ちを廃止）
+
 ## 1.0.23
 
 ### Patch Changes
