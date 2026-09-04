@@ -658,7 +658,7 @@ docker run --rm -i \
 
 ### config init
 
-設定ファイルを初期化します（**未実装**）。
+設定ファイルを初期化します。生成先は `.search-docs/config.json` です。
 
 ```bash
 search-docs config init [options]
@@ -668,12 +668,14 @@ search-docs config init [options]
 
 | オプション | 説明 |
 |-----------|------|
-| `--interactive, -i` | 対話的に設定を作成 |
+| `--port <port>` | サーバポート番号（省略時はランダム） |
+| `--project-root <path>` | プロジェクトルート（デフォルト: カレントディレクトリ） |
 | `--force, -f` | 既存ファイルを上書き |
 
-#### 注意
+#### 動作
 
-このコマンドは将来実装予定です。現在は手動で`.search-docs.json`を作成してください。
+- 既存の設定ファイル（`.search-docs/config.json`、`.search-docs.json`、`search-docs.json`）がある場合、`--force` を指定しなければ既存設定を変更せず、情報メッセージを表示して終了します。
+- `--force` を指定した場合は、生成先の `.search-docs/config.json` を上書きします。
 
 ## 終了コード
 

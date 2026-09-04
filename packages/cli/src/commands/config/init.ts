@@ -19,6 +19,11 @@ export interface ConfigInitOptions {
 }
 
 /**
+ * config init の実行結果
+ */
+export type ConfigInitResult = 'created' | 'skipped' | 'overwritten';
+
+/**
  * ランダムなポート番号を生成
  * エフェメラルポート範囲（49152-65535）からランダムに選択
  */
@@ -93,7 +98,7 @@ function createDefaultConfig(options: {
 /**
  * config init コマンドを実行
  */
-export async function initConfig(options: ConfigInitOptions = {}): Promise<void> {
+export async function initConfig(options: ConfigInitOptions = {}): Promise<ConfigInitResult> {
   const cwd = options.cwd || process.cwd();
   const projectRoot = options.projectRoot || cwd;
   const port = options.port || generateRandomPort();
@@ -125,7 +130,7 @@ export async function initConfig(options: ConfigInitOptions = {}): Promise<void>
       console.log('✅ No action needed. Your project is already configured.\n');
       console.log('To overwrite the existing file, use:');
       console.log('  search-docs config init --force\n');
-      return;
+      return 'skipped';
     }
 
     console.log('⚠️  Overwriting existing configuration file...\n');
@@ -150,4 +155,6 @@ export async function initConfig(options: ConfigInitOptions = {}): Promise<void>
   console.log('  1. Review and customize .search-docs/config.json');
   console.log('  2. Start the server: search-docs server start');
   console.log('  3. Search documents: search-docs search "query"\n');
+
+  return existingConfigPath ? 'overwritten' : 'created';
 }

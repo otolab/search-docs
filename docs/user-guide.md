@@ -172,6 +172,8 @@ cd /path/to/your/project
 npx @search-docs/cli config init
 ```
 
+`.search-docs/config.json` が作成されます。既存の設定がある場合はデフォルトでは変更されないため、上書きする場合は `--force` を指定してください。
+
 または手動で `.search-docs.json` を作成：
 
 ```json
@@ -297,13 +299,14 @@ search-docs server stop
 
 ## 設定ファイル
 
-設定ファイル `.search-docs.json` の詳細説明です。
+設定ファイルの詳細説明です。
 
 ### 配置場所
 
 以下の順で検索されます：
 1. `.search-docs.json`（推奨）
 2. `search-docs.json`
+3. `.search-docs/config.json`（`config init` の生成先）
 
 ### 設定項目
 

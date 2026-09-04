@@ -36,7 +36,8 @@ npx @search-docs/cli <command>
 npx @search-docs/cli config init
 ```
 
-プロジェクトルートに `.search-docs.json` が作成されます。
+プロジェクトルートの `.search-docs/config.json` が作成されます。
+既存の設定ファイル（`.search-docs/config.json`、`.search-docs.json`、`search-docs.json`）がある場合は、デフォルトでは変更されません。上書きする場合は `--force` を指定してください。
 
 ### 2. サーバを起動
 
@@ -135,7 +136,7 @@ npx @search-docs/cli server --help
 
 ## 設定ファイル
 
-`.search-docs.json` の基本構成：
+`.search-docs/config.json` の基本構成：
 
 ```json
 {

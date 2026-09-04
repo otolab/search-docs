@@ -24,7 +24,7 @@ describe('config init', () => {
   });
 
   it('設定ファイルを生成できる', async () => {
-    await initConfig({ cwd: testDir });
+    await expect(initConfig({ cwd: testDir })).resolves.toBe('created');
 
     // ファイルが存在することを確認
     const exists = await fs.access(configPath).then(() => true).catch(() => false);
@@ -62,26 +62,40 @@ describe('config init', () => {
   it('既存ファイルがある場合は情報メッセージを表示して正常終了', async () => {
     // 最初に設定ファイルを作成
     await initConfig({ cwd: testDir });
+    const originalContent = await fs.readFile(configPath, 'utf-8');
 
     // 2回目も正常終了する（エラーを投げない）
-    await expect(initConfig({ cwd: testDir })).resolves.not.toThrow();
+    await expect(initConfig({ cwd: testDir })).resolves.toBe('skipped');
 
     // ファイルは変更されない
     const content = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(content);
-    expect(config).toHaveProperty('version');
+    expect(content).toBe(originalContent);
+  });
+
+  it.each([
+    ['レガシーのドットファイル', '.search-docs.json'],
+    ['レガシーのファイル', 'search-docs.json'],
+  ])('既存の%sがある場合も上書きしない', async (_label, relativePath) => {
+    const existingPath = path.join(testDir, relativePath);
+    const originalContent = '{"existing":true}\n';
+    await fs.writeFile(existingPath, originalContent, 'utf-8');
+
+    await expect(initConfig({ cwd: testDir, port: 54321, force: false })).resolves.toBe('skipped');
+
+    expect(await fs.readFile(existingPath, 'utf-8')).toBe(originalContent);
+    await expect(fs.access(configPath)).rejects.toThrow();
   });
 
   it('--forceオプションで既存ファイルを上書きできる', async () => {
     // 最初に設定ファイルを作成（ポート12345）
-    await initConfig({ cwd: testDir, port: 12345 });
+    await expect(initConfig({ cwd: testDir, port: 12345 })).resolves.toBe('created');
 
     let content = await fs.readFile(configPath, 'utf-8');
     let config = JSON.parse(content);
     expect(config.server.port).toBe(12345);
 
     // --forceで上書き（ポート54321）
-    await initConfig({ cwd: testDir, port: 54321, force: true });
+    await expect(initConfig({ cwd: testDir, port: 54321, force: true })).resolves.toBe('overwritten');
 
     content = await fs.readFile(configPath, 'utf-8');
     config = JSON.parse(content);
