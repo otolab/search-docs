@@ -38,6 +38,8 @@ MCP Serverはシステム状態に応じて利用可能なツールを動的に�
 - `port` (number, オプション): サーバポート番号（省略時はランダムなポート番号が割り当てられます）
 - `force` (boolean, オプション): 既存設定を上書き（デフォルト: false）
 
+既存の設定ファイルがある場合、`force` を省略するか `false` にすると既存設定を変更せず、警告を返します。上書きする場合は `force: true` を指定してください。
+
 #### 2. `get_system_status`
 システムの状態を取得します。設定ファイルの有無、サーバの起動状態、インデックス情報を確認できます。
 
@@ -216,9 +218,13 @@ node dist/server.js --project-dir /path/to/your/project
 
 ### 設定ファイルが見つからない
 
-MCP Serverはプロジェクトディレクトリの `.search-docs.json` を読み込みます。
+MCP Serverはプロジェクトディレクトリ内の次の設定ファイルを順番に探索します。
 
-ファイルが存在しない場合はデフォルト設定（`localhost:24280`）を使用します。
+1. `.search-docs.json`
+2. `search-docs.json`
+3. `.search-docs/config.json`
+
+いずれも存在しない場合は未設定状態になります。`init` ツールで作成される設定ファイルは `.search-docs/config.json` です。
 
 ## 関連パッケージ
 

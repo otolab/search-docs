@@ -40,6 +40,30 @@ describe('MCP Server ライフサイクルテスト', () => {
       expect(content).toContain('✅ 設定ファイルの初期化が完了しました');
       expect(content).toContain('設定リファレンス');
     });
+
+    test('既存設定がある場合はforce:falseで上書きせず警告を返す', async () => {
+      env = await setupTestEnvironment({
+        prefix: 'lifecycle-init-existing',
+        createConfig: true,
+        port: 54331,
+      });
+
+      const configPath = path.join(env.testDir, '.search-docs.json');
+      const originalContent = await fs.readFile(configPath, 'utf-8');
+
+      const result = await env.tester.callTool('init', {
+        port: 54332,
+        force: false,
+      });
+
+      expect(result.success).toBe(true);
+      const content = (result.result as MCPToolResult)?.content?.[0]?.text;
+
+      expect(content).toContain('⚠️');
+      expect(content).toContain('既存の設定は変更されていません');
+      expect(content).not.toContain('✅ 設定ファイルの初期化が完了しました');
+      expect(await fs.readFile(configPath, 'utf-8')).toBe(originalContent);
+    });
   });
 
   describe('auto-start機能', () => {

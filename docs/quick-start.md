@@ -117,6 +117,8 @@ search-docsは以下の手順で使用します：
 npx @search-docs/cli config init
 ```
 
+`.search-docs/config.json` が作成されます。既存の設定がある場合はデフォルトでは変更されないため、上書きする場合は `--force` を指定してください。
+
 または手動で `.search-docs.json` を作成：
 
 ```json

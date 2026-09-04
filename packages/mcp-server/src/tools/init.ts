@@ -34,18 +34,32 @@ export function registerInitTool(context: ToolRegistrationContext): RegisteredTo
 
       try {
         // CLIのinitConfig関数を呼び出し
-        await initConfig({
+        const initResult = await initConfig({
           port,
           force,
           cwd: systemState.projectRoot,
         });
 
-        // システム状態を再検出してツールリストを更新
+        if (initResult === 'skipped') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  '⚠️ 設定ファイルは既に存在するため、初期化をスキップしました。\n' +
+                  '既存の設定は変更されていません。\n\n' +
+                  '上書きする場合は force: true を指定してください。\n',
+              },
+            ],
+          };
+        }
+
+        // 設定が作成・上書きされた場合だけシステム状態を再検出する
         await refreshSystemState();
 
         let resultText = '✅ 設定ファイルの初期化が完了しました。\n\n';
 
-        if (force) {
+        if (initResult === 'overwritten') {
           resultText += '既存の設定ファイルを上書きしました。\n\n';
         }
 
