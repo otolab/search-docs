@@ -218,9 +218,13 @@ node dist/server.js --project-dir /path/to/your/project
 
 ### 設定ファイルが見つからない
 
-MCP Serverはプロジェクトディレクトリの `.search-docs.json` を読み込みます。
+MCP Serverはプロジェクトディレクトリ内の次の設定ファイルを順番に探索します。
 
-ファイルが存在しない場合はデフォルト設定（`localhost:24280`）を使用します。
+1. `.search-docs.json`
+2. `search-docs.json`
+3. `.search-docs/config.json`
+
+いずれも存在しない場合は未設定状態になります。`init` ツールで作成される設定ファイルは `.search-docs/config.json` です。
 
 ## 関連パッケージ
 
