@@ -1,9 +1,11 @@
 """writer_heartbeat の MVCC 世代整理テスト"""
 
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -96,6 +98,107 @@ def test_heartbeat_add_paths_trigger_cleanup_counter(method_name):
     table.add.assert_called_once()
     assert table.add.call_args.kwargs["mode"] == "overwrite"
     worker._maybe_optimize.assert_called_once_with(table, WRITER_HEARTBEAT_TABLE)
+
+
+@pytest.mark.parametrize("method_name", ["claim_writer", "update_heartbeat"])
+def test_heartbeat_add_retries_retryable_commit_conflict(method_name, monkeypatch):
+    table = Mock()
+    table.add.side_effect = [
+        RuntimeError("Retryable commit conflict: Please retry"),
+        RuntimeError("Retryable commit conflict: Please retry"),
+        None,
+    ]
+    db = Mock()
+    db.open_table.return_value = table
+    worker = make_worker(db)
+    worker._maybe_optimize = Mock()
+    sleep = Mock()
+    monkeypatch.setattr("worker.time.sleep", sleep)
+
+    if method_name == "claim_writer":
+        result = worker.claim_writer(heartbeat_params())
+    else:
+        result = worker.update_heartbeat(heartbeat_params())
+
+    assert result["success"] is True
+    assert table.add.call_count == 3
+    assert sleep.call_args_list == [call(0.05), call(0.1)]
+    worker._maybe_optimize.assert_called_once_with(table, WRITER_HEARTBEAT_TABLE)
+
+
+def test_heartbeat_add_does_not_retry_non_retryable_error(monkeypatch):
+    table = Mock()
+    table.add.side_effect = RuntimeError("permission denied")
+    db = Mock()
+    db.open_table.return_value = table
+    worker = make_worker(db)
+    sleep = Mock()
+    monkeypatch.setattr("worker.time.sleep", sleep)
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        worker.update_heartbeat(heartbeat_params())
+
+    table.add.assert_called_once()
+    sleep.assert_not_called()
+
+
+def test_heartbeat_add_raises_after_retry_exhaustion(monkeypatch):
+    table = Mock()
+    table.add.side_effect = RuntimeError("Retryable commit conflict: Please retry")
+    db = Mock()
+    db.open_table.return_value = table
+    worker = make_worker(db)
+    sleep = Mock()
+    monkeypatch.setattr("worker.time.sleep", sleep)
+
+    with pytest.raises(RuntimeError, match="Retryable commit conflict"):
+        worker.update_heartbeat(heartbeat_params())
+
+    assert table.add.call_count == worker.HEARTBEAT_MAX_RETRIES + 1
+    assert sleep.call_count == worker.HEARTBEAT_MAX_RETRIES
+
+
+class ConcurrentConflictTable:
+    """2つの初回 overwrite のうち1つをLanceDB競合として再現するテーブル"""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._first_writes = threading.Barrier(2)
+        self._attempts = 0
+
+    @property
+    def attempts(self):
+        with self._lock:
+            return self._attempts
+
+    def add(self, rows, mode):
+        assert mode == "overwrite"
+        with self._lock:
+            self._attempts += 1
+            attempt = self._attempts
+
+        if attempt <= 2:
+            self._first_writes.wait(timeout=5)
+            if attempt == 1:
+                raise RuntimeError("Retryable commit conflict: Please retry")
+
+
+def test_concurrent_heartbeat_writes_retry_commit_conflict(monkeypatch):
+    table = ConcurrentConflictTable()
+    db = Mock()
+    db.open_table.return_value = table
+    workers = [make_worker(db), make_worker(db)]
+    monkeypatch.setattr("worker.time.sleep", lambda _delay: None)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(worker.update_heartbeat, heartbeat_params(f"writer-{i}"))
+            for i, worker in enumerate(workers)
+        ]
+        results = [future.result() for future in futures]
+
+    assert all(result["success"] is True for result in results)
+    assert table.attempts == 3
 
 
 def test_release_path_triggers_cleanup_counter_after_delete():

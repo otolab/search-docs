@@ -546,6 +546,10 @@ class SearchDocsWorker:
     # heartbeat は 20 秒間隔で更新されるため、約 10 分ごとに最適化する
     HEARTBEAT_OPTIMIZE_INTERVAL = 30
     CLEANUP_OLDER_THAN = timedelta(minutes=10)
+    # 複数プロセスの同時 overwrite は通常の競合として短時間だけ再試行する
+    HEARTBEAT_MAX_RETRIES = 4
+    HEARTBEAT_RETRY_BASE_DELAY_SECONDS = 0.05
+    HEARTBEAT_RETRY_MAX_DELAY_SECONDS = 0.2
 
     def _maybe_optimize(self, table, table_name: str) -> None:
         """テーブルごとの書き込み回数に応じて最適化する"""
@@ -561,6 +565,37 @@ class SearchDocsWorker:
             except Exception as e:
                 sys.stderr.write(f"[Optimize] Warning: {table_name} optimize failed: {e}\n")
                 sys.stderr.flush()
+
+    @staticmethod
+    def _is_retryable_commit_conflict(error: Exception) -> bool:
+        """LanceDB が再試行を指示する overwrite 競合か判定する"""
+        message = str(error)
+        return "Retryable commit conflict" in message or "Please retry" in message
+
+    def _add_heartbeat_with_retry(self, table, row: Dict[str, Any]) -> None:
+        """heartbeat の overwrite を一時的な commit 競合だけ再試行する"""
+        total_attempts = self.HEARTBEAT_MAX_RETRIES + 1
+
+        for attempt in range(total_attempts):
+            try:
+                table.add([row], mode='overwrite')
+                return
+            except Exception as error:
+                is_last_attempt = attempt == self.HEARTBEAT_MAX_RETRIES
+                if not self._is_retryable_commit_conflict(error) or is_last_attempt:
+                    raise
+
+                delay = min(
+                    self.HEARTBEAT_RETRY_BASE_DELAY_SECONDS * (2 ** attempt),
+                    self.HEARTBEAT_RETRY_MAX_DELAY_SECONDS,
+                )
+                if os.getenv('DEBUG'):
+                    sys.stderr.write(
+                        f"[Heartbeat] Retryable commit conflict; retrying in {delay:.3f}s "
+                        f"({attempt + 1}/{self.HEARTBEAT_MAX_RETRIES})\n"
+                    )
+                    sys.stderr.flush()
+                time.sleep(delay)
 
     def _get_sections_table(self):
         """SECTIONSテーブルを取得（キャッシュ付き）
@@ -1395,13 +1430,13 @@ class SearchDocsWorker:
         pid = params["pid"]
         table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
         now = pd.Timestamp.now(tz='UTC').floor('ms')
-        table.add([{
+        self._add_heartbeat_with_retry(table, {
             "writer_id": writer_id,
             "host": host,
             "pid": np.int32(pid),
             "state": "claiming",
             "updated_at": now,
-        }], mode='overwrite')
+        })
         self._maybe_optimize(table, WRITER_HEARTBEAT_TABLE)
         return {"success": True, "writer_id": writer_id, "state": "claiming"}
 
@@ -1412,13 +1447,13 @@ class SearchDocsWorker:
         state = params.get("state", "watching")
         table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
         now = pd.Timestamp.now(tz='UTC').floor('ms')
-        table.add([{
+        self._add_heartbeat_with_retry(table, {
             "writer_id": writer_id,
             "host": host,
             "pid": np.int32(pid),
             "state": state,
             "updated_at": now,
-        }], mode='overwrite')
+        })
         self._maybe_optimize(table, WRITER_HEARTBEAT_TABLE)
         return {"success": True, "updated_at": now.isoformat()}
 

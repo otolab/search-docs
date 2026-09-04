@@ -252,6 +252,7 @@ heading + "\n" + content
 ### 調停メカニズム
 
 - **writer_heartbeat テーブル**: LanceDBテーブル（1行のみ、mode='overwrite'で上書き）
+- **commit競合のリトライ**: `Retryable commit conflict` / `Please retry` は正常系の競合として、最大5試行（50→100→200ms、以降200ms上限）で再試行
 - **世代整理**: heartbeat の書き込み30回ごとに `optimize(cleanup_older_than=10分)` を実行し、古いMVCCバージョンとインデックスファイルを整理
 - **状態マシン**: sleeping → claiming → watching
 - **Master期限切れ**: 2分以上更新なし（`MASTER_TIMEOUT_MS = 120000`）
@@ -272,7 +273,7 @@ heading + "\n" + content
 
 1. **sleeping**: 45秒ごとにmasterを確認、期限切れならclaim試行
 2. **claiming**: jitter待機 → claim書き込み → readback確認 → 勝者ならwatching、敗者ならsleeping
-3. **watching**: 20秒ごとにheartbeat更新、FileWatcher/IndexWorkerを起動
+3. **watching**: 20秒ごとにheartbeat更新、FileWatcher/IndexWorkerを起動。更新がリトライ後も失敗した場合はmastershipを再読込し、自分がmasterであれば維持、master喪失または確認不能時のみsleepingへ遷移
 
 ## データストレージ
 

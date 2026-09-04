@@ -81,7 +81,7 @@ Heartbeatテーブルによる調停で、複数プロセス間から1つだけ�
           ┌─────│ sleeping  │◀────────────────┐
           │     └──────────┘                  │
           │       masterなし                   │ readback失敗
-          │       or master期限切れ             │ or heartbeat更新失敗
+          │       or master期限切れ             │ or master喪失確認
           ▼                                   │
      ┌──────────┐                        ┌──────────┐
      │ claiming  │──readback成功──────▶│ watching  │
@@ -95,7 +95,7 @@ Heartbeatテーブルによる調停で、複数プロセス間から1つだけ�
 
 - **sleeping**: 他のプロセスがmasterのため待機。`MASTER_CHECK_INTERVAL_MS`(45秒)ごとにmaster確認
 - **claiming**: master権限の獲得を試行中。jitter(最大5秒) → claim書込み → readback待ち(4秒)
-- **watching**: master権限を獲得。FileWatcher・IndexWorker・StartupSyncWorkerが起動。`HEARTBEAT_INTERVAL_MS`(20秒)ごとにheartbeat更新
+- **watching**: master権限を獲得。FileWatcher・IndexWorker・StartupSyncWorkerが起動。`HEARTBEAT_INTERVAL_MS`(20秒)ごとにheartbeat更新。LanceDBの一時的なcommit競合は最大5試行（50→100→200ms、以降200ms上限）で再試行し、更新失敗後も自分がmasterであればwatchingを維持する
 
 **master期限**: `MASTER_TIMEOUT_MS`(120秒)。この間heartbeatが更新されないとmasterは期限切れとみなされる。
 
