@@ -535,7 +535,7 @@ search-docs embedding start --runtime torch
 1. 既存サーバがないことを確認
 2. ポートの空き状況を確認
 3. `uv --project <db-engine> run python embedding_server.py` で起動
-4. `/health` エンドポイントでReadiness待ち（初回はモデルダウンロードで時間がかかる場合があります）
+4. `/ready` エンドポイントでReadiness待ち（旧サーバは `/health` にフォールバック。初回はモデルダウンロードで時間がかかる場合があります）
 5. PIDファイル（`~/.search-docs/embedding.pid`）を保存
 
 #### アクセラレータ自動検出
@@ -556,7 +556,10 @@ ONNX Runtimeのアクセラレータを自動検出します：
 
 #### 注意事項
 
-- すでにサーバが起動している場合は何もしません
+- 起動前にstale PIDファイルとポート競合を診断します。HTTP診断は `127.0.0.1` と `::1` の両方を候補にします
+- `/health` が応答する外部サーバを検出した場合は、PIDファイルを作らず外部サーバとして案内します
+- IPv6専用サーバを検出した場合はURLを `http://[::1]:<port>` 形式で表示します
+- すでにsearch-docs管理下のサーバが起動している場合はエラーになります
 - 初回起動時はモデルのダウンロードに時間がかかります
 - ログは `~/.search-docs/embedding.log` に出力されます
 
@@ -565,73 +568,115 @@ ONNX Runtimeのアクセラレータを自動検出します：
 Embeddingサーバを停止します。
 
 ```bash
-search-docs embedding stop
+search-docs embedding stop [options]
 ```
 
 #### オプション
 
-なし
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--port <port>` | 停止対象のポート番号。PIDファイルがない外部サーバにも使用 | PIDファイルのport、なければ `24281` |
+| `--force` | SIGKILL（Windowsは `taskkill /F`）で直ちに停止 | `false` |
 
 #### 使用例
 
 ```bash
 # サーバを停止
 search-docs embedding stop
+
+# PIDファイルなしの外部サーバを停止（対象を明示）
+search-docs embedding stop --port 24281
+
+# 応答しないサーバをSIGKILLで停止
+search-docs embedding stop --port 24281 --force
 ```
 
 #### 動作
 
-1. PIDファイル（`~/.search-docs/embedding.pid`）からプロセスIDを取得
-2. プロセスにSIGTERMシグナルを送信
-3. プロセスの終了を待機
-4. PIDファイルを削除
+1. PIDファイルのport（または `--port`）とポート所有PIDを確認
+2. 管理下プロセスにはSIGTERM、`--force`時にはSIGKILLを送信
+3. プロセス終了・ポート解放・`/health`不通を確認
+4. 検証に成功した場合のみPIDファイルを削除
 
 #### 注意事項
 
-- サーバが起動していない場合はエラーになります
+- PIDファイルがない場合、`--port`を指定すればポート所有プロセスを外部サーバとして停止できます
+- 外部プロセスを停止する場合は警告を表示します
+- 停止後検証に失敗した場合はエラーになり、PIDファイルを残します
 
 ### embedding status
 
 Embeddingサーバの状態を確認します。
 
 ```bash
-search-docs embedding status
+search-docs embedding status [options]
 ```
 
 #### オプション
 
-なし
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--port <port>` | 確認するポート番号 | PIDファイルのport、なければ `24281` |
+| `--verbose` | 各チェック結果と診断情報を表示 | `false` |
+| `--repair` | stale PIDファイルを削除して再確認 | `false` |
+| `--probe` | `/api/embed`（失敗時 `/encode`）で実際の推論を確認 | `false` |
+| `--timeout <ms>` | HTTPチェックのタイムアウト（ミリ秒） | `3000` |
 
 #### 使用例
 
 ```bash
 # サーバの状態を確認
 search-docs embedding status
+
+# PID/ポート/health/readinessを含む詳細診断
+search-docs embedding status --verbose
+
+# 実際の推論パスも確認
+search-docs embedding status --verbose --probe --timeout 5000
+
+# stale PIDファイルを削除して再確認
+search-docs embedding status --verbose --repair
 ```
 
 #### 出力例
 
 ```
-Embedding Server Status
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Status:     Running
-PID:        45678
-Port:       24281
-Model:      cl-nagoya/ruri-v3-30m
-Dimension:  256
-Started:    2026-04-21T10:30:00.000Z
-Log:        /Users/username/.search-docs/embedding.log
+Embedding server: degraded
+  Port: 24281
+  URL: http://127.0.0.1:24281
+  Model: cl-nagoya/ruri-v3-30m
+  Dimension: 256
+  Liveness: degraded (23ms)
+  Readiness: not ready
+  Self probe: failed (42ms at 2026-09-04T06:00:00Z)
+  PID: 45678
+
+Checks:
+  pid_file: ok — PID 45678, port 24281
+  pid_alive: ok — PID 45678 is alive
+  port_listening: ok — port 24281 is listening
+  port_owner: ok — owner PID 45678 matches PID file
+  health: ok — liveness degraded (23ms)
+  readiness: failed — not ready (HTTP 503, 3 consecutive failures)
+  embed_probe: failed — HTTP 500
+  metadata_match: ok — PID metadata matches /health
+
+Suggestion:
+  - livenessは応答していますが推論パスまたは自己probeが失敗しています。embedding.logを確認してください。
 ```
 
 #### 表示項目
 
-- **Status**: `Running` または `Not running`
-- **PID**: プロセスID
+- **Status**: `healthy`、`starting`、`unhealthy`、`degraded`、`stale_pid`、`orphan_process`、`port_conflict`、`not_running`
+- **PID**: プロセスID（外部サーバやstale PIDも明示）
 - **Port**: 待ち受けポート番号
 - **Model**: モデル名
 - **Dimension**: ベクトル次元数
 - **Started**: 起動日時
 - **Log**: ログファイルのパス
+- **Checks**（`--verbose`）: PID、LISTEN、所有PID、liveness、readiness、metadata、embed probe
+
+Embeddingサーバは自己probeを45秒間隔で実行します。`GET /health` はプロセスとモデルのliveness、`GET /ready` は直近probe成功のreadinessを表します。自己probeは直近結果を優先するため、失敗1回目からreadinessを503にします（現行仕様の閾値は1）。`GET /health?deep=1` はリクエスト時に同期probeを実行します。
 
 ### Docker MCPサーバからの利用
 

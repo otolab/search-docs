@@ -2,7 +2,7 @@
  * プロセス管理ユーティリティ
  */
 
-import { spawn, type ChildProcess, type SpawnOptions } from 'child_process';
+import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from 'child_process';
 import * as net from 'net';
 
 /**
@@ -37,10 +37,16 @@ export function isProcessAlive(pid: number): boolean {
  */
 export async function killProcess(
   pid: number,
-  timeout: number = 5000
+  timeout: number = 5000,
+  force: boolean = false,
 ): Promise<void> {
   // プロセスが既に停止している場合は何もしない
   if (!isProcessAlive(pid)) {
+    return;
+  }
+
+  if (force) {
+    await forceKillProcess(pid);
     return;
   }
 
@@ -51,6 +57,32 @@ export async function killProcess(
   } else {
     // Unix系: SIGTERMを送信
     await killProcessUnix(pid, timeout);
+  }
+}
+
+/**
+ * プロセスをSIGKILL/taskkill /Fで直ちに停止する。
+ * 通常のkillProcessがSIGTERMから段階的に停止するのに対し、CLIの
+ * `embedding stop --force`で明示的に利用する。
+ */
+export async function forceKillProcess(pid: number): Promise<void> {
+  if (!isProcessAlive(pid)) return;
+
+  if (process.platform === 'win32') {
+    await killProcessWindows(pid, 0, true);
+    return;
+  }
+
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return;
+    throw error;
+  }
+
+  const stopped = await waitForProcessExit(pid, 1000);
+  if (!stopped) {
+    throw new Error(`Process ${pid} did not exit after SIGKILL`);
   }
 }
 
@@ -94,14 +126,25 @@ async function killProcessUnix(pid: number, timeout: number): Promise<void> {
  */
 async function killProcessWindows(
   pid: number,
-  timeout: number
+  timeout: number,
+  force: boolean = false,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const killProcess = spawn('taskkill', [
       '/PID',
       pid.toString(),
+      ...(force ? ['/F'] : []),
       '/T', // サブプロセスも終了
     ]);
+
+    if (force) {
+      killProcess.on('close', (code) => {
+        if (code === 0 || code === 128) resolve();
+        else reject(new Error(`taskkill failed with code ${code}`));
+      });
+      killProcess.on('error', reject);
+      return;
+    }
 
     const timeoutId = setTimeout(() => {
       // タイムアウト: 強制終了
@@ -162,12 +205,15 @@ async function waitForProcessExit(
  * ポートが利用可能か確認
  */
 export async function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
+  const canBind = (host: string): Promise<boolean> => new Promise((resolve) => {
     const server = net.createServer();
 
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
         resolve(false); // ポート使用中
+      } else if (err.code === 'EADDRNOTAVAIL' || err.code === 'EAFNOSUPPORT') {
+        // IPv6が無効なホストでは、そのアドレスだけを理由にポート使用中とは扱わない。
+        resolve(true);
       } else {
         resolve(false); // その他のエラーも利用不可とみなす
       }
@@ -178,9 +224,93 @@ export async function isPortAvailable(port: number): Promise<boolean> {
       resolve(true); // ポート利用可能
     });
 
-    server.listen(port);
+    server.listen(port, host);
   });
+
+  // IPv4/IPv6のどちらかでLISTENしているプロセスも検出する。
+  if (!(await canBind('127.0.0.1'))) return false;
+  return canBind('::1');
 }
+
+export interface ListeningProcess {
+  pid: number;
+  command?: string;
+}
+
+function execText(command: string, args: string[]): string | null {
+  try {
+    return execFileSync(command, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function commandForProcess(pid: number): string | undefined {
+  const command = execText('ps', ['-p', String(pid), '-o', 'command=']);
+  return command || undefined;
+}
+
+/**
+ * 指定ポートをLISTENしているプロセスを可能な範囲で取得する。
+ * macOS/Linuxではlsofを優先し、利用できない環境ではss/netstatへフォールバックする。
+ * OSや権限によって所有PIDが取得できない場合はnullを返す。
+ */
+export function getListeningProcess(port: number): ListeningProcess | null {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+
+  if (process.platform === 'win32') {
+    const output = execText('netstat', ['-ano', '-p', 'tcp']);
+    if (!output) return null;
+    for (const line of output.split(/\r?\n/)) {
+      const columns = line.trim().split(/\s+/);
+      if (columns.length < 5 || columns[0].toUpperCase() !== 'TCP') continue;
+      const localAddress = columns[1];
+      const state = columns[3].toUpperCase();
+      if (state !== 'LISTENING' || !localAddress.endsWith(`:${port}`)) continue;
+      const pid = Number(columns[4]);
+      if (Number.isInteger(pid) && pid > 0) return { pid, command: commandForProcess(pid) };
+    }
+    return null;
+  }
+
+  const lsof = execText('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
+  if (lsof) {
+    const pid = Number(lsof.split(/\s+/)[0]);
+    if (Number.isInteger(pid) && pid > 0) return { pid, command: commandForProcess(pid) };
+  }
+
+  const ss = execText('ss', ['-ltnp']);
+  if (ss) {
+    for (const line of ss.split(/\r?\n/)) {
+      if (!line.includes(`:${port} `) && !line.includes(`:${port}\n`)) continue;
+      const match = line.match(/pid=(\d+)/);
+      if (match) {
+        const pid = Number(match[1]);
+        return { pid, command: commandForProcess(pid) };
+      }
+    }
+  }
+
+  const netstat = execText('netstat', ['-ltnp']);
+  if (netstat) {
+    for (const line of netstat.split(/\r?\n/)) {
+      if (!line.includes(`:${port} `) && !line.includes(`:${port}\n`)) continue;
+      const match = line.match(/\s(\d+)\/[^\s]+\s*$/);
+      if (match) {
+        const pid = Number(match[1]);
+        return { pid, command: commandForProcess(pid) };
+      }
+    }
+  }
+
+  return null;
+}
+
+/** 別名。呼び出し側ではポート所有者という意味を明確にできる。 */
+export const getPortOwner = getListeningProcess;
 
 /**
  * サーバプロセスを起動

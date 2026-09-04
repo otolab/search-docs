@@ -14,6 +14,7 @@ interface HealthResponse {
   status: string;
   model: string;
   vectorDimension: number;
+  ready?: boolean;
 }
 
 export class EmbeddingServerProcess {
@@ -28,7 +29,7 @@ export class EmbeddingServerProcess {
 
     // 1. 明示的なURL指定
     if (this.options.embeddingUrl) {
-      if (await this.healthCheck(this.options.embeddingUrl)) {
+      if (await this.externalServerReady(this.options.embeddingUrl)) {
         this.url = this.options.embeddingUrl;
         this.external = true;
         console.log(`[EmbeddingServer] Using external server: ${this.url}`);
@@ -39,7 +40,7 @@ export class EmbeddingServerProcess {
 
     // 2. Docker network (compose service)
     const dockerServiceUrl = `http://search-docs-embedding:${port}`;
-    if (await this.healthCheck(dockerServiceUrl)) {
+    if (await this.externalServerReady(dockerServiceUrl)) {
       this.url = dockerServiceUrl;
       this.external = true;
       console.log(`[EmbeddingServer] Using Docker service: ${this.url}`);
@@ -48,7 +49,7 @@ export class EmbeddingServerProcess {
 
     // 3. Host-side server (from Docker container)
     const hostUrl = `http://host.docker.internal:${port}`;
-    if (await this.healthCheck(hostUrl)) {
+    if (await this.externalServerReady(hostUrl)) {
       this.url = hostUrl;
       this.external = true;
       console.log(`[EmbeddingServer] Using host server: ${this.url}`);
@@ -183,7 +184,7 @@ export class EmbeddingServerProcess {
           res.on('end', () => {
             try {
               const json = JSON.parse(data) as HealthResponse;
-              if (json.status === 'ok') {
+              if (json.status === 'ok' || json.status === 'degraded') {
                 resolve(true);
                 return;
               }
@@ -203,12 +204,23 @@ export class EmbeddingServerProcess {
     });
   }
 
+  /**
+   * 外部サーバはlivenessだけでなくreadinessも確認してから採用する。
+   * /readyを持たない旧サーバはreadinessCheck内で/healthへfallbackする。
+   */
+  private async externalServerReady(url: string): Promise<boolean> {
+    if (!(await this.healthCheck(url))) return false;
+    if (await this.readinessCheck(url)) return true;
+    console.warn(`[EmbeddingServer] External server ${url} is live but not ready; it will not be used.`);
+    return false;
+  }
+
   private async waitForReady(url: string, maxWaitSeconds: number): Promise<void> {
     const startTime = Date.now();
     const maxWaitMs = maxWaitSeconds * 1000;
 
     while (Date.now() - startTime < maxWaitMs) {
-      if (await this.healthCheck(url)) {
+      if (await this.readinessCheck(url)) {
         return;
       }
 
@@ -220,5 +232,65 @@ export class EmbeddingServerProcess {
     }
 
     throw new Error(`[EmbeddingServer] Did not become ready within ${maxWaitSeconds}s at ${url}`);
+  }
+
+  /**
+   * /readyを優先し、旧Embeddingサーバでは/healthへフォールバックする。
+   */
+  private readinessCheck(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const readyUrl = `${url}/ready`;
+      const req = http.get(readyUrl, { timeout: 2000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 404) {
+            void this.legacyReadinessCheck(url).then(resolve);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+          try {
+            const json = JSON.parse(data) as { ready?: boolean };
+            resolve(json.ready === true);
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
+  }
+
+  private legacyReadinessCheck(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const req = http.get(`${url}/health`, { timeout: 2000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+          try {
+            const json = JSON.parse(data) as HealthResponse;
+            resolve(json.ready ?? json.status === 'ok');
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
   }
 }
