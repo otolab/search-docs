@@ -69,4 +69,3 @@ describe('showEmbeddingStatus', () => {
     expect(result.snapshot.overallState).toBe('not_running');
   });
 });
-

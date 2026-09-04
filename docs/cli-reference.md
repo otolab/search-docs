@@ -556,8 +556,9 @@ ONNX Runtimeのアクセラレータを自動検出します：
 
 #### 注意事項
 
-- 起動前にstale PIDファイルとポート競合を診断します
+- 起動前にstale PIDファイルとポート競合を診断します。HTTP診断は `127.0.0.1` と `::1` の両方を候補にします
 - `/health` が応答する外部サーバを検出した場合は、PIDファイルを作らず外部サーバとして案内します
+- IPv6専用サーバを検出した場合はURLを `http://[::1]:<port>` 形式で表示します
 - すでにsearch-docs管理下のサーバが起動している場合はエラーになります
 - 初回起動時はモデルのダウンロードに時間がかかります
 - ログは `~/.search-docs/embedding.log` に出力されます
@@ -675,7 +676,7 @@ Suggestion:
 - **Log**: ログファイルのパス
 - **Checks**（`--verbose`）: PID、LISTEN、所有PID、liveness、readiness、metadata、embed probe
 
-Embeddingサーバは自己probeを45秒間隔で実行します。`GET /health` はプロセスとモデルのliveness、`GET /ready` は直近probe成功のreadinessを表します。`GET /health?deep=1` はリクエスト時に同期probeを実行します。
+Embeddingサーバは自己probeを45秒間隔で実行します。`GET /health` はプロセスとモデルのliveness、`GET /ready` は直近probe成功のreadinessを表します。自己probeは直近結果を優先するため、失敗1回目からreadinessを503にします（現行仕様の閾値は1）。`GET /health?deep=1` はリクエスト時に同期probeを実行します。
 
 ### Docker MCPサーバからの利用
 

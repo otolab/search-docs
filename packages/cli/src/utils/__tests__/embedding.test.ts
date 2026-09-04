@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   checkEmbeddingHealth,
   checkEmbeddingReadiness,
+  findEmbeddingHealth,
+  formatEmbeddingUrl,
   probeEmbedding,
 } from '../embedding.js';
 
@@ -51,6 +53,33 @@ describe('embedding HTTP probes', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('http://127.0.0.1:24281/health');
   });
 
+  it('does not fall back to /health when /ready is unreachable', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('connection refused'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await checkEmbeddingReadiness('127.0.0.1', 24281);
+
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('finds an IPv6-only server and formats its URL safely', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('IPv4 unavailable'))
+      .mockResolvedValueOnce(response(200, {
+        status: 'ok',
+        model: 'ruri',
+        vectorDimension: 3,
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await findEmbeddingHealth(24281);
+
+    expect(result?.host).toBe('::1');
+    expect(formatEmbeddingUrl('::1', 24281)).toBe('http://[::1]:24281');
+    expect(fetchMock.mock.calls[1][0]).toBe('http://[::1]:24281/health');
+  });
+
   it('probes /encode when an older server does not expose /api/embed', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(404, { error: 'Not found' }))
@@ -67,4 +96,3 @@ describe('embedding HTTP probes', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('http://127.0.0.1:24281/encode');
   });
 });
-

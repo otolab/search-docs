@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_EMBEDDING_PORT,
+  formatEmbeddingUrl,
   readEmbeddingPidFile,
   removeEmbeddingPidFile,
 } from '../../utils/embedding.js';
@@ -67,7 +68,7 @@ function printProbe(snapshot: EmbeddingStatusSnapshot): void {
 function printStatus(snapshot: EmbeddingStatusSnapshot, options: EmbeddingStatusOptions, repaired: boolean): void {
   console.log(`Embedding server: ${snapshot.overallState}`);
   console.log(`  Port: ${snapshot.port}`);
-  console.log(`  URL: http://${snapshot.host}:${snapshot.port}`);
+  console.log(`  URL: ${formatEmbeddingUrl(snapshot.host, snapshot.port)}`);
 
   if (snapshot.health) {
     console.log(`  Model: ${snapshot.health.model}`);

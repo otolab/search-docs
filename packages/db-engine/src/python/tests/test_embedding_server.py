@@ -1,6 +1,7 @@
 """Embeddingサーバのliveness/readinessと自己probeのテスト"""
 
 import json
+import math
 import sys
 import threading
 import urllib.error
@@ -26,13 +27,15 @@ class FakeModel:
     def __init__(self):
         self.fail = False
         self.calls = 0
+        self.output_dimension = self.dimension
+        self.output_value = 0.1
 
     def encode(self, texts, dimension=None):
         self.calls += 1
         if self.fail:
             raise RuntimeError('inference unavailable')
-        output_dimension = dimension or self.dimension
-        return [[0.1] * output_dimension for _ in texts]
+        output_dimension = self.output_dimension
+        return [[self.output_value] * output_dimension for _ in texts]
 
 
 def get_json(url):
@@ -71,6 +74,24 @@ def test_self_probe_updates_readiness_and_failure_count():
     assert state.ready is False
     assert state.consecutive_failures == 1
     assert state.last_probe['success'] is False
+
+    state.stop()
+
+
+def test_self_probe_rejects_wrong_dimension_and_non_finite_values():
+    model = FakeModel()
+    state = EmbeddingHealthState(model, start_worker=False)
+
+    model.output_dimension = 2
+    assert state.probe() is False
+    assert state.ready is False
+    assert 'dimension 2' in state.last_probe['error']
+
+    model.output_dimension = model.dimension
+    model.output_value = math.nan
+    assert state.probe() is False
+    assert state.ready is False
+    assert 'non-finite' in state.last_probe['error']
 
     state.stop()
 
@@ -121,4 +142,3 @@ def test_health_ready_and_deep_probe_endpoints(reset_handler):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
-

@@ -19,6 +19,9 @@ const embeddingMocks = vi.hoisted(() => ({
   checkEmbeddingHealth: vi.fn(),
   checkEmbeddingReadiness: vi.fn(),
   probeEmbedding: vi.fn(),
+  findEmbeddingHealth: vi.fn(),
+  findEmbeddingReadiness: vi.fn(),
+  findEmbeddingProbe: vi.fn(),
 }));
 
 vi.mock('../process.js', () => processMocks);
@@ -77,6 +80,9 @@ beforeEach(() => {
   embeddingMocks.checkEmbeddingHealth.mockResolvedValue(health());
   embeddingMocks.checkEmbeddingReadiness.mockResolvedValue(readiness());
   embeddingMocks.probeEmbedding.mockResolvedValue(probe());
+  embeddingMocks.findEmbeddingHealth.mockResolvedValue({ host: '127.0.0.1', health: health() });
+  embeddingMocks.findEmbeddingReadiness.mockResolvedValue({ host: '127.0.0.1', readiness: readiness() });
+  embeddingMocks.findEmbeddingProbe.mockResolvedValue({ host: '127.0.0.1', probe: probe() });
 });
 
 describe('evaluateEmbeddingStatus', () => {
@@ -86,6 +92,8 @@ describe('evaluateEmbeddingStatus', () => {
     processMocks.getListeningProcess.mockReturnValue(null);
     embeddingMocks.checkEmbeddingHealth.mockResolvedValue(null);
     embeddingMocks.checkEmbeddingReadiness.mockResolvedValue(null);
+    embeddingMocks.findEmbeddingHealth.mockResolvedValue(null);
+    embeddingMocks.findEmbeddingReadiness.mockResolvedValue(null);
 
     const snapshot = await evaluateEmbeddingStatus(snapshotOptions());
 
@@ -112,6 +120,25 @@ describe('evaluateEmbeddingStatus', () => {
     expect(snapshot.overallState).toBe('degraded');
     expect(snapshot.checks.find((check) => check.check === 'readiness')?.status).toBe('failed');
     expect(snapshot.checks.find((check) => check.check === 'embed_probe')?.status).toBe('failed');
+  });
+
+  it('does not promote liveness to healthy when /ready is unreachable', async () => {
+    embeddingMocks.checkEmbeddingReadiness.mockResolvedValue(null);
+
+    const snapshot = await evaluateEmbeddingStatus(snapshotOptions());
+
+    expect(snapshot.overallState).toBe('degraded');
+    expect(snapshot.checks.find((check) => check.check === 'readiness')?.status).toBe('failed');
+  });
+
+  it('reports an IPv6 health endpoint as the active host', async () => {
+    embeddingMocks.findEmbeddingHealth.mockResolvedValue({ host: '::1', health: health() });
+    embeddingMocks.checkEmbeddingReadiness.mockResolvedValue(readiness());
+
+    const snapshot = await evaluateEmbeddingStatus(snapshotOptions());
+
+    expect(snapshot.host).toBe('::1');
+    expect(snapshot.overallState).toBe('healthy');
   });
 
   it('reports all checks healthy when PID, owner, readiness and probe agree', async () => {

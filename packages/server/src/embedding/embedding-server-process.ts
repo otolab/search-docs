@@ -29,7 +29,7 @@ export class EmbeddingServerProcess {
 
     // 1. 明示的なURL指定
     if (this.options.embeddingUrl) {
-      if (await this.healthCheck(this.options.embeddingUrl)) {
+      if (await this.externalServerReady(this.options.embeddingUrl)) {
         this.url = this.options.embeddingUrl;
         this.external = true;
         console.log(`[EmbeddingServer] Using external server: ${this.url}`);
@@ -40,7 +40,7 @@ export class EmbeddingServerProcess {
 
     // 2. Docker network (compose service)
     const dockerServiceUrl = `http://search-docs-embedding:${port}`;
-    if (await this.healthCheck(dockerServiceUrl)) {
+    if (await this.externalServerReady(dockerServiceUrl)) {
       this.url = dockerServiceUrl;
       this.external = true;
       console.log(`[EmbeddingServer] Using Docker service: ${this.url}`);
@@ -49,7 +49,7 @@ export class EmbeddingServerProcess {
 
     // 3. Host-side server (from Docker container)
     const hostUrl = `http://host.docker.internal:${port}`;
-    if (await this.healthCheck(hostUrl)) {
+    if (await this.externalServerReady(hostUrl)) {
       this.url = hostUrl;
       this.external = true;
       console.log(`[EmbeddingServer] Using host server: ${this.url}`);
@@ -202,6 +202,17 @@ export class EmbeddingServerProcess {
         resolve(false);
       });
     });
+  }
+
+  /**
+   * 外部サーバはlivenessだけでなくreadinessも確認してから採用する。
+   * /readyを持たない旧サーバはreadinessCheck内で/healthへfallbackする。
+   */
+  private async externalServerReady(url: string): Promise<boolean> {
+    if (!(await this.healthCheck(url))) return false;
+    if (await this.readinessCheck(url)) return true;
+    console.warn(`[EmbeddingServer] External server ${url} is live but not ready; it will not be used.`);
+    return false;
   }
 
   private async waitForReady(url: string, maxWaitSeconds: number): Promise<void> {

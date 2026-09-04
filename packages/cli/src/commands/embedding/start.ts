@@ -9,8 +9,9 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import {
   DEFAULT_EMBEDDING_PORT,
+  findEmbeddingHealth,
+  formatEmbeddingUrl,
   isPortAvailable,
-  checkEmbeddingHealth,
   waitForEmbeddingReady,
   embeddingDir,
   embeddingPidPath,
@@ -76,7 +77,8 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     console.log(`Removing stale embedding PID file (PID: ${pidState.value.pid}).`);
     await removeStalePidFile();
   } else if (pidState.value) {
-    const managedHealth = await checkEmbeddingHealth('127.0.0.1', pidState.value.port, 1000);
+    const managedHealthLocation = await findEmbeddingHealth(pidState.value.port, 1000);
+    const managedHealth = managedHealthLocation?.health;
     const managedOwner = getListeningProcess(pidState.value.port);
     if (managedHealth && managedOwner && managedOwner.pid !== pidState.value.pid) {
       throw new Error(
@@ -100,10 +102,12 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   }
 
   // PIDファイルの診断で外部サーバを見つけた場合は、PIDファイルを上書きしない。
-  const existing = await checkEmbeddingHealth('127.0.0.1', port);
-  if (existing) {
+  const existingLocation = await findEmbeddingHealth(port);
+  if (existingLocation) {
+    const existing = existingLocation.health;
     const owner = getListeningProcess(port);
     console.log(`Embedding server is already running externally on port ${port}.`);
+    console.log(`  URL: ${formatEmbeddingUrl(existingLocation.host, port)}`);
     console.log(`  Model: ${existing.model}`);
     console.log(`  Dimension: ${existing.vectorDimension}`);
     console.log(`  Liveness: ${existing.status}`);
@@ -178,10 +182,20 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     throw new Error(`Embedding server did not become ready within 120s.\nCheck log: ${logPath}`);
   }
 
-  // PIDファイル保存。外部サーバのPIDファイルを上書きする経路は上で排除済み。
-  const health = await checkEmbeddingHealth('127.0.0.1', port);
+  // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
+  // LISTENしているEmbeddingプロセスのPIDを保存する。
+  const owner = getListeningProcess(port);
+  if (!owner) {
+    try { process.kill(proc.pid, 'SIGTERM'); } catch { /* ignore */ }
+    throw new Error(
+      `Embedding server became ready on port ${port}, but the LISTEN owner PID could not be determined. ` +
+      'No PID file was written; check the server manually before retrying.',
+    );
+  }
+  const healthLocation = await findEmbeddingHealth(port);
+  const health = healthLocation?.health;
   const pidFile = {
-    pid: proc.pid,
+    pid: owner.pid,
     port,
     startedAt: new Date().toISOString(),
     model: health?.model ?? 'unknown',
@@ -195,7 +209,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     { encoding: 'utf-8', mode: 0o600 },
   );
 
-  console.log(`Embedding server started successfully (PID: ${proc.pid})`);
+  console.log(`Embedding server started successfully (PID: ${owner.pid})`);
   console.log(`  Model: ${pidFile.model}`);
   console.log(`  Dimension: ${pidFile.dimension}`);
   console.log(`  Port: ${port}`);

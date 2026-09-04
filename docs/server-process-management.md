@@ -509,9 +509,14 @@ Embeddingサーバはモデルロード後も推論ランタイムの状態を45
 | `GET /ready` | readiness | 直近の自己probe成功時に200、それ以外は503 |
 | `GET /health?deep=1` | 同期ディープチェック | リクエスト時に短い入力をencodeし、結果を応答へ反映 |
 
+自己probeは直近結果を優先し、失敗1回目からreadinessを503にします（現行仕様の閾値は1）。
 `/health` は既存の `status`、`model`、`vectorDimension` を維持したまま、`ready`、`lastProbe`、
 `consecutiveFailures`、`uptimeSeconds`、`runtime` を追加で返します。CLIの
 `search-docs embedding status --verbose --probe` は、サーバ自己probeと外部推論probeを並べて表示します。
+
+`EmbeddingServerProcess` は外部サーバを採用する前にreadinessも確認します。`/ready` がない旧サーバは
+`/health` の `ready` または `status: ok` を使ってfallbackします。livenessのみ応答してreadinessが失敗する
+外部サーバは採用せず、再試行またはログ確認を促します。
 
 ## クロスプラットフォーム対応
 

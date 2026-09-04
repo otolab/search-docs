@@ -73,6 +73,13 @@ export async function stopEmbeddingServer(options: EmbeddingStopOptions = {}): P
   let external = false;
 
   if (pidFileMatchesPort && filePid !== undefined) {
+    if (!owner && filePidAlive) {
+      throw new Error(
+        `Cannot safely stop PID ${filePid}: the LISTEN owner of port ${port} could not be determined. ` +
+        `Refusing to kill a possibly reused PID. Retry with --port ${port} when the owner can be identified; ` +
+        '--force does not bypass this safety check.',
+      );
+    }
     if (owner && owner.pid !== filePid) {
       if (!explicitPort) {
         throw new Error(

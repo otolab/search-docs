@@ -7,6 +7,23 @@ import * as path from 'path';
 import { isPortAvailable as checkPortAvailable, isProcessAlive } from './process.js';
 
 export const DEFAULT_EMBEDDING_PORT = 24281;
+export const EMBEDDING_HOST_CANDIDATES = ['127.0.0.1', '::1'] as const;
+
+/**
+ * HTTP診断で試すloopback候補を返す。指定ホストを先に試し、同じ候補は
+ * 重複させない。IPv4/IPv6の片方だけでlistenしているサーバも検出できる。
+ */
+export function getEmbeddingHostCandidates(preferredHost?: string): string[] {
+  return [...new Set([
+    ...(preferredHost ? [preferredHost] : []),
+    ...EMBEDDING_HOST_CANDIDATES,
+  ])];
+}
+
+export function formatEmbeddingUrl(host: string, port: number): string {
+  const displayHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `http://${displayHost}:${port}`;
+}
 
 export interface EmbeddingLastProbe {
   at: string;
@@ -70,6 +87,21 @@ interface EmbeddingHttpResponse<T> {
   latencyMs: number;
 }
 
+export interface EmbeddingHealthLocation {
+  host: string;
+  health: EmbeddingHealthResponse;
+}
+
+export interface EmbeddingReadinessLocation {
+  host: string;
+  readiness: EmbeddingReadinessResponse;
+}
+
+export interface EmbeddingProbeLocation {
+  host: string;
+  probe: EmbeddingProbeResult;
+}
+
 /**
  * EmbeddingサーバへJSONリクエストを送る共通処理。
  * ネットワークエラーは null、HTTPエラーは statusCode 付きで返すため、
@@ -84,7 +116,7 @@ async function requestEmbeddingJson<T>(
 ): Promise<EmbeddingHttpResponse<T> | null> {
   const startedAt = Date.now();
   try {
-    const response = await fetch(`http://${host}:${port}${endpoint}`, {
+    const response = await fetch(`${formatEmbeddingUrl(host, port)}${endpoint}`, {
       ...options,
       signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
     });
@@ -152,6 +184,19 @@ export async function checkEmbeddingHealth(
   return { ...result.data, latencyMs: result.latencyMs };
 }
 
+/** IPv4/IPv6 loopback候補から、最初に応答したEmbeddingサーバを探す。 */
+export async function findEmbeddingHealth(
+  port: number,
+  timeout: number = 3000,
+  preferredHost?: string,
+): Promise<EmbeddingHealthLocation | null> {
+  for (const host of getEmbeddingHostCandidates(preferredHost)) {
+    const health = await checkEmbeddingHealth(host, port, timeout);
+    if (health) return { host, health };
+  }
+  return null;
+}
+
 /**
  * HTTPエンドポイントが応答可能かを確認する。JSONの形式やHTTPステータスに
  * 依存しないため、停止後検証で利用する。
@@ -162,6 +207,17 @@ export async function isEmbeddingHealthReachable(
   timeout: number = 1000,
 ): Promise<boolean> {
   return (await requestEmbeddingJson<unknown>(host, port, '/health', undefined, timeout)) !== null;
+}
+
+export async function isEmbeddingHealthReachableOnHosts(
+  hosts: readonly string[],
+  port: number,
+  timeout: number = 1000,
+): Promise<boolean> {
+  for (const host of hosts) {
+    if (await isEmbeddingHealthReachable(host, port, timeout)) return true;
+  }
+  return false;
 }
 
 /**
@@ -193,6 +249,10 @@ export async function checkEmbeddingReadiness(
     };
   }
 
+  // 接続エラー・タイムアウトはnullとして返る。旧サーバfallbackはHTTP 404
+  // の場合だけに限定し、healthが200でもreadyへ誤昇格させない。
+  if (!readyResult) return null;
+
   const health = await checkEmbeddingHealth(host, port, timeout);
   if (!health) return null;
   return {
@@ -202,6 +262,22 @@ export async function checkEmbeddingReadiness(
     lastProbe: health.lastProbe,
     consecutiveFailures: health.consecutiveFailures,
   };
+}
+
+/** IPv4/IPv6候補からreadinessを探す。ready成功を優先し、失敗結果は保持する。 */
+export async function findEmbeddingReadiness(
+  port: number,
+  timeout: number = 3000,
+  preferredHost?: string,
+): Promise<EmbeddingReadinessLocation | null> {
+  let firstFailure: EmbeddingReadinessLocation | null = null;
+  for (const host of getEmbeddingHostCandidates(preferredHost)) {
+    const readiness = await checkEmbeddingReadiness(host, port, timeout);
+    if (!readiness) continue;
+    if (readiness.ready) return { host, readiness };
+    firstFailure ??= { host, readiness };
+  }
+  return firstFailure;
 }
 
 function extractVector(data: unknown, field: 'embeddings' | 'vectors'): number[] | null {
@@ -302,6 +378,22 @@ export async function probeEmbedding(
   };
 }
 
+/** IPv4/IPv6候補から推論probeを実行し、成功結果を優先する。 */
+export async function findEmbeddingProbe(
+  port: number,
+  timeout: number = 3000,
+  expectedDimension?: number,
+  preferredHost?: string,
+): Promise<EmbeddingProbeLocation | null> {
+  let firstFailure: EmbeddingProbeLocation | null = null;
+  for (const host of getEmbeddingHostCandidates(preferredHost)) {
+    const probe = await probeEmbedding(host, port, timeout, expectedDimension);
+    if (probe.success) return { host, probe };
+    firstFailure ??= { host, probe };
+  }
+  return firstFailure;
+}
+
 export async function waitForEmbeddingReady(
   host: string,
   port: number,
@@ -309,8 +401,10 @@ export async function waitForEmbeddingReady(
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const readiness = await checkEmbeddingReadiness(host, port, 2000);
-    if (readiness?.ready) return true;
+    for (const candidateHost of getEmbeddingHostCandidates(host)) {
+      const readiness = await checkEmbeddingReadiness(candidateHost, port, 2000);
+      if (readiness?.ready) return true;
+    }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return false;
@@ -395,10 +489,11 @@ export async function verifyEmbeddingStopped(
   timeoutMs: number = 5000,
 ): Promise<EmbeddingStopVerification> {
   const deadline = Date.now() + timeoutMs;
+  const hosts = getEmbeddingHostCandidates(host);
   let result: EmbeddingStopVerification = {
     processExited: pid === null || !isProcessAlive(pid),
     portReleased: await isPortAvailable(port),
-    healthUnreachable: !(await isEmbeddingHealthReachable(host, port, 500)),
+    healthUnreachable: !(await isEmbeddingHealthReachableOnHosts(hosts, port, 500)),
   };
 
   while (Date.now() < deadline && !(result.processExited && result.portReleased && result.healthUnreachable)) {
@@ -406,7 +501,7 @@ export async function verifyEmbeddingStopped(
     result = {
       processExited: pid === null || !isProcessAlive(pid),
       portReleased: await isPortAvailable(port),
-      healthUnreachable: !(await isEmbeddingHealthReachable(host, port, 500)),
+      healthUnreachable: !(await isEmbeddingHealthReachableOnHosts(hosts, port, 500)),
     };
   }
   return result;

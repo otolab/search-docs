@@ -3,8 +3,10 @@
  */
 
 import {
-  checkEmbeddingHealth,
   checkEmbeddingReadiness,
+  findEmbeddingHealth,
+  findEmbeddingProbe,
+  findEmbeddingReadiness,
   probeEmbedding,
   type EmbeddingHealthResponse,
   type EmbeddingPidFileState,
@@ -177,7 +179,9 @@ function determineState(args: {
       : 'unhealthy';
   }
 
-  const readinessFailed = readiness !== null && !readiness.ready;
+  // readinessを取得できない場合も、livenessだけでhealthyへ昇格させない。
+  // /readyのHTTP 404はcheckEmbeddingReadiness内で旧サーバのhealth結果に変換される。
+  const readinessFailed = readiness === null || !readiness.ready;
   const healthFailed = health.ready === false || health.status === 'degraded';
   const probeFailed = probe !== null && !probe.success;
   return readinessFailed || healthFailed || probeFailed || metadataMatches === false ? 'degraded' : 'healthy';
@@ -189,7 +193,7 @@ function determineState(args: {
 export async function evaluateEmbeddingStatus(
   options: EvaluateEmbeddingStatusOptions,
 ): Promise<EmbeddingStatusSnapshot> {
-  const host = options.host ?? '127.0.0.1';
+  const preferredHost = options.host;
   const timeoutMs = options.timeoutMs ?? 3000;
   const now = options.now ?? Date.now();
   const startupGraceMs = options.startupGraceMs ?? DEFAULT_STARTUP_GRACE_MS;
@@ -198,11 +202,24 @@ export async function evaluateEmbeddingStatus(
   const portAvailable = await isPortAvailable(options.port);
   const portListening = !portAvailable;
   const owner = portListening ? getListeningProcess(options.port) : null;
-  const health = await checkEmbeddingHealth(host, options.port, timeoutMs);
-  const readiness = await checkEmbeddingReadiness(host, options.port, timeoutMs);
-  const embedProbe = options.probe && (portListening || health !== null)
-    ? await probeEmbedding(host, options.port, timeoutMs, health?.vectorDimension)
+  const healthLocation = await findEmbeddingHealth(options.port, timeoutMs, preferredHost);
+  const health = healthLocation?.health ?? null;
+  const readinessLocation = healthLocation
+    ? null
+    : await findEmbeddingReadiness(options.port, timeoutMs, preferredHost);
+  const readiness = healthLocation
+    ? await checkEmbeddingReadiness(healthLocation.host, options.port, timeoutMs)
+    : readinessLocation?.readiness ?? null;
+  const probeLocation = options.probe && (portListening || health !== null)
+    ? healthLocation
+      ? {
+          host: healthLocation.host,
+          probe: await probeEmbedding(healthLocation.host, options.port, timeoutMs, health?.vectorDimension),
+        }
+      : await findEmbeddingProbe(options.port, timeoutMs, health?.vectorDimension, preferredHost)
     : null;
+  const embedProbe = probeLocation?.probe ?? null;
+  const host = healthLocation?.host ?? readinessLocation?.host ?? probeLocation?.host ?? preferredHost ?? '127.0.0.1';
   const metadataMatches = options.pidFile.value && health
     ? (!options.pidFile.value.model ||
       options.pidFile.value.model === 'unknown' ||

@@ -13,10 +13,12 @@ API:
 import sys
 import argparse
 import json
+import math
 import time
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from numbers import Real
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -51,14 +53,18 @@ class EmbeddingHealthState:
         return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
     @staticmethod
-    def _validate_vectors(vectors: Any) -> None:
+    def _validate_vectors(vectors: Any, expected_dimension: int) -> None:
         if not isinstance(vectors, list) or not vectors:
             raise RuntimeError('self probe returned no vectors')
         vector = vectors[0] if isinstance(vectors[0], list) else vectors
         if not isinstance(vector, list) or not vector:
             raise RuntimeError('self probe returned an invalid vector')
-        if not all(isinstance(value, (int, float)) for value in vector):
-            raise RuntimeError('self probe returned a non-numeric vector')
+        if len(vector) != expected_dimension:
+            raise RuntimeError(
+                f'self probe returned dimension {len(vector)} (expected {expected_dimension})'
+            )
+        if not all(isinstance(value, Real) and math.isfinite(float(value)) for value in vector):
+            raise RuntimeError('self probe returned a non-finite or non-numeric vector')
 
     def probe(self) -> bool:
         """短い入力をencodeし、直近結果と連続失敗回数を更新する。"""
@@ -71,7 +77,7 @@ class EmbeddingHealthState:
                     ['search-docs self health probe'],
                     dimension=self.model.dimension,
                 )
-            self._validate_vectors(vectors)
+            self._validate_vectors(vectors, self.model.dimension)
             success = True
         except Exception as exc:  # noqa: BLE001 - probe failure is reported as state
             error = str(exc)
