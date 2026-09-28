@@ -73,14 +73,22 @@ Claude: [searchツールを使用]
 
 ```
 検索結果: 3件
+処理時間: 45ms
 
-1. docs/architecture.md (行42-68)
-   セクション: 1.2.1 Vector検索エンジン
-   深度: 2, スコア: 0.95
+---
+📄 「Vector検索エンジン」(第1章2節1項)
+   docs/architecture.md
+   42-68行目 | 1位/3件 | id: ... | indexStatus: latest
 
    Vector検索は、LanceDBとRuri Embeddingを使用して実装されています。
    日本語に最適化された埋め込みモデルにより、高精度な検索が可能です。
    ...
+
+💡 検索のヒント:
+   - 結果は関連性順（上位ほど関連性が高い）
+   - 続きを見る: get_document(sectionId: "...")
+   - 件数調整: search(..., { limit: 20 })
+   - 表示行数: search(..., { previewLines: 10 })
 ```
 
 **depth パラメータの使い方**:

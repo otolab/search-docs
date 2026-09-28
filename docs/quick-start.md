@@ -158,21 +158,26 @@ npx @search-docs/cli search "Vector検索"
 検索結果: 3件
 処理時間: 45ms
 
-1. docs/README.md
-   見出し: Vector検索とは
-   深度: 2
-   スコア: 0.95
+---
+📄 「Vector検索とは」(第1章2節)
+   docs/README.md
+   42-48行目 | 1位/3件 | id: ... | indexStatus: latest
 
    Vector検索は、文書をベクトル空間に埋め込み、
    意味的な類似性に基づいて検索する技術です。
 
-2. docs/README.md
-   見出し: LanceDBについて
-   深度: 2
-   スコア: 0.82
+---
+📄 「LanceDBについて」(第1章3節)
+   docs/README.md
+   55-61行目 | 2位/3件 | id: ... | indexStatus: latest
 
    LanceDBは高速なVector databaseです。
    ローカル環境で動作し、大規模なデータも扱えます。
+
+💡 検索のヒント:
+   - 結果は関連性順（上位ほど関連性が高い）
+   - 件数調整: search-docs search "..." --limit 20
+   - JSON出力: search-docs search "..." --format json
 ...
 ```
 

@@ -1,0 +1,47 @@
+{
+  "name": "@search-docs/common",
+  "version": "1.0.0",
+  "description": "search-docs 共通ユーティリティと検索結果レンダリング",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build --force",
+    "clean": "tsc --build --clean",
+    "test": "vitest",
+    "test:unit": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "build:fast": "tsc --build",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@search-docs/types": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.0.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "naoto.kato@plaid.co.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otolab/search-docs.git",
+    "directory": "packages/common"
+  },
+  "keywords": [
+    "typescript",
+    "vector-search",
+    "markdown",
+    "search"
+  ]
+}

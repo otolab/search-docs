@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@search-docs/client": "workspace:*",
+    "@search-docs/common": "workspace:*",
     "@search-docs/config": "workspace:*",
     "@search-docs/db-engine": "workspace:*",
     "@search-docs/server": "workspace:*",

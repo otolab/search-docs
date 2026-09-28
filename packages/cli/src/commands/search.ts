@@ -55,7 +55,7 @@ export async function executeSearch(
     const format = options.format || 'text';
     const output = format === 'json'
       ? formatSearchResultsAsJson(response)
-      : formatSearchResultsAsText(response);
+      : formatSearchResultsAsText(response, { hints: 'cli' });
 
     console.log(output);
   } catch (error) {

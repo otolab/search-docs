@@ -10,6 +10,7 @@
     { "path": "../types" },
     { "path": "../config" },
     { "path": "../client" },
-    { "path": "../db-engine" }
+    { "path": "../db-engine" },
+    { "path": "../common" }
   ]
 }

@@ -38,6 +38,9 @@ importers:
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
+      '@search-docs/common':
+        specifier: workspace:*
+        version: link:../common
       '@search-docs/config':
         specifier: workspace:*
         version: link:../config
@@ -67,6 +70,16 @@ importers:
       '@types/node':
         specifier: 22.18.12
         version: 22.18.12
+
+  packages/common:
+    dependencies:
+      '@search-docs/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      vitest:
+        specifier: 4.0.5
+        version: 4.0.5(@types/node@22.18.12)
 
   packages/config:
     dependencies:
@@ -102,6 +115,9 @@ importers:
       '@search-docs/client':
         specifier: workspace:*
         version: link:../client
+      '@search-docs/common':
+        specifier: workspace:*
+        version: link:../common
       '@search-docs/config':
         specifier: workspace:*
         version: link:../config
