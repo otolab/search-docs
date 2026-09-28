@@ -15,6 +15,9 @@ export interface SearchCommandOptions {
   depth?: string;
   format?: 'text' | 'json';
   cleanOnly?: boolean;
+  previewLines?: string;
+  includePath?: string[];
+  excludePath?: string[];
   server?: string;
   config?: string;
 }
@@ -39,13 +42,22 @@ export async function executeSearch(
     });
 
     // リクエスト構築
+    const requestOptions: NonNullable<SearchRequest['options']> = {
+      limit: options.limit ? parseInt(options.limit, 10) : 10,
+      depth: options.depth ? parseInt(options.depth, 10) : undefined,
+      includeCleanOnly: options.cleanOnly || false,
+    };
+
+    if (options.includePath?.length) {
+      requestOptions.includePaths = options.includePath;
+    }
+    if (options.excludePath?.length) {
+      requestOptions.excludePaths = options.excludePath;
+    }
+
     const request: SearchRequest = {
       query,
-      options: {
-        limit: options.limit ? parseInt(options.limit, 10) : 10,
-        depth: options.depth ? parseInt(options.depth, 10) : undefined,
-        includeCleanOnly: options.cleanOnly || false,
-      },
+      options: requestOptions,
     };
 
     // 検索実行
@@ -55,7 +67,12 @@ export async function executeSearch(
     const format = options.format || 'text';
     const output = format === 'json'
       ? formatSearchResultsAsJson(response)
-      : formatSearchResultsAsText(response, { hints: 'cli' });
+      : formatSearchResultsAsText(response, {
+        hints: 'cli',
+        ...(options.previewLines === undefined
+          ? {}
+          : { previewLines: parseInt(options.previewLines, 10) }),
+      });
 
     console.log(output);
   } catch (error) {

@@ -78,6 +78,10 @@ let globalConfigPath: string | undefined;
 
 const program = new Command();
 
+function collectOptionValue(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
 program
   .name('search-docs')
   .description('search-docs コマンドラインツール')
@@ -143,6 +147,9 @@ program
   .option('--depth <depth>', '最大深度 (0=文書全体のみ、1=章まで、2=節まで、3=項まで)')
   .option('--format <format>', '出力形式 (text, json)', 'text')
   .option('--clean-only', 'Dirtyセクションを除外')
+  .option('--preview-lines <n>', 'テキストプレビューの最大行数（デフォルト: 5）')
+  .option('--include-path <path>', '検索対象に含めるドキュメントパス（前方一致、繰り返し可）', collectOptionValue, [])
+  .option('--exclude-path <path>', '検索対象から除外するドキュメントパス（前方一致、繰り返し可）', collectOptionValue, [])
   .option('--server <url>', 'サーバURL')
   .action((query: string, options: SearchCommandOptions) => {
     void executeSearch(query, { ...options, config: globalConfigPath });
