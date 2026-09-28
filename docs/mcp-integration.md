@@ -52,8 +52,8 @@ search-docsのMCP Serverは以下のツールを提供します。
 | `query` | string | ✓ | - | 検索クエリ（自然言語） |
 | `limit` | number | - | 10 | 最大結果数 |
 | `previewLines` | number | - | 5 | プレビュー行数 |
-| `depth` | number \| number[] | - | - | 検索深度フィルタ（0-3）<br>例: `2` または `[1, 2]` |
-| `includeCleanOnly` | boolean | - | false | Clean（最新）なSectionのみ検索 |
+| `depth` | number | - | - | 最大深度（0-3）。指定した深度まで検索<br>例: `2` |
+| `syncedOnly` | boolean | - | false | Clean（最新）なSectionのみ検索 |
 | `includePaths` | string[] | - | - | 含めるパス（前方一致）<br>例: `["docs/", "README.md"]` |
 | `excludePaths` | string[] | - | - | 除外するパス（前方一致）<br>例: `["docs/internal/"]` |
 | `project` | string | - | - | 関連プロジェクト名<br>指定時は関連プロジェクトを検索 |
@@ -66,7 +66,7 @@ search-docsのMCP Serverは以下のツールを提供します。
 Claude: [searchツールを使用]
         query: "Vector検索 実装"
         limit: 5
-        depth: [1, 2]
+        depth: 2
 ```
 
 **レスポンス例**:
@@ -94,8 +94,7 @@ Claude: [searchツールを使用]
 **depth パラメータの使い方**:
 
 - `depth: 0` - 文書全体のみ検索
-- `depth: 2` - H2見出し単位のみ検索
-- `depth: [1, 2]` - H1とH2見出し単位を検索（配列で複数指定）
+- `depth: 2` - 文書全体からH2見出しまで検索
 
 ---
 

@@ -93,6 +93,10 @@ MCPサーバとJSON-RPCクライアントは、共通のSearchDocsServiceイン�
 
 これにより、MCPツールはサーバがin-processかHTTP経由かを意識せずに利用できます。
 
+### 検索結果のプレゼンテーション層
+
+`@search-docs/common` (`packages/common/`) は `SearchResponse` の text レンダリングを担う軽量なプレゼンテーション層です。MCP の `search` と CLI の `search --format text` が同じレンダラーを共有し、章節項号、プレビュー、indexStatus、クライアント別ヒントの形式を揃えます。依存は `@search-docs/types` のみに限定しています。
+
 ## コアコンポーネント
 
 ### 1. Vector検索エンジン (Python)
