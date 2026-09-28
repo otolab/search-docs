@@ -226,8 +226,8 @@ Started: 2025-01-30T12:00:00.000Z
 # 基本的な検索
 search-docs search "検索キーワード"
 
-# depth指定（より詳細なセクションを検索）
-search-docs search "検索キーワード" --depth 1 2
+# depth指定（指定した深度まで検索）
+search-docs search "検索キーワード" --depth 1
 
 # 結果数を指定
 search-docs search "検索キーワード" --limit 20
@@ -237,6 +237,9 @@ search-docs search "検索キーワード" --format json
 
 # Cleanなセクションのみ検索
 search-docs search "検索キーワード" --clean-only
+
+# プレビュー行数とパスフィルタを指定
+search-docs search "検索キーワード" --preview-lines 10 --include-path docs/ --exclude-path docs/internal/
 ```
 
 #### 検索結果の形式
@@ -504,9 +507,12 @@ search-docs search <query> [options]
 | オプション | 説明 |
 |-----------|------|
 | `--limit <n>` | 最大結果数（デフォルト: 10） |
-| `--depth <depths...>` | 深度フィルタ（例: 1 2） |
+| `--depth <depth>` | 最大深度（例: 1） |
 | `--format <format>` | 出力形式（text, json） |
 | `--clean-only` | Dirtyセクションを除外 |
+| `--preview-lines <n>` | text出力のプレビュー最大行数（デフォルト: 5） |
+| `--include-path <path>` | 検索対象に含めるドキュメントパス（前方一致、繰り返し可） |
+| `--exclude-path <path>` | 検索対象から除外するドキュメントパス（前方一致、繰り返し可） |
 | `--server <url>` | サーバURL |
 
 ### index コマンド

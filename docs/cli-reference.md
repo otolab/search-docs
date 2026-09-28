@@ -264,6 +264,8 @@ search-docs search <query> [options]
 | `--exclude-path <path>` | 検索対象から除外するドキュメントパス（前方一致、繰り返し可） | なし |
 | `--server <url>` | サーバURL | 設定ファイルのURL |
 
+`--preview-lines` は text 出力の本文プレビューにのみ適用されます。`--format json` は検索 API の `SearchResponse` をそのまま出力します。
+
 ### 使用例
 
 ```bash

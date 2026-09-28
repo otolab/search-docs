@@ -181,6 +181,14 @@ npx @search-docs/cli search "Vector検索"
 ...
 ```
 
+検索対象のパスや本文プレビューを絞り込む場合は、オプションを追加します。
+
+```bash
+npx @search-docs/cli search "Vector検索" --preview-lines 10 --include-path docs/ --exclude-path docs/internal/
+```
+
+`--include-path` と `--exclude-path` は同じオプションを繰り返して指定できます。
+
 ### ステップ5: サーバを停止
 
 ```bash
