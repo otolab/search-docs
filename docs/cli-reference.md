@@ -294,17 +294,18 @@ search-docs search "Vector検索" --server http://localhost:24281
 検索結果: 42件
 処理時間: 123ms
 
-1. docs/README.md
-   見出し: 概要
-   深度: 1
-   スコア: 0.95
-   状態: Clean
+---
+📄 「概要」(第1章)
+   docs/README.md
+   42-68行目 | 1位/42件 | id: ... | indexStatus: latest
 
    ローカル文書検索システム - Markdown文書に対する
    Vector検索機能を提供します...
 
-2. docs/architecture.md
-   ...
+💡 検索のヒント:
+   - 結果は関連性順（上位ほど関連性が高い）
+   - 件数調整: search-docs search "..." --limit 20
+   - JSON出力: search-docs search "..." --format json
 ```
 
 #### JSON形式

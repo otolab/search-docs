@@ -4,8 +4,8 @@
  */
 
 import { z } from 'zod';
+import { renderSearchResultsText } from '@search-docs/common';
 import { getStateErrorMessage } from '../state.js';
-import { formatSectionNumber, getPreviewContent } from '../utils.js';
 import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 
 /**
@@ -77,53 +77,11 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
             },
           });
 
-          // 結果を整形（プロジェクト名を含める）
-          let resultText = `[プロジェクト: ${project}]\n`;
-          resultText += `検索結果: ${response.total}件\n`;
-          resultText += `処理時間: ${response.took}ms\n\n`;
-
-          if (response.results.length === 0) {
-            resultText += '該当する結果が見つかりませんでした。';
-          } else {
-            const total = response.results.length;
-
-            response.results.forEach((result, index) => {
-              resultText += '---\n';
-
-              const heading = result.heading || '(no heading)';
-              const hierarchy = formatSectionNumber(result.sectionNumber);
-
-              // 1行目: タイトル + 章節項号
-              if (hierarchy) {
-                resultText += `📄 「${heading}」(${hierarchy})\n`;
-              } else {
-                // depth=0の場合は章節項号なし
-                resultText += `📄 ${heading}\n`;
-              }
-
-              // 2行目: ファイルパス
-              resultText += `   ${result.documentPath}\n`;
-
-              // 3行目: 行数、順位、ID
-              const rank = index + 1;
-              resultText += `   ${result.startLine}-${result.endLine}行目 | ${rank}位/${total}件 | id: ${result.id}\n\n`;
-
-              // コンテンツ（インデント）
-              const preview = getPreviewContent(result.content, previewLines);
-              const indentedContent = preview
-                .split('\n')
-                .map((line) => `   ${line}`)
-                .join('\n');
-              resultText += indentedContent + '\n';
-            });
-
-            // 検索ヒント
-            resultText += '\n💡 検索のヒント:\n';
-            resultText += '   - 結果は関連性順（上位ほど関連性が高い）\n';
-            resultText += `   - 続きを見る: get_document(sectionId: "...", project: "${project}")\n`;
-            resultText += `   - 件数調整: search(..., { project: "${project}", limit: 20 })\n`;
-            resultText += `   - 表示行数: search(..., { project: "${project}", previewLines: 10 })\n`;
-          }
+          const resultText = renderSearchResultsText(response, {
+            previewLines,
+            projectLabel: project,
+            hints: 'mcp',
+          });
 
           return {
             content: [
@@ -162,52 +120,10 @@ export function registerSearchTool(context: ToolRegistrationContext): Registered
           },
         });
 
-        // 結果を整形
-        let resultText = `検索結果: ${response.total}件\n`;
-        resultText += `処理時間: ${response.took}ms\n\n`;
-
-        if (response.results.length === 0) {
-          resultText += '該当する結果が見つかりませんでした。';
-        } else {
-          const total = response.results.length;
-
-          response.results.forEach((result, index) => {
-            resultText += '---\n';
-
-            const heading = result.heading || '(no heading)';
-            const hierarchy = formatSectionNumber(result.sectionNumber);
-
-            // 1行目: タイトル + 章節項号
-            if (hierarchy) {
-              resultText += `📄 「${heading}」(${hierarchy})\n`;
-            } else {
-              // depth=0の場合は章節項号なし
-              resultText += `📄 ${heading}\n`;
-            }
-
-            // 2行目: ファイルパス
-            resultText += `   ${result.documentPath}\n`;
-
-            // 3行目: 行数、順位、ID
-            const rank = index + 1;
-            resultText += `   ${result.startLine}-${result.endLine}行目 | ${rank}位/${total}件 | id: ${result.id}\n\n`;
-
-            // コンテンツ（インデント）
-            const preview = getPreviewContent(result.content, previewLines);
-            const indentedContent = preview
-              .split('\n')
-              .map((line) => `   ${line}`)
-              .join('\n');
-            resultText += indentedContent + '\n';
-          });
-
-          // 検索ヒント
-          resultText += '\n💡 検索のヒント:\n';
-          resultText += '   - 結果は関連性順（上位ほど関連性が高い）\n';
-          resultText += '   - 続きを見る: get_document(sectionId: "...")\n';
-          resultText += '   - 件数調整: search(..., { limit: 20 })\n';
-          resultText += '   - 表示行数: search(..., { previewLines: 10 })\n';
-        }
+        const resultText = renderSearchResultsText(response, {
+          previewLines,
+          hints: 'mcp',
+        });
 
         return {
           content: [
