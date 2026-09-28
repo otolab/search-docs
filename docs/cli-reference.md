@@ -259,6 +259,9 @@ search-docs search <query> [options]
 | `--depth <depth>` | 最大深度（0=文書全体のみ、1=章まで、2=節まで、3=項まで） | すべて |
 | `--format <format>` | 出力形式（text, json） | `text` |
 | `--clean-only` | Dirtyセクションを除外 | `false` |
+| `--preview-lines <n>` | text出力のプレビュー最大行数 | `5` |
+| `--include-path <path>` | 検索対象に含めるドキュメントパス（前方一致、繰り返し可） | なし |
+| `--exclude-path <path>` | 検索対象から除外するドキュメントパス（前方一致、繰り返し可） | なし |
 | `--server <url>` | サーバURL | 設定ファイルのURL |
 
 ### 使用例
@@ -281,6 +284,12 @@ search-docs search "Vector検索" --format json
 
 # Cleanなセクションのみ検索
 search-docs search "Vector検索" --clean-only
+
+# プレビュー行数とパスフィルタを指定
+search-docs search "Vector検索" --preview-lines 10 --include-path docs/ --exclude-path docs/internal/
+
+# 複数のパスを含める（同じオプションを繰り返し指定）
+search-docs search "Vector検索" --include-path docs/ --include-path README.md
 
 # 別のサーバに接続
 search-docs search "Vector検索" --server http://localhost:24281

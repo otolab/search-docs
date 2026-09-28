@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: [
+      'src/commands/__tests__/**/*.test.ts',
       'src/commands/config/__tests__/**/*.test.ts',
       'src/commands/embedding/__tests__/**/*.test.ts',
       'src/utils/__tests__/**/*.test.ts',
