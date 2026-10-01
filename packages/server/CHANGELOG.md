@@ -1,5 +1,16 @@
 # @search-docs/server
 
+## 1.5.5
+
+### Patch Changes
+
+- 61328c8: Release Publish で npm を GitHub Release より先に実行する CI 修正のパッチリリース
+- Updated dependencies [61328c8]
+  - @search-docs/types@1.5.2
+  - @search-docs/config@1.0.2
+  - @search-docs/storage@1.0.25
+  - @search-docs/db-engine@1.5.9
+
 ## 1.5.4
 
 ### Patch Changes
