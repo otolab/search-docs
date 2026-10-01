@@ -1,5 +1,18 @@
 # @search-docs/cli
 
+## 1.3.1
+
+### Patch Changes
+
+- 61328c8: Release Publish で npm を GitHub Release より先に実行する CI 修正のパッチリリース
+- Updated dependencies [61328c8]
+  - @search-docs/types@1.5.2
+  - @search-docs/config@1.0.2
+  - @search-docs/db-engine@1.5.9
+  - @search-docs/server@1.5.5
+  - @search-docs/client@1.0.26
+  - @search-docs/common@1.1.1
+
 ## 1.3.0
 
 ### Minor Changes

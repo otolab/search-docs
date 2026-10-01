@@ -1,5 +1,11 @@
 # @search-docs/types
 
+## 1.5.2
+
+### Patch Changes
+
+- 61328c8: Release Publish で npm を GitHub Release より先に実行する CI 修正のパッチリリース
+
 ## 1.5.1
 
 ### Patch Changes

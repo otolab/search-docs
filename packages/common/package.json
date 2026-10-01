@@ -1,6 +1,6 @@
 {
   "name": "@search-docs/common",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "search-docs 共通ユーティリティと検索結果レンダリング",
   "type": "module",
   "main": "dist/index.js",
