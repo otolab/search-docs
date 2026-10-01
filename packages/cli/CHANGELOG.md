@@ -1,5 +1,17 @@
 # @search-docs/cli
 
+## 1.3.0
+
+### Minor Changes
+
+- 0326964: CLI の search コマンドにプレビュー行数とドキュメントパスフィルタのオプションを追加
+- ccc5d39: 検索結果の text レンダリングを `@search-docs/common` に集約し、CLI と MCP の出力形式を統一
+
+### Patch Changes
+
+- Updated dependencies [ccc5d39]
+  - @search-docs/common@1.1.0
+
 ## 1.2.4
 
 ### Patch Changes

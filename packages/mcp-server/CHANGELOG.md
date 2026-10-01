@@ -1,5 +1,18 @@
 # @search-docs/mcp-server
 
+## 1.10.0
+
+### Minor Changes
+
+- ccc5d39: 検索結果の text レンダリングを `@search-docs/common` に集約し、CLI と MCP の出力形式を統一
+
+### Patch Changes
+
+- Updated dependencies [0326964]
+- Updated dependencies [ccc5d39]
+  - @search-docs/cli@1.3.0
+  - @search-docs/common@1.1.0
+
 ## 1.9.5
 
 ### Patch Changes
