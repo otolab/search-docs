@@ -7,7 +7,8 @@
         "run", "--rm", "-i",
         "-v", "${PWD}:/workspace:ro",
         "-v", "${PWD}/.search-docs:/workspace/.search-docs",
-        "search-docs-mcp:dev"
+        "otolab/search-docs-mcp:latest",
+        "--project-dir", "/workspace"
       ],
       "env": {}
     },
