@@ -42,17 +42,22 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: v$VERSION"
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            --title "v${{ steps.version.outputs.version }}" \
-            --notes "Release v${{ steps.version.outputs.version }}" \
-            --target main
-
       - name: Publish to npm (with Trusted Publishing)
         run: |
           # 依存関係順に公開（types -> その他のパッケージ）
           pnpm --filter @search-docs/types publish --no-git-checks --provenance --access public
           pnpm publish -r --filter '!@search-docs/types' --no-git-checks --provenance --access public
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping create"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Release $TAG" \
+              --target main
+          fi
