@@ -5,10 +5,11 @@
     "root": "."
   },
   "files": {
-    "include": [
+    "sources": [
       "**/*.md",
-      "docs/**/*.md",
-      "packages/**/README.md"
+      "docs/**",
+      "packages/**/README.md",
+      "packages/*/docs/**"
     ],
     "exclude": [
       "**/node_modules/**",
