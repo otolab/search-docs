@@ -64,7 +64,7 @@ describe('waitForServerStart child process monitoring', () => {
 
   it('detects a child that exited before monitoring began', async () => {
     const child = makeChildProcess();
-    child.exitCode = 1;
+    Object.defineProperty(child, 'exitCode', { value: 1 });
     const health = stubPendingHealthRequest();
 
     await expect(
