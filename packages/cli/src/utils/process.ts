@@ -87,6 +87,62 @@ export async function forceKillProcess(pid: number): Promise<void> {
 }
 
 /**
+ * detached 起動したプロセスとその子プロセスを停止し、OSから終了が確認できるまで待つ。
+ * Unix系では専用プロセスグループ、Windowsでは taskkill /T を使う。
+ */
+export async function killProcessTree(pid: number, timeout: number = 5000): Promise<void> {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+
+  if (process.platform === 'win32') {
+    await killProcessWindows(pid, timeout);
+    return;
+  }
+
+  await signalProcessGroup(pid, 'SIGTERM');
+  if (await waitForProcessGroupExit(pid, timeout)) return;
+
+  await signalProcessGroup(pid, 'SIGKILL');
+  if (!(await waitForProcessGroupExit(pid, 1000))) {
+    throw new Error(`Process tree ${pid} did not exit after SIGKILL`);
+  }
+}
+
+async function signalProcessGroup(pid: number, signal: NodeJS.Signals): Promise<void> {
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+      // The group leader can exit before its child. Fall back to the leader
+      // only when there is no group left to signal.
+      if (isProcessAlive(pid)) {
+        process.kill(pid, signal);
+      }
+      return;
+    }
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(pgid: number, timeout: number): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(-pgid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true;
+      // EPERM means the group still exists but cannot be inspected.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  try {
+    process.kill(-pgid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH';
+  }
+}
+
+/**
  * Unix系でプロセスを停止
  */
 async function killProcessUnix(pid: number, timeout: number): Promise<void> {

@@ -24,6 +24,8 @@ interface HealthResponse {
 
 export class EmbeddingServerProcess {
   private process: ChildProcess | null = null;
+  private processError: Error | null = null;
+  private stopPromise: Promise<void> | null = null;
   private url: string | null = null;
   private external = false;
 
@@ -68,32 +70,24 @@ export class EmbeddingServerProcess {
   }
 
   async stop(): Promise<void> {
-    if (this.process) {
-      console.log('[EmbeddingServer] Stopping local server...');
-      this.process.kill('SIGTERM');
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          this.process?.kill('SIGKILL');
-          resolve();
-        }, 5000);
-        this.process!.on('exit', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-      this.process = null;
-    }
+    if (this.stopPromise) return this.stopPromise;
+    const child = this.process;
+    if (!child) return;
+
+    console.log('[EmbeddingServer] Stopping local server...');
+    this.stopPromise = this.stopChildProcess(child).finally(() => {
+      this.stopPromise = null;
+    });
+    await this.stopPromise;
   }
 
   /**
-   * 即座に停止する（シグナルハンドラ用）
-   * 子プロセスは親プロセス終了時にOSが回収するため、終了待ちは不要。
+   * シグナルハンドラなど同期 callback から停止処理を始める。
    */
   shutdown(): void {
-    if (this.process) {
-      this.process.kill('SIGTERM');
-      this.process = null;
-    }
+    void this.stop().catch((error: unknown) => {
+      console.error('[EmbeddingServer] Failed to stop local server:', error);
+    });
   }
 
   getUrl(): string {
@@ -115,6 +109,9 @@ export class EmbeddingServerProcess {
     const readyTimeoutMs = getEmbeddingReadyTimeoutMs(this.options.readyTimeoutMs);
 
     this.process = spawn(cmd, args, {
+      // uv may launch Python as a child. A dedicated process group lets cleanup
+      // reap both processes without affecting the parent server.
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -122,14 +119,20 @@ export class EmbeddingServerProcess {
       },
     });
 
-    this.process.stderr?.on('data', (data: Buffer) => {
+    const child = this.process;
+    this.processError = null;
+    child.on('error', (error) => {
+      this.processError = error;
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
       const line = data.toString().trim();
       if (line) {
         console.log(`[embedding-server] ${line}`);
       }
     });
 
-    this.process.on('exit', (code, signal) => {
+    child.on('exit', (code, signal) => {
       if (code !== null && code !== 0) {
         console.error(`[EmbeddingServer] Process exited with code ${code}`);
       } else if (signal) {
@@ -138,8 +141,94 @@ export class EmbeddingServerProcess {
     });
 
     this.url = `http://localhost:${port}`;
-    await this.waitForReady(this.url, readyTimeoutMs);
+    try {
+      await this.waitForReady(this.url, readyTimeoutMs, child);
+    } catch (error) {
+      try {
+        await this.stopChildProcess(child);
+      } catch (cleanupError) {
+        const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}. ` +
+          `Failed to reap the local embedding process: ${message}`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     console.log(`[EmbeddingServer] Local server ready at ${this.url}`);
+  }
+
+  private async stopChildProcess(child: ChildProcess): Promise<void> {
+    const pid = child.pid;
+    if (!pid) {
+      if (this.process === child) this.process = null;
+      return;
+    }
+
+    await this.signalProcessTree(child, 'SIGTERM');
+    if (!(await this.waitForProcessTreeExit(child, 5000))) {
+      await this.signalProcessTree(child, 'SIGKILL');
+      if (!(await this.waitForProcessTreeExit(child, 1000))) {
+        throw new Error(`Local embedding process tree (PID ${pid}) did not exit`);
+      }
+    }
+
+    if (this.process === child) this.process = null;
+  }
+
+  private async signalProcessTree(child: ChildProcess, signal: NodeJS.Signals): Promise<void> {
+    const pid = child.pid;
+    if (!pid) return;
+
+    if (process.platform === 'win32') {
+      await new Promise<void>((resolve, reject) => {
+        const args = ['/PID', String(pid), '/T'];
+        if (signal === 'SIGKILL') args.push('/F');
+        const killer = spawn('taskkill', args, { stdio: 'ignore' });
+        killer.once('error', reject);
+        killer.once('close', (code) => {
+          if (code === 0 || code === 128) resolve();
+          else reject(new Error(`taskkill failed with code ${code}`));
+        });
+      });
+      return;
+    }
+
+    try {
+      // Local children are spawned detached, so their PID is also the process
+      // group ID. Signal the whole group in case uv has already exited.
+      process.kill(-pid, signal);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ESRCH') {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill(signal);
+        }
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private async waitForProcessTreeExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const childExited = child.exitCode !== null || child.signalCode !== null || this.processError !== null;
+      let groupAlive = false;
+      if (process.platform !== 'win32' && child.pid) {
+        try {
+          process.kill(-child.pid, 0);
+          groupAlive = true;
+        } catch (error) {
+          groupAlive = (error as NodeJS.ErrnoException).code !== 'ESRCH';
+        }
+      }
+
+      if (childExited && !groupAlive) return true;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return false;
   }
 
   private resolveScriptPath(isDocker: boolean): string {
@@ -221,17 +310,18 @@ export class EmbeddingServerProcess {
     return false;
   }
 
-  private async waitForReady(url: string, maxWaitMs: number): Promise<void> {
+  private async waitForReady(
+    url: string,
+    maxWaitMs: number,
+    child: ChildProcess,
+  ): Promise<void> {
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
-      if (await this.readinessCheck(url)) {
-        return;
-      }
-
-      if (this.process?.exitCode !== null && this.process?.exitCode !== undefined) {
-        throw new Error(`[EmbeddingServer] Process exited with code ${this.process.exitCode} before becoming ready`);
-      }
+      this.assertProcessCanBecomeReady(child);
+      const ready = await this.readinessCheck(url);
+      this.assertProcessCanBecomeReady(child);
+      if (ready) return;
 
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
@@ -240,6 +330,22 @@ export class EmbeddingServerProcess {
       `[EmbeddingServer] Did not become ready within ${maxWaitMs}ms at ${url}. ` +
       `Increase --ready-timeout or ${EMBEDDING_READY_TIMEOUT_ENV} if the first model download is still running.`,
     );
+  }
+
+  private assertProcessCanBecomeReady(child: ChildProcess): void {
+    if (this.processError) {
+      throw new Error(
+        `[EmbeddingServer] Failed to start local process: ${this.processError.message}`,
+        { cause: this.processError },
+      );
+    }
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      const result = child.signalCode
+        ? `signal ${child.signalCode}`
+        : `code ${child.exitCode}`;
+      throw new Error(`[EmbeddingServer] Process exited with ${result} before becoming ready`);
+    }
   }
 
   /**

@@ -398,14 +398,42 @@ export async function waitForEmbeddingReady(
   host: string,
   port: number,
   timeoutMs: number = 30000,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (signal?.aborted) {
+      if (signal.reason instanceof Error) throw signal.reason;
+      throw new Error('Embedding readiness wait was cancelled');
+    }
     for (const candidateHost of getEmbeddingHostCandidates(host)) {
       const readiness = await checkEmbeddingReadiness(candidateHost, port, 2000);
       if (readiness?.ready) return true;
+      if (signal?.aborted) {
+        if (signal.reason instanceof Error) throw signal.reason;
+        throw new Error('Embedding readiness wait was cancelled');
+      }
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (!signal) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+        reject(signal.reason instanceof Error
+          ? signal.reason
+          : new Error('Embedding readiness wait was cancelled'));
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, 500);
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
   }
   return false;
 }

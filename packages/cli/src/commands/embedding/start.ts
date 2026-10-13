@@ -22,7 +22,11 @@ import {
   readEmbeddingPidFile,
 } from '../../utils/embedding.js';
 import { resolveDbEngineRoot } from '../../utils/db-engine-path.js';
-import { getListeningProcess, isProcessAlive } from '../../utils/process.js';
+import {
+  getListeningProcess,
+  isProcessAlive,
+  killProcessTree,
+} from '../../utils/process.js';
 
 export interface EmbeddingStartOptions {
   port?: string | number;
@@ -148,14 +152,46 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   if (options.foreground) {
     // フォアグラウンド起動
     const proc = spawn('uv', args, {
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'inherit', 'inherit'],
       env: { ...process.env, PYTHONUNBUFFERED: '1' },
     });
 
-    await new Promise<void>((resolve, reject) => {
-      proc.once('error', reject);
-      proc.once('exit', () => resolve());
-    });
+    const cleanup = proc.pid ? () => killProcessTree(proc.pid!) : async () => {};
+    let cleanupPromise: Promise<void> | null = null;
+    const reap = () => {
+      cleanupPromise ??= cleanup();
+      return cleanupPromise;
+    };
+    let interruptedBy: NodeJS.Signals | null = null;
+    const onSignal = (signal: NodeJS.Signals) => {
+      interruptedBy = signal;
+      void reap().catch((error) => {
+        console.error('Failed to stop embedding process tree:', error);
+        process.exitCode = 1;
+      });
+    };
+    const onSigint = () => onSignal('SIGINT');
+    const onSigterm = () => onSignal('SIGTERM');
+    process.once('SIGINT', onSigint);
+    process.once('SIGTERM', onSigterm);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        proc.once('error', reject);
+        proc.once('exit', () => resolve());
+      });
+      await reap();
+      if (interruptedBy) {
+        process.exitCode = interruptedBy === 'SIGINT' ? 130 : 143;
+      }
+    } catch (error) {
+      await reap();
+      throw error;
+    } finally {
+      process.removeListener('SIGINT', onSigint);
+      process.removeListener('SIGTERM', onSigterm);
+    }
     return;
   }
 
@@ -174,7 +210,14 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   closeSync(logFd);
 
   if (!proc.pid) {
-    throw new Error('Failed to start embedding server process');
+    const spawnError = await new Promise<Error | null>((resolve) => {
+      proc.once('error', (error) => resolve(error));
+      setTimeout(() => resolve(null), 100);
+    });
+    throw new Error(
+      `Failed to start embedding server process${spawnError ? `: ${spawnError.message}` : ''}`,
+      spawnError ? { cause: spawnError } : undefined,
+    );
   }
 
   proc.unref();
@@ -184,47 +227,97 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     `Waiting up to ${readyTimeoutMs}ms for embedding server readiness ` +
     '(the first model download may take several minutes)...',
   );
-  const ready = await waitForEmbeddingReady('127.0.0.1', port, readyTimeoutMs);
-
-  if (!ready) {
-    try { process.kill(proc.pid, 'SIGTERM'); } catch { /* ignore */ }
-    throw new Error(
-      `Embedding server did not become ready within ${readyTimeoutMs}ms. ` +
-      `Increase --ready-timeout or ${EMBEDDING_READY_TIMEOUT_ENV} if the download is still running.\n` +
-      `Check log: ${logPath}`,
-    );
-  }
-
-  // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
-  // LISTENしているEmbeddingプロセスのPIDを保存する。
-  const owner = getListeningProcess(port);
-  if (!owner) {
-    try { process.kill(proc.pid, 'SIGTERM'); } catch { /* ignore */ }
-    throw new Error(
-      `Embedding server became ready on port ${port}, but the LISTEN owner PID could not be determined. ` +
-      'No PID file was written; check the server manually before retrying.',
-    );
-  }
-  const healthLocation = await findEmbeddingHealth(port);
-  const health = healthLocation?.health;
-  const pidFile = {
-    pid: owner.pid,
-    port,
-    startedAt: new Date().toISOString(),
-    model: health?.model ?? 'unknown',
-    dimension: health?.vectorDimension ?? dimension,
-    logPath,
+  const readinessController = new AbortController();
+  const processFailure: { spawnError: Error | null } = { spawnError: null };
+  const onSpawnError = (error: Error) => {
+    processFailure.spawnError = error;
+    readinessController.abort(error);
   };
+  const onProcessExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    if (processFailure.spawnError) return;
+    const result = signal ? `signal ${signal}` : `code ${code}`;
+    readinessController.abort(
+      new Error(`Embedding launcher exited with ${result} before readiness`),
+    );
+  };
+  proc.once('error', onSpawnError);
+  proc.once('exit', onProcessExit);
 
-  await writeFile(
-    embeddingPidPath(),
-    JSON.stringify(pidFile, null, 2),
-    { encoding: 'utf-8', mode: 0o600 },
-  );
+  try {
+    const ready = await waitForEmbeddingReady(
+      '127.0.0.1',
+      port,
+      readyTimeoutMs,
+      readinessController.signal,
+    );
 
-  console.log(`Embedding server started successfully (PID: ${owner.pid})`);
-  console.log(`  Model: ${pidFile.model}`);
-  console.log(`  Dimension: ${pidFile.dimension}`);
-  console.log(`  Port: ${port}`);
-  console.log(`  Log: ${logPath}`);
+    if (!ready) {
+      throw new Error(
+        `Embedding server did not become ready within ${readyTimeoutMs}ms. ` +
+        `Increase --ready-timeout or ${EMBEDDING_READY_TIMEOUT_ENV} if the download is still running.\n` +
+        `Check log: ${logPath}`,
+      );
+    }
+    if (processFailure.spawnError || proc.exitCode !== null || proc.signalCode !== null) {
+      const result = processFailure.spawnError
+        ? `failed to spawn: ${processFailure.spawnError.message}`
+        : proc.signalCode
+          ? `exited with signal ${proc.signalCode}`
+          : `exited with code ${proc.exitCode}`;
+      throw new Error(`Embedding launcher ${result} before readiness was recorded`);
+    }
+
+    // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
+    // LISTENしているEmbeddingプロセスのPIDを保存する。
+    const owner = getListeningProcess(port);
+    if (!owner) {
+      throw new Error(
+        `Embedding server became ready on port ${port}, but the LISTEN owner PID could not be determined. ` +
+        'No PID file was written; check the server manually before retrying.',
+      );
+    }
+    const healthLocation = await findEmbeddingHealth(port);
+    const health = healthLocation?.health;
+    const pidFile = {
+      pid: owner.pid,
+      port,
+      startedAt: new Date().toISOString(),
+      model: health?.model ?? 'unknown',
+      dimension: health?.vectorDimension ?? dimension,
+      logPath,
+    };
+
+    await writeFile(
+      embeddingPidPath(),
+      JSON.stringify(pidFile, null, 2),
+      { encoding: 'utf-8', mode: 0o600 },
+    );
+
+    console.log(`Embedding server started successfully (PID: ${owner.pid})`);
+    console.log(`  Model: ${pidFile.model}`);
+    console.log(`  Dimension: ${pidFile.dimension}`);
+    console.log(`  Port: ${port}`);
+    console.log(`  Log: ${logPath}`);
+  } catch (error) {
+    try {
+      await killProcessTree(proc.pid);
+    } catch (cleanupError) {
+      const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}. ` +
+        `Failed to reap the embedding process: ${message}`,
+        { cause: error },
+      );
+    }
+    if (processFailure.spawnError) {
+      throw new Error(
+        `Embedding server process failed to start: ${processFailure.spawnError.message}`,
+        { cause: processFailure.spawnError },
+      );
+    }
+    throw error;
+  } finally {
+    proc.removeListener('error', onSpawnError);
+    proc.removeListener('exit', onProcessExit);
+  }
 }
