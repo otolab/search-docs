@@ -1,6 +1,10 @@
 import { spawn, type ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as http from 'http';
+import {
+  EMBEDDING_READY_TIMEOUT_ENV,
+  getEmbeddingReadyTimeoutMs,
+} from '@search-docs/common';
 
 export interface EmbeddingServerOptions {
   embeddingUrl?: string;
@@ -8,6 +12,7 @@ export interface EmbeddingServerOptions {
   runtime?: 'onnx' | 'torch';
   modelPath?: string;
   dimension?: number;
+  readyTimeoutMs?: number;
 }
 
 interface HealthResponse {
@@ -107,6 +112,7 @@ export class EmbeddingServerProcess {
     const scriptPath = this.resolveScriptPath(isDocker);
     const cmd = isDocker ? 'python' : 'uv';
     const args = this.buildArgs(isDocker, scriptPath, port);
+    const readyTimeoutMs = getEmbeddingReadyTimeoutMs(this.options.readyTimeoutMs);
 
     this.process = spawn(cmd, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -132,7 +138,7 @@ export class EmbeddingServerProcess {
     });
 
     this.url = `http://localhost:${port}`;
-    await this.waitForReady(this.url, 30);
+    await this.waitForReady(this.url, readyTimeoutMs);
     console.log(`[EmbeddingServer] Local server ready at ${this.url}`);
   }
 
@@ -215,9 +221,8 @@ export class EmbeddingServerProcess {
     return false;
   }
 
-  private async waitForReady(url: string, maxWaitSeconds: number): Promise<void> {
+  private async waitForReady(url: string, maxWaitMs: number): Promise<void> {
     const startTime = Date.now();
-    const maxWaitMs = maxWaitSeconds * 1000;
 
     while (Date.now() - startTime < maxWaitMs) {
       if (await this.readinessCheck(url)) {
@@ -231,7 +236,10 @@ export class EmbeddingServerProcess {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    throw new Error(`[EmbeddingServer] Did not become ready within ${maxWaitSeconds}s at ${url}`);
+    throw new Error(
+      `[EmbeddingServer] Did not become ready within ${maxWaitMs}ms at ${url}. ` +
+      `Increase --ready-timeout or ${EMBEDDING_READY_TIMEOUT_ENV} if the first model download is still running.`,
+    );
   }
 
   /**

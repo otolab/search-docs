@@ -6,7 +6,10 @@ import { spawn } from 'child_process';
 import { closeSync, openSync } from 'fs';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  EMBEDDING_READY_TIMEOUT_ENV,
+  getEmbeddingReadyTimeoutMs,
+} from '@search-docs/common';
 import {
   DEFAULT_EMBEDDING_PORT,
   findEmbeddingHealth,
@@ -18,6 +21,7 @@ import {
   embeddingLogPath,
   readEmbeddingPidFile,
 } from '../../utils/embedding.js';
+import { resolveDbEngineRoot } from '../../utils/db-engine-path.js';
 import { getListeningProcess, isProcessAlive } from '../../utils/process.js';
 
 export interface EmbeddingStartOptions {
@@ -25,6 +29,7 @@ export interface EmbeddingStartOptions {
   foreground?: boolean;
   runtime?: 'onnx' | 'torch';
   dimension?: string | number;
+  readyTimeout?: string | number;
 }
 
 export async function executeEmbeddingStart(options: EmbeddingStartOptions): Promise<void> {
@@ -67,6 +72,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   const port = parsePort(options.port);
   const runtime = options.runtime ?? 'onnx';
   const dimension = parseDimension(options.dimension);
+  const readyTimeoutMs = getEmbeddingReadyTimeoutMs(options.readyTimeout);
   const pidState = await readEmbeddingPidFile();
 
   // 起動前診断: PIDファイルがあってもプロセスが死んでいれば先に修復する。
@@ -174,12 +180,19 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   proc.unref();
 
   // readiness 待ち（初回はモデルダウンロードで時間がかかる）
-  console.log('Waiting for embedding server to become ready (initial download may take a few minutes)...');
-  const ready = await waitForEmbeddingReady('127.0.0.1', port, 120000);
+  console.log(
+    `Waiting up to ${readyTimeoutMs}ms for embedding server readiness ` +
+    '(the first model download may take several minutes)...',
+  );
+  const ready = await waitForEmbeddingReady('127.0.0.1', port, readyTimeoutMs);
 
   if (!ready) {
     try { process.kill(proc.pid, 'SIGTERM'); } catch { /* ignore */ }
-    throw new Error(`Embedding server did not become ready within 120s.\nCheck log: ${logPath}`);
+    throw new Error(
+      `Embedding server did not become ready within ${readyTimeoutMs}ms. ` +
+      `Increase --ready-timeout or ${EMBEDDING_READY_TIMEOUT_ENV} if the download is still running.\n` +
+      `Check log: ${logPath}`,
+    );
   }
 
   // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
@@ -214,17 +227,4 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   console.log(`  Dimension: ${pidFile.dimension}`);
   console.log(`  Port: ${port}`);
   console.log(`  Log: ${logPath}`);
-}
-
-function resolveDbEngineRoot(): string {
-  try {
-    const dbEngineModulePath = import.meta.resolve('@search-docs/db-engine');
-    const dbEngineModuleFile = fileURLToPath(dbEngineModulePath);
-    return path.resolve(path.dirname(dbEngineModuleFile), '..');
-  } catch {
-    // フォールバック: ワークスペースの相対パス
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    return path.resolve(__dirname, '../../../../db-engine');
-  }
 }

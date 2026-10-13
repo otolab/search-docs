@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startEmbeddingServer } from '../start.js';
 import { stopEmbeddingServer } from '../stop.js';
 import { showEmbeddingStatus } from '../status.js';
@@ -130,7 +130,24 @@ beforeEach(() => {
     statusSnapshot(pidFile.value));
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('embedding lifecycle', () => {
+  it('passes an explicit readiness timeout to the readiness wait', async () => {
+    await startEmbeddingServer({ port, dimension: 3, readyTimeout: '45000' });
+
+    expect(embeddingMocks.waitForEmbeddingReady).toHaveBeenCalledWith('127.0.0.1', port, 45000);
+  });
+
+  it('uses the shared timeout environment variable', async () => {
+    vi.stubEnv('SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS', '31000');
+    await startEmbeddingServer({ port, dimension: 3 });
+
+    expect(embeddingMocks.waitForEmbeddingReady).toHaveBeenCalledWith('127.0.0.1', port, 31000);
+  });
+
   it('persists the listener PID and passes it through status and stop', async () => {
     await startEmbeddingServer({ port, dimension: 3 });
 

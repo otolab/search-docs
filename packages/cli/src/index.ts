@@ -33,6 +33,10 @@ import {
   type EmbeddingStartOptions,
 } from './commands/embedding/start.js';
 import {
+  executeEmbeddingDownload,
+  type EmbeddingDownloadOptions,
+} from './commands/embedding/download.js';
+import {
   executeEmbeddingStop,
   type EmbeddingStopOptions,
 } from './commands/embedding/stop.js';
@@ -109,6 +113,7 @@ serverCmd
   .description('サーバを起動（デフォルト: バックグラウンド）')
   .option('--port <port>', 'ポート番号')
   .option('-f, --foreground', 'フォアグラウンドで起動（開発時）')
+  .option('--ready-timeout <ms>', 'Embedding readiness とサーバ起動待ちの上限（ミリ秒）')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerStartOptions) => {
     void executeServerStart({ ...options, config: globalConfigPath });
@@ -133,6 +138,7 @@ serverCmd
   .description('サーバを再起動（デフォルト: バックグラウンド）')
   .option('--port <port>', 'ポート番号')
   .option('-f, --foreground', 'フォアグラウンドで起動（開発時）')
+  .option('--ready-timeout <ms>', 'Embedding readiness とサーバ起動待ちの上限（ミリ秒）')
   .option('--log <path>', 'ログファイルのパス')
   .action((options: ServerRestartOptions) => {
     void executeServerRestart({ ...options, config: globalConfigPath });
@@ -217,8 +223,17 @@ embeddingCmd
   .option('-f, --foreground', 'フォアグラウンドで起動')
   .option('--runtime <runtime>', 'ランタイム (onnx, torch)', 'onnx')
   .option('--dimension <dim>', 'ベクトル次元数', '256')
+  .option('--ready-timeout <ms>', 'Readiness待ちの上限（ミリ秒）')
   .action((options: EmbeddingStartOptions) => {
     void executeEmbeddingStart(options);
+  });
+
+embeddingCmd
+  .command('download')
+  .description('Embeddingモデルをダウンロード（サーバは起動しない）')
+  .option('--runtime <runtime>', 'ランタイム (onnx, torch)', 'onnx')
+  .action((options: EmbeddingDownloadOptions) => {
+    void executeEmbeddingDownload(options);
   });
 
 embeddingCmd

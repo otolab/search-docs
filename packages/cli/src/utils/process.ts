@@ -321,6 +321,7 @@ export interface SpawnServerOptions {
   daemon: boolean;
   logPath?: string;
   projectRoot?: string;
+  embeddingReadyTimeoutMs?: number;
 }
 
 export function spawnServer(options: SpawnServerOptions): ChildProcess {
@@ -331,6 +332,9 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
   // configPathが指定されている場合のみ環境変数を設定
   if (options.configPath) {
     env.SEARCH_DOCS_CONFIG = options.configPath;
+  }
+  if (options.embeddingReadyTimeoutMs !== undefined) {
+    env.SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS = String(options.embeddingReadyTimeoutMs);
   }
 
   const spawnOptions: SpawnOptions = {

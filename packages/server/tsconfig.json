@@ -7,6 +7,7 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../types" },
+    { "path": "../common" },
     { "path": "../config" },
     { "path": "../storage" },
     { "path": "../db-engine" }

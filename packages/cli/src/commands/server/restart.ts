@@ -13,6 +13,7 @@ export interface ServerRestartOptions {
   port?: string;
   foreground?: boolean;
   log?: string;
+  readyTimeout?: string | number;
 }
 
 /**

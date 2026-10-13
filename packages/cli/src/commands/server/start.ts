@@ -8,6 +8,10 @@ import { createWriteStream, type WriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import { ConfigLoader } from '@search-docs/config';
 import {
+  EMBEDDING_READY_TIMEOUT_ENV,
+  getEmbeddingReadyTimeoutMs,
+} from '@search-docs/common';
+import {
   readPidFile,
   deletePidFile,
 } from '../../utils/pid.js';
@@ -20,6 +24,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const SERVER_STARTUP_GRACE_MS = 60_000;
 
 /**
  * server start コマンドのオプション
@@ -29,6 +34,7 @@ export interface ServerStartOptions {
   port?: string;
   foreground?: boolean;
   log?: string;
+  readyTimeout?: string | number;
 }
 
 /**
@@ -64,6 +70,7 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
 
       log(`Project root: ${projectRoot}`);
       log(`Config: ${configPath || 'default config'}`);
+      const readyTimeoutMs = getEmbeddingReadyTimeoutMs(options.readyTimeout);
 
       // ログファイルパスを決定
       logPath = options.log || path.join(projectRoot, '.search-docs', 'server.log');
@@ -136,6 +143,7 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
         daemon: isDaemon,
         logPath,
         projectRoot,
+        embeddingReadyTimeoutMs: readyTimeoutMs,
       });
 
       if (!serverProcess.pid) {
@@ -149,12 +157,16 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
       // 9. 起動確認
     if (isDaemon) {
       // デーモンモードの場合はヘルスチェックで確認
-      console.log('Waiting for server to start...');
+      const startupTimeoutMs = readyTimeoutMs + SERVER_STARTUP_GRACE_MS;
+      console.log(
+        `Waiting up to ${startupTimeoutMs}ms for server startup ` +
+        `(${readyTimeoutMs}ms embedding readiness + ${SERVER_STARTUP_GRACE_MS}ms startup grace)...`,
+      );
 
       const started = await waitForServerStart(
         config.server.host,
         port,
-        30000
+        startupTimeoutMs
       );
 
       if (started) {
@@ -184,7 +196,10 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
           }
         }
         throw new Error(
-          'Server startup timeout. Check logs for details.'
+          `Server startup timeout after ${startupTimeoutMs}ms. ` +
+          `The embedding readiness window was ${readyTimeoutMs}ms. ` +
+          `Increase --ready-timeout or ${EMBEDDING_READY_TIMEOUT_ENV} if the first model download is still running. ` +
+          'Check logs for details.'
         );
       }
       } else {
