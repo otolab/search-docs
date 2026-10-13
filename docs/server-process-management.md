@@ -636,9 +636,18 @@ async function serverStart(options: ServerStartOptions): Promise<void> {
 
   // 8. 起動確認（デーモンモードの場合のみ）
   if (options.daemon) {
-    const started = await waitForServerStart(config.server.host, port, 30000);
+    const readyTimeoutMs = Number(
+      process.env.SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS || 600000
+    );
+    const serverStartupGraceMs = 60000;
+    const startupTimeoutMs = readyTimeoutMs + serverStartupGraceMs;
+    const started = await waitForServerStart(
+      config.server.host,
+      port,
+      startupTimeoutMs
+    );
     if (!started) {
-      throw new Error('Server startup timeout');
+      throw new Error(`Server startup timeout after ${startupTimeoutMs}ms`);
     }
     console.log(`✓ Server started successfully`);
   }

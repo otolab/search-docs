@@ -8,12 +8,17 @@ import { resolveDbEngineRoot } from '../../utils/db-engine-path.js';
 
 export interface EmbeddingDownloadOptions {
   runtime?: 'onnx' | 'torch';
+  model?: string;
 }
 
 export async function downloadEmbeddingModel(options: EmbeddingDownloadOptions): Promise<void> {
   const runtime = options.runtime ?? 'onnx';
   if (runtime !== 'onnx' && runtime !== 'torch') {
     throw new Error(`Invalid runtime: ${String(runtime)}. Expected "onnx" or "torch".`);
+  }
+  const model = options.model?.trim();
+  if (options.model !== undefined && !model) {
+    throw new Error('Model repository must not be empty.');
   }
 
   const dbEngineRoot = resolveDbEngineRoot();
@@ -24,8 +29,9 @@ export async function downloadEmbeddingModel(options: EmbeddingDownloadOptions):
     '--download-only',
     `--runtime=${runtime}`,
   ];
+  if (model) args.push(`--model=${model}`);
 
-  console.log(`Downloading the default ${runtime} embedding model...`);
+  console.log(`Downloading ${runtime} embedding model${model ? ` ${model}` : ''}...`);
   await new Promise<void>((resolve, reject) => {
     const proc = spawn('uv', args, {
       stdio: 'inherit',

@@ -232,6 +232,7 @@ embeddingCmd
   .command('download')
   .description('Embeddingモデルをダウンロード（サーバは起動しない）')
   .option('--runtime <runtime>', 'ランタイム (onnx, torch)', 'onnx')
+  .option('--model <repo>', 'Hugging FaceモデルID（省略時はランタイムの既定モデル）')
   .action((options: EmbeddingDownloadOptions) => {
     void executeEmbeddingDownload(options);
   });

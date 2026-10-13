@@ -85,6 +85,7 @@ search-docs server start [options]
 |-----------|------|-----------|
 | `--port <port>` | ポート番号 | 設定ファイルのポート |
 | `--foreground, -f` | フォアグラウンドで起動（開発時） | `false` |
+| `--ready-timeout <ms>` | Embedding readiness とサーバ起動確認の待ち時間 | 環境変数の値、または `600000` |
 | `--log <path>` | ログファイルのパス | なし |
 
 #### 使用例
@@ -101,6 +102,9 @@ search-docs server start --port 24281
 
 # ログファイルを指定して起動
 search-docs server start --log .search-docs/server.log
+
+# 初回モデル取得に時間がかかる環境で待ち時間を延長（ミリ秒）
+search-docs server start --ready-timeout 900000
 
 # カスタム設定ファイルを使用（グローバルオプション）
 search-docs --config ./custom-config.json server start
@@ -121,6 +125,7 @@ search-docs --config ./custom-config.json server start
 - すでにサーバが起動している場合はエラーになります
 - デフォルトでバックグラウンド起動します（v1.0.1以降）
 - フォアグラウンドモードは開発時に便利です
+- 初回は Hugging Face から Embedding モデルを取得するため、起動に数分かかることがあります。既定の readiness 待ちは10分で、サーバ起動確認には追加で60秒の余裕を設けています。
 
 ### server stop
 
@@ -525,6 +530,7 @@ search-docs embedding start [options]
 | `-f, --foreground` | フォアグラウンドで起動（開発時） | `false` |
 | `--runtime <runtime>` | ランタイム（`onnx` または `torch`） | `onnx` |
 | `--dimension <dim>` | ベクトル次元数 | `256` |
+| `--ready-timeout <ms>` | readiness 待ちの上限（ミリ秒） | 環境変数の値、または `600000` |
 
 #### 使用例
 
@@ -540,6 +546,9 @@ search-docs embedding start --port 24282
 
 # torchランタイムで起動
 search-docs embedding start --runtime torch
+
+# readiness の待ち時間を15分にする
+search-docs embedding start --ready-timeout 900000
 ```
 
 #### 動作
@@ -547,7 +556,7 @@ search-docs embedding start --runtime torch
 1. 既存サーバがないことを確認
 2. ポートの空き状況を確認
 3. `uv --project <db-engine> run python embedding_server.py` で起動
-4. `/ready` エンドポイントでReadiness待ち（旧サーバは `/health` にフォールバック。初回はモデルダウンロードで時間がかかる場合があります）
+4. `/ready` エンドポイントでReadiness待ち（既定10分。`--ready-timeout` または `SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS` で変更。旧サーバは `/health` にフォールバック）
 5. PIDファイル（`~/.search-docs/embedding.pid`）を保存
 
 #### アクセラレータ自動検出
@@ -563,8 +572,8 @@ ONNX Runtimeのアクセラレータを自動検出します：
 以下の優先順で探します：
 
 1. Docker内蔵パス（`/app/.cache/models/ruri-v3-30m-onnx`）
-2. プロジェクトキャッシュ（`cwd/.cache/models/ruri-v3-30m-onnx`）
-3. HuggingFace Hubから自動ダウンロード（`sirasagi62/ruri-v3-30m-ONNX`）
+2. Hugging Face Hub の標準キャッシュ
+3. キャッシュにない場合は `sirasagi62/ruri-v3-30m-ONNX` から自動ダウンロード
 
 #### 注意事項
 
@@ -572,8 +581,27 @@ ONNX Runtimeのアクセラレータを自動検出します：
 - `/health` が応答する外部サーバを検出した場合は、PIDファイルを作らず外部サーバとして案内します
 - IPv6専用サーバを検出した場合はURLを `http://[::1]:<port>` 形式で表示します
 - すでにsearch-docs管理下のサーバが起動している場合はエラーになります
-- 初回起動時はモデルのダウンロードに時間がかかります
+- 初回は Hugging Face からモデルを取得するため、ネットワーク速度に応じて数分かかることがあります。起動前に取得するには `search-docs embedding download` を実行してください
 - ログは `~/.search-docs/embedding.log` に出力されます
+
+### embedding download
+
+Embeddingモデルを Hugging Face の標準キャッシュへ事前取得します。サーバは起動しません。`--runtime` を省略すると ONNX 用の `sirasagi62/ruri-v3-30m-ONNX` を取得し、`--runtime torch` では `cl-nagoya/ruri-v3-30m` を取得します。`--model <repo>` を指定すると取得する Hugging Face リポジトリを変更できます。
+
+```bash
+# 既定のONNXモデルを取得
+search-docs embedding download
+
+# torchモデルを取得
+search-docs embedding download --runtime torch
+
+# Hugging Faceリポジトリを指定して取得
+search-docs embedding download --model org/model-repository
+```
+
+### Readiness timeout の環境変数
+
+`SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS` は embedding 起動時の readiness 待ち時間をミリ秒で指定します。既定値は `600000`（10分）です。`embedding start` と `server start`／`server restart` で共通して使われ、コマンドの `--ready-timeout <ms>` が設定されている場合はそちらを優先します。`server start` の外側の起動確認には readiness 待ちの後に60秒を加えます。
 
 ### embedding stop
 
@@ -746,7 +774,8 @@ CLIコマンドは以下の終了コードを返します：
 
 ## 環境変数
 
-現在、環境変数による設定はサポートされていません。すべての設定は設定ファイルまたはコマンドライン引数で指定してください。
+- `SEARCH_DOCS_CONFIG`: グローバルな `--config` オプションの設定ファイルパス
+- `SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS`: Embedding readiness の待ち時間（ミリ秒、既定: `600000`）
 
 ## 関連ドキュメント
 

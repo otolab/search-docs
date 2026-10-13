@@ -529,6 +529,7 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 | コマンド | 説明 |
 |---------|------|
 | `embedding start [options]` | Embeddingサーバを起動 |
+| `embedding download [options]` | Embeddingモデルを事前取得（サーバは起動しない） |
 | `embedding stop [options]` | Embeddingサーバを停止 |
 | `embedding status [options]` | Embeddingサーバの状態を確認 |
 
@@ -537,6 +538,9 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 - `-f, --foreground`: フォアグラウンドで起動
 - `--runtime <runtime>`: `onnx`（デフォルト、GPU/CoreML対応）または `torch`
 - `--dimension <dim>`: ベクトル次元数（デフォルト: 256）
+- `--ready-timeout <ms>`: 初回モデル取得を含む readiness 待ち時間（ミリ秒、既定: 600000）
+- `SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS`: `embedding start` と `server start` の待ち時間を共通設定
+- `embedding download`: Hugging Face の標準キャッシュにモデルを事前取得。`--model <repo>` で取得先リポジトリを指定できます
 - `embedding stop --port <port>`: PIDファイルのない外部サーバをポート指定で停止
 - `embedding stop --force`: SIGKILLで強制停止
 - `embedding status --verbose`: PID、LISTEN、liveness、readinessなどの診断を表示
@@ -544,6 +548,13 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 - `embedding status --probe`: 実際の推論パスを確認（`--timeout <ms>`でタイムアウト指定）
 
 詳細は [CLIリファレンス - embedding コマンド](./cli-reference.md#embedding-コマンド) を参照してください。
+
+初回起動時は Hugging Face からモデルを取得するため、ネットワーク速度に応じて数分かかることがあります。起動前にダウンロードしておく場合:
+
+```bash
+search-docs embedding download
+search-docs embedding start
+```
 
 ### config コマンド
 

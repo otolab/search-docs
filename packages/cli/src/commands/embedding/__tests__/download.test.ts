@@ -38,9 +38,18 @@ describe('embedding download', () => {
 
     const download = downloadEmbeddingModel({
       runtime: 'torch',
+      model: 'org/custom-ruri',
     });
     expect(spawnMock.mock.calls[0][1]).toContain('--runtime=torch');
+    expect(spawnMock.mock.calls[0][1]).toContain('--model=org/custom-ruri');
     child.emit('close', 1, null);
     await expect(download).rejects.toThrow('exit code 1');
+  });
+
+  it('rejects an empty model repository without spawning a downloader', async () => {
+    await expect(downloadEmbeddingModel({ model: '  ' })).rejects.toThrow(
+      'Model repository must not be empty',
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 });
