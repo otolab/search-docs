@@ -4,6 +4,7 @@
 
 import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from 'child_process';
 import * as net from 'net';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 /**
  * プロセスが生存しているか確認
@@ -487,19 +488,12 @@ export async function waitForServerStart(
       if (healthy) return true;
       if (controller.signal.aborted) return false;
 
-      await new Promise<void>((resolve) => {
-        let timer: ReturnType<typeof setTimeout>;
-        const done = () => {
-          controller.signal.removeEventListener('abort', abortDelay);
-          resolve();
-        };
-        const abortDelay = () => {
-          clearTimeout(timer);
-          done();
-        };
-        timer = setTimeout(done, 1000);
-        controller.signal.addEventListener('abort', abortDelay, { once: true });
-      });
+      try {
+        await sleep(1000, undefined, { signal: controller.signal });
+      } catch (error) {
+        if (controller.signal.aborted) return false;
+        throw error;
+      }
     }
     return false;
   };
