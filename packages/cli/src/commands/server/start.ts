@@ -166,7 +166,8 @@ export async function startServer(options: ServerStartOptions): Promise<void> {
       const started = await waitForServerStart(
         config.server.host,
         port,
-        startupTimeoutMs
+        startupTimeoutMs,
+        serverProcess,
       );
 
       if (started) {

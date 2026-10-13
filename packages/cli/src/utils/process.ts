@@ -428,50 +428,117 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
 export async function checkServerHealth(
   host: string,
   port: number,
-  timeout: number = 3000
+  timeout: number = 3000,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  const controller = new AbortController();
+  const abortRequest = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortRequest, { once: true });
   try {
-    const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(`http://${host}:${port}/health`, {
+        signal: controller.signal,
+      });
 
-    const response = await fetch(`http://${host}:${port}/health`, {
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
+      if (!response.ok) return false;
       const data = (await response.json()) as { status: string };
       return data.status === 'ok';
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return false;
   } catch (_error) {
     return false;
+  } finally {
+    signal?.removeEventListener('abort', abortRequest);
   }
+}
+
+function serverProcessExitError(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): Error {
+  const exitDetails = [
+    code === null ? null : `exit code ${code}`,
+    signal === null ? null : `signal ${signal}`,
+  ].filter((detail): detail is string => detail !== null).join(', ');
+  return new Error(
+    `Server process exited before becoming healthy${exitDetails ? ` (${exitDetails})` : ''}. ` +
+      'Check server logs for details.',
+  );
 }
 
 /**
  * サーバの起動を待機
- * ヘルスチェックが成功するまで待機
+ * ヘルスチェックが成功するまで待機。起動プロセスを指定した場合は、
+ * timeoutより前のプロセス終了・spawn errorを待ち続けず呼び出し元へ返す。
  */
 export async function waitForServerStart(
   host: string,
   port: number,
-  timeout: number = 30000
+  timeout: number = 30000,
+  serverProcess?: ChildProcess,
 ): Promise<boolean> {
   const startTime = Date.now();
+  const controller = new AbortController();
+  const pollForHealth = async (): Promise<boolean> => {
+    while (!controller.signal.aborted && Date.now() - startTime < timeout) {
+      const healthy = await checkServerHealth(host, port, 3000, controller.signal);
+      if (healthy) return true;
+      if (controller.signal.aborted) return false;
 
-  while (Date.now() - startTime < timeout) {
-    const healthy = await checkServerHealth(host, port, 3000);
-
-    if (healthy) {
-      return true;
+      await new Promise<void>((resolve) => {
+        let timer: ReturnType<typeof setTimeout>;
+        const done = () => {
+          controller.signal.removeEventListener('abort', abortDelay);
+          resolve();
+        };
+        const abortDelay = () => {
+          clearTimeout(timer);
+          done();
+        };
+        timer = setTimeout(done, 1000);
+        controller.signal.addEventListener('abort', abortDelay, { once: true });
+      });
     }
+    return false;
+  };
 
-    // 1秒待機
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  if (!serverProcess) {
+    return pollForHealth();
   }
 
-  return false;
+  if (serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+    throw serverProcessExitError(serverProcess.exitCode, serverProcess.signalCode);
+  }
+
+  let onError: ((error: Error) => void) | undefined;
+  let onExit:
+    | ((code: number | null, signal: NodeJS.Signals | null) => void)
+    | undefined;
+  const processFailure = new Promise<never>((_resolve, reject) => {
+    onError = (error) => {
+      reject(new Error(`Server process failed before becoming healthy: ${error.message}`, {
+        cause: error,
+      }));
+    };
+    onExit = (code, signal) => reject(serverProcessExitError(code, signal));
+    serverProcess.once('error', onError);
+    serverProcess.once('exit', onExit);
+  });
+  // Check again after registering listeners to cover exit between the first
+  // state check and listener registration without starting a health request.
+  if (serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+    if (onError) serverProcess.removeListener('error', onError);
+    if (onExit) serverProcess.removeListener('exit', onExit);
+    throw serverProcessExitError(serverProcess.exitCode, serverProcess.signalCode);
+  }
+
+  try {
+    return await Promise.race([pollForHealth(), processFailure]);
+  } finally {
+    controller.abort();
+    if (onError) serverProcess.removeListener('error', onError);
+    if (onExit) serverProcess.removeListener('exit', onExit);
+  }
 }
