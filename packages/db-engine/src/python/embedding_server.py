@@ -25,6 +25,10 @@ from urllib.parse import parse_qs, urlparse
 from embedding import RuriEmbedding
 
 
+ONNX_MODEL_REPO = 'sirasagi62/ruri-v3-30m-ONNX'
+TORCH_MODEL_REPO = 'cl-nagoya/ruri-v3-30m'
+
+
 class EmbeddingHealthState:
     """モデルの自己probe結果を保持し、バックグラウンドで更新する。"""
 
@@ -332,11 +336,32 @@ def resolve_onnx_model_path() -> str:
         return docker_path
 
     # 2. HuggingFace Hubからダウンロード（キャッシュ済みなら即時返却）
-    from huggingface_hub import snapshot_download
     sys.stderr.write('[EmbeddingServer] Downloading ONNX model from HuggingFace Hub...\n')
     sys.stderr.flush()
-    local_dir = snapshot_download('sirasagi62/ruri-v3-30m-ONNX')
+    local_dir = download_model('onnx')
     sys.stderr.write(f'[EmbeddingServer] Model downloaded to: {local_dir}\n')
+    sys.stderr.flush()
+    return local_dir
+
+
+def download_model(runtime: str, model_repo: str = None) -> str:
+    """Download a model snapshot into the standard Hugging Face cache."""
+    if runtime not in ('onnx', 'torch'):
+        raise ValueError(f'Unsupported runtime: {runtime}')
+
+    if runtime == 'onnx' and model_repo is None:
+        import os
+        docker_path = '/app/.cache/models/ruri-v3-30m-onnx'
+        if os.path.exists(os.path.join(docker_path, 'onnx', 'model.onnx')):
+            return docker_path
+
+    repo_id = model_repo or (ONNX_MODEL_REPO if runtime == 'onnx' else TORCH_MODEL_REPO)
+    from huggingface_hub import snapshot_download
+
+    sys.stderr.write(f'[EmbeddingServer] Downloading model {repo_id} from Hugging Face Hub...\n')
+    sys.stderr.flush()
+    local_dir = snapshot_download(repo_id=repo_id)
+    sys.stderr.write(f'[EmbeddingServer] Model available at: {local_dir}\n')
     sys.stderr.flush()
     return local_dir
 
@@ -344,10 +369,15 @@ def resolve_onnx_model_path() -> str:
 def main():
     parser = argparse.ArgumentParser(description='search-docs Embedding Server')
     parser.add_argument('--port', type=int, default=8080, help='Listen port (default: 8080)')
-    parser.add_argument('--model', type=str, default='cl-nagoya/ruri-v3-30m', help='Embedding model name (torch)')
+    parser.add_argument('--model', type=str, default=None, help='Hugging Face model repository')
     parser.add_argument('--runtime', type=str, choices=['onnx', 'torch'], default='onnx', help='Runtime (default: onnx)')
     parser.add_argument('--model-path', type=str, default=None, help='ONNX model path')
     parser.add_argument('--dimension', type=int, default=256, help='Vector dimension (default: 256)')
+    parser.add_argument(
+        '--download-only',
+        action='store_true',
+        help='Download the runtime model to the Hugging Face cache without starting the server',
+    )
     parser.add_argument(
         '--probe-interval',
         type=float,
@@ -355,6 +385,10 @@ def main():
         help='Self-probe interval in seconds (default: 45)',
     )
     args = parser.parse_args()
+
+    if args.download_only:
+        download_model(args.runtime, args.model)
+        return
 
     # モデルをロード
     if args.runtime == 'onnx':
@@ -364,9 +398,10 @@ def main():
         sys.stderr.flush()
         model = ONNXEmbedding(model_path=model_path, dimension=args.dimension)
     else:
-        sys.stderr.write(f'[EmbeddingServer] Loading torch model: {args.model}\n')
+        model_name = args.model or TORCH_MODEL_REPO
+        sys.stderr.write(f'[EmbeddingServer] Loading torch model: {model_name}\n')
         sys.stderr.flush()
-        model = RuriEmbedding(model_name=args.model, dimension=args.dimension)
+        model = RuriEmbedding(model_name=model_name, dimension=args.dimension)
 
     if not model.load():
         sys.stderr.write('[EmbeddingServer] Failed to load model\n')

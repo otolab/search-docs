@@ -152,6 +152,9 @@ importers:
       '@parcel/watcher':
         specifier: 2.5.6
         version: 2.5.6
+      '@search-docs/common':
+        specifier: workspace:*
+        version: link:../common
       '@search-docs/config':
         specifier: workspace:*
         version: link:../config

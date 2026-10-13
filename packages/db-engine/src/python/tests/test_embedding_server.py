@@ -4,6 +4,7 @@ import json
 import math
 import sys
 import threading
+import types
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -17,6 +18,8 @@ from embedding_server import (  # noqa: E402
     EmbeddingHealthState,
     EmbeddingRequestHandler,
     ThreadingHTTPServer,
+    download_model,
+    main,
 )
 
 
@@ -94,6 +97,58 @@ def test_self_probe_rejects_wrong_dimension_and_non_finite_values():
     assert 'non-finite' in state.last_probe['error']
 
     state.stop()
+
+
+def test_download_model_uses_runtime_default_repositories_and_hub_cache(monkeypatch):
+    calls = []
+
+    def fake_snapshot_download(*, repo_id):
+        calls.append(repo_id)
+        return f'/fake/huggingface/{repo_id}'
+
+    monkeypatch.setattr('os.path.exists', lambda _path: False)
+    monkeypatch.setitem(
+        sys.modules,
+        'huggingface_hub',
+        types.SimpleNamespace(snapshot_download=fake_snapshot_download),
+    )
+
+    assert download_model('onnx') == '/fake/huggingface/sirasagi62/ruri-v3-30m-ONNX'
+    assert download_model('torch') == '/fake/huggingface/cl-nagoya/ruri-v3-30m'
+    assert download_model('onnx', 'org/custom-ruri') == '/fake/huggingface/org/custom-ruri'
+    assert calls == [
+        'sirasagi62/ruri-v3-30m-ONNX',
+        'cl-nagoya/ruri-v3-30m',
+        'org/custom-ruri',
+    ]
+
+
+def test_download_model_rejects_unknown_runtime():
+    with pytest.raises(ValueError, match='Unsupported runtime'):
+        download_model('unsupported')
+
+
+def test_download_only_fetches_model_without_starting_http_server(monkeypatch):
+    requested = []
+    monkeypatch.setattr(
+        sys,
+        'argv',
+        ['embedding_server.py', '--download-only', '--runtime=torch'],
+    )
+    monkeypatch.setattr(
+        'embedding_server.download_model',
+        lambda runtime, model_repo=None: requested.append((runtime, model_repo)),
+    )
+
+    class UnexpectedServer:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError('download-only must not start an HTTP server')
+
+    monkeypatch.setattr('embedding_server.ThreadingHTTPServer', UnexpectedServer)
+
+    main()
+
+    assert requested == [('torch', None)]
 
 
 def test_health_ready_and_deep_probe_endpoints(reset_handler):

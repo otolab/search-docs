@@ -5,6 +5,7 @@ import {
   findEmbeddingHealth,
   formatEmbeddingUrl,
   probeEmbedding,
+  waitForEmbeddingReady,
 } from '../embedding.js';
 
 function response(status: number, body: unknown) {
@@ -94,5 +95,17 @@ describe('embedding HTTP probes', () => {
       vectorDimension: 3,
     });
     expect(fetchMock.mock.calls[1][0]).toBe('http://127.0.0.1:24281/encode');
+  });
+
+  it('cancels the readiness wait when the launcher exits', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response(503, { ready: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    const waiting = waitForEmbeddingReady('127.0.0.1', 24281, 60_000, controller.signal);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    controller.abort(new Error('launcher exited with signal SIGTERM'));
+
+    await expect(waiting).rejects.toThrow('launcher exited with signal SIGTERM');
   });
 });

@@ -4,6 +4,7 @@
 
 import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from 'child_process';
 import * as net from 'net';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 /**
  * プロセスが生存しているか確認
@@ -83,6 +84,62 @@ export async function forceKillProcess(pid: number): Promise<void> {
   const stopped = await waitForProcessExit(pid, 1000);
   if (!stopped) {
     throw new Error(`Process ${pid} did not exit after SIGKILL`);
+  }
+}
+
+/**
+ * detached 起動したプロセスとその子プロセスを停止し、OSから終了が確認できるまで待つ。
+ * Unix系では専用プロセスグループ、Windowsでは taskkill /T を使う。
+ */
+export async function killProcessTree(pid: number, timeout: number = 5000): Promise<void> {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+
+  if (process.platform === 'win32') {
+    await killProcessWindows(pid, timeout);
+    return;
+  }
+
+  signalProcessGroup(pid, 'SIGTERM');
+  if (await waitForProcessGroupExit(pid, timeout)) return;
+
+  signalProcessGroup(pid, 'SIGKILL');
+  if (!(await waitForProcessGroupExit(pid, 1000))) {
+    throw new Error(`Process tree ${pid} did not exit after SIGKILL`);
+  }
+}
+
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+      // The group leader can exit before its child. Fall back to the leader
+      // only when there is no group left to signal.
+      if (isProcessAlive(pid)) {
+        process.kill(pid, signal);
+      }
+      return;
+    }
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(pgid: number, timeout: number): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(-pgid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true;
+      // EPERM means the group still exists but cannot be inspected.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  try {
+    process.kill(-pgid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH';
   }
 }
 
@@ -321,6 +378,7 @@ export interface SpawnServerOptions {
   daemon: boolean;
   logPath?: string;
   projectRoot?: string;
+  embeddingReadyTimeoutMs?: number;
 }
 
 export function spawnServer(options: SpawnServerOptions): ChildProcess {
@@ -331,6 +389,9 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
   // configPathが指定されている場合のみ環境変数を設定
   if (options.configPath) {
     env.SEARCH_DOCS_CONFIG = options.configPath;
+  }
+  if (options.embeddingReadyTimeoutMs !== undefined) {
+    env.SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS = String(options.embeddingReadyTimeoutMs);
   }
 
   const spawnOptions: SpawnOptions = {
@@ -368,50 +429,110 @@ export function spawnServer(options: SpawnServerOptions): ChildProcess {
 export async function checkServerHealth(
   host: string,
   port: number,
-  timeout: number = 3000
+  timeout: number = 3000,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  const controller = new AbortController();
+  const abortRequest = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortRequest, { once: true });
   try {
-    const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(`http://${host}:${port}/health`, {
+        signal: controller.signal,
+      });
 
-    const response = await fetch(`http://${host}:${port}/health`, {
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
+      if (!response.ok) return false;
       const data = (await response.json()) as { status: string };
       return data.status === 'ok';
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return false;
   } catch (_error) {
     return false;
+  } finally {
+    signal?.removeEventListener('abort', abortRequest);
   }
+}
+
+function serverProcessExitError(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): Error {
+  const exitDetails = [
+    code === null ? null : `exit code ${code}`,
+    signal === null ? null : `signal ${signal}`,
+  ].filter((detail): detail is string => detail !== null).join(', ');
+  return new Error(
+    `Server process exited before becoming healthy${exitDetails ? ` (${exitDetails})` : ''}. ` +
+      'Check server logs for details.',
+  );
 }
 
 /**
  * サーバの起動を待機
- * ヘルスチェックが成功するまで待機
+ * ヘルスチェックが成功するまで待機。起動プロセスを指定した場合は、
+ * timeoutより前のプロセス終了・spawn errorを待ち続けず呼び出し元へ返す。
  */
 export async function waitForServerStart(
   host: string,
   port: number,
-  timeout: number = 30000
+  timeout: number = 30000,
+  serverProcess?: ChildProcess,
 ): Promise<boolean> {
   const startTime = Date.now();
+  const controller = new AbortController();
+  const pollForHealth = async (): Promise<boolean> => {
+    while (!controller.signal.aborted && Date.now() - startTime < timeout) {
+      const healthy = await checkServerHealth(host, port, 3000, controller.signal);
+      if (healthy) return true;
+      if (controller.signal.aborted) return false;
 
-  while (Date.now() - startTime < timeout) {
-    const healthy = await checkServerHealth(host, port, 3000);
-
-    if (healthy) {
-      return true;
+      try {
+        await sleep(1000, undefined, { signal: controller.signal });
+      } catch (error) {
+        if (controller.signal.aborted) return false;
+        throw error;
+      }
     }
+    return false;
+  };
 
-    // 1秒待機
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  if (!serverProcess) {
+    return pollForHealth();
   }
 
-  return false;
+  if (serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+    throw serverProcessExitError(serverProcess.exitCode, serverProcess.signalCode);
+  }
+
+  let onError: ((error: Error) => void) | undefined;
+  let onExit:
+    | ((code: number | null, signal: NodeJS.Signals | null) => void)
+    | undefined;
+  const processFailure = new Promise<never>((_resolve, reject) => {
+    onError = (error) => {
+      reject(new Error(`Server process failed before becoming healthy: ${error.message}`, {
+        cause: error,
+      }));
+    };
+    onExit = (code, signal) => reject(serverProcessExitError(code, signal));
+    serverProcess.once('error', onError);
+    serverProcess.once('exit', onExit);
+  });
+  // Check again after registering listeners to cover exit between the first
+  // state check and listener registration without starting a health request.
+  if (serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+    if (onError) serverProcess.removeListener('error', onError);
+    if (onExit) serverProcess.removeListener('exit', onExit);
+    throw serverProcessExitError(serverProcess.exitCode, serverProcess.signalCode);
+  }
+
+  try {
+    return await Promise.race([pollForHealth(), processFailure]);
+  } finally {
+    controller.abort();
+    if (onError) serverProcess.removeListener('error', onError);
+    if (onExit) serverProcess.removeListener('exit', onExit);
+  }
 }
