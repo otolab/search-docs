@@ -140,6 +140,13 @@ Claude Code統合ガイド（MCP Server）
 - トラブルシューティング
 - パフォーマンス最適化
 
+#### [cloud-agent-deployment.md](./cloud-agent-deployment.md)
+Cursor Cloud Agent VM 向け運用
+
+- Build `install` と索引スナップショットの分離
+- `.cursor/environment.json` / `scripts/cloud-agent/`
+- 外部ドキュメント・索引パス、`.gitignore`、HF prefetch
+
 #### [docker-deployment.md](./docker-deployment.md)
 Docker構成ガイド
 

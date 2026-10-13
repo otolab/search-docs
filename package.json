@@ -32,7 +32,9 @@
     "typecheck": "pnpm run -r typecheck",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "changeset publish"
+    "changeset:publish": "changeset publish",
+    "env:install": "bash scripts/cloud-agent/install.sh",
+    "search-docs:snapshot": "bash scripts/cloud-agent/snapshot-search-docs-index.sh"
   },
   "devDependencies": {
     "@changesets/cli": "2.29.7",
