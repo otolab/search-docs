@@ -107,7 +107,7 @@ export async function killProcessTree(pid: number, timeout: number = 5000): Prom
   }
 }
 
-async function signalProcessGroup(pid: number, signal: NodeJS.Signals): Promise<void> {
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
   try {
     process.kill(-pid, signal);
   } catch (error) {
