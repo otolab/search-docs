@@ -208,6 +208,12 @@ claude mcp add npx -- -y @search-docs/mcp-server
 5. CLIツールの実装
 6. MCP Serverの実装
 
+## Cursor Cloud Agent
+
+Cloud Agent VM でこのリポジトリを動かすときは **npx + `@search-docs/cli`** を前提とする。Build は索引を作らず HF モデルだけ prefetch し、索引は Environment Version Save で載せる運用（Save 復元は検証中）。
+
+**手順**: [docs/cloud-agent-deployment.md](docs/cloud-agent-deployment.md)
+
 ## 関連ドキュメント
 
 - README.md - プロジェクト全体概要
