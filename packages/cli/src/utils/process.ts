@@ -98,10 +98,10 @@ export async function killProcessTree(pid: number, timeout: number = 5000): Prom
     return;
   }
 
-  await signalProcessGroup(pid, 'SIGTERM');
+  signalProcessGroup(pid, 'SIGTERM');
   if (await waitForProcessGroupExit(pid, timeout)) return;
 
-  await signalProcessGroup(pid, 'SIGKILL');
+  signalProcessGroup(pid, 'SIGKILL');
   if (!(await waitForProcessGroupExit(pid, 1000))) {
     throw new Error(`Process tree ${pid} did not exit after SIGKILL`);
   }
