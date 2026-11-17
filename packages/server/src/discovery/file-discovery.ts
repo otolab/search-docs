@@ -116,7 +116,9 @@ export class FileDiscovery {
   /**
    * .gitignoreを読み込む
    */
-  private async loadGitignore(): Promise<void> {
+  async loadGitignore(): Promise<void> {
+    this.ignoreFilter = null;
+    if (!this.config.ignoreGitignore) return;
     try {
       // ignoreパッケージを動的にロード
       if (!ignoreFactory) {
