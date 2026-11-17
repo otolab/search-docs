@@ -54,7 +54,7 @@ export class FileWatcher extends EventEmitter {
       for (const event of events) {
         const eventType = this.convertEventType(event.type);
 
-        if (!this.shouldProcessFile(event.path)) {
+        if (!this.shouldProcessFile(event.path, eventType)) {
           continue;
         }
 
@@ -98,14 +98,17 @@ export class FileWatcher extends EventEmitter {
     this.subscriptions = [];
   }
 
-  private shouldProcessFile(filePath: string): boolean {
+  private shouldProcessFile(filePath: string, eventType: FileChangeEvent['type']): boolean {
     if (!filePath.endsWith('.md')) {
       return false;
     }
 
     const relativePath = path.relative(this.rootDir, filePath);
 
-    return !this.discovery.shouldIgnore(relativePath);
+    // 既に索引済みのファイルは、除外対象になった後も削除を伝える。
+    return eventType === 'unlink'
+      ? this.discovery.matchesPattern(relativePath)
+      : !this.discovery.shouldIgnore(relativePath);
   }
 
   private convertEventType(type: string): 'add' | 'change' | 'unlink' {
