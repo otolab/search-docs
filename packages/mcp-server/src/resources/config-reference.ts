@@ -23,7 +23,7 @@ export const CONFIG_REFERENCE_CONTENT = `# 設定リファレンス
   "files": {
     "sources": ["**/*.md"],
     "exclude": ["**/node_modules/**"],
-    "ignoreGitignore": true
+    "respectGitignore": true
   }
 }
 \`\`\`
@@ -31,7 +31,10 @@ export const CONFIG_REFERENCE_CONTENT = `# 設定リファレンス
 - \`sources\`: 監視対象のglobパターン（推奨、v1.8.6以降）
 - \`include\`: \`sources\`の旧名称（後方互換あり、非推奨）
 - \`exclude\`: 除外するglobパターン
-- \`ignoreGitignore\`: \`.gitignore\` のパターンを尊重するか
+- \`respectGitignore\`: ルートの \`.gitignore\` を適用するか（既定値 \`true\`）。\`false\` では適用しません。
+- \`ignoreGitignore\`: 非推奨の旧名です。値を変えずに \`respectGitignore\` に名前を変更してください。両方を同時に指定するとエラーになります。
+
+現行の監視イベントには \`.gitignore\` が適用されません（初期同期には適用されます）。監視側の対応は Issue #145 で扱います。
 
 **監視方式の自動判定**:
 - \`**\` を含むパターン → deep（再帰的に監視）

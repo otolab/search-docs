@@ -90,7 +90,7 @@ export interface SearchDocsConfig {
   files: {
     include: string[];
     exclude: string[];
-    ignoreGitignore: boolean;
+    respectGitignore: boolean;
   };
   indexing: {
     maxTokensPerSection: number;

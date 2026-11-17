@@ -338,7 +338,7 @@ search-docs server stop
   "files": {
     "sources": ["**/*.md"],
     "exclude": ["**/node_modules/**"],
-    "ignoreGitignore": true
+    "respectGitignore": true
   }
 }
 ```
@@ -346,7 +346,10 @@ search-docs server stop
 - `sources`: 監視対象のglobパターン（推奨、v1.8.6以降）
 - `include`: `sources`の旧名称（後方互換のため動作するが非推奨）
 - `exclude`: 除外するglobパターン
-- `ignoreGitignore`: `.gitignore`のパターンを尊重するか
+- `respectGitignore`: ルートの `.gitignore` を適用するか（既定値 `true`）。`false` では適用しません。
+- `ignoreGitignore`: 非推奨の旧名です。真偽値を変えずに `respectGitignore` に名前を変更してください。両方を同時に指定するとエラーになります。
+
+現行のファイル監視イベントには `.gitignore` が適用されません（初期同期には適用されます）。監視側の対応は Issue #145 で扱います。
 
 **sourcesパターンの監視方式**（v1.8.6以降）:
 
@@ -376,7 +379,7 @@ search-docs server stop
 
 **優先順位**:
 1. `exclude`パターン（最優先）
-2. `.gitignore`（`ignoreGitignore: true`の場合）
+2. `.gitignore`（`respectGitignore: true`の場合）
 3. `sources`パターン
 
 #### indexing

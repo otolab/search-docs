@@ -214,7 +214,7 @@ export interface SearchDocsConfig {
 export interface FileDiscoveryConfig {
   include: string[];
   exclude: string[];
-  ignoreGitignore: boolean;
+  respectGitignore: boolean;
 }
 ```
 
@@ -224,14 +224,14 @@ export interface FileDiscoveryConfig {
 |-----------|---|------|-----------|------|
 | include | string[] | ✓ | ['**/*.md'] | 含めるファイルパターン（glob） |
 | exclude | string[] | ✓ | ['**/node_modules/**', '**/.git/**'] | 除外するパターン |
-| ignoreGitignore | boolean | ✓ | true | .gitignoreを考慮するか |
+| respectGitignore | boolean | ✓ | true | .gitignoreを考慮するか |
 
 **使用例**:
 ```typescript
 const fileConfig: FileDiscoveryConfig = {
   include: ['**/*.md', '**/*.mdx'],
   exclude: ['**/node_modules/**', '**/dist/**'],
-  ignoreGitignore: true,
+  respectGitignore: true,
 };
 ```
 

@@ -40,7 +40,7 @@ export class FileDiscovery {
    */
   async findFiles(): Promise<string[]> {
     // .gitignoreを読み込む
-    if (this.config.ignoreGitignore) {
+    if ((this.config.respectGitignore ?? this.config.ignoreGitignore ?? true)) {
       await this.loadGitignore();
     }
 
@@ -103,7 +103,7 @@ export class FileDiscovery {
    */
   shouldIgnore(filePath: string): boolean {
     // .gitignoreフィルタ
-    if (this.config.ignoreGitignore && this.ignoreFilter) {
+    if ((this.config.respectGitignore ?? this.config.ignoreGitignore ?? true) && this.ignoreFilter) {
       if (this.ignoreFilter.ignores(filePath)) {
         return true;
       }
