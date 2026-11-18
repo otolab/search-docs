@@ -48,17 +48,19 @@ jobs:
           python-version: '3.11'
 
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
 
       - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile
-          uv sync --project packages/db-engine --locked
+          uv sync --project packages/db-engine
 
       - name: Build
         run: pnpm build
 
       - name: Heartbeat timezone tests
-        run: uv run --project packages/db-engine --locked python -m pytest packages/db-engine/src/python/__tests__/test_heartbeat_timezone.py -q
+        run: uv run --project packages/db-engine python -m pytest packages/db-engine/src/python/__tests__/test_heartbeat_timezone.py -q
 
       - name: Heartbeat integration test
         run: pnpm --filter @search-docs/server test:heartbeat-integration
