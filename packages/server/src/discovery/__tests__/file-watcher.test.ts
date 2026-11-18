@@ -42,6 +42,63 @@ describe('FileWatcher', () => {
     }
   };
 
+  it.each([true, false])(
+    '初期同期と監視の追加・変更で .gitignore 設定を揃える (ignoreGitignore=%s)',
+    { timeout: 15000 },
+    async (ignoreGitignore) => {
+      const { FileDiscovery } = await import('../file-discovery.js');
+      const config = {
+        sources: ['**/*.md'], exclude: [], ignoreGitignore, maxFileSize: 10 * 1024 * 1024,
+      };
+      await fs.writeFile(path.join(tmpDir, '.gitignore'), 'private*.md\n');
+      await fs.writeFile(path.join(tmpDir, 'private-existing.md'), '# Existing');
+      const discovery = new FileDiscovery({ rootDir: tmpDir, config });
+      expect((await discovery.findFiles()).includes('private-existing.md')).toBe(!ignoreGitignore);
+
+      watcher = new FileWatcher({
+        rootDir: tmpDir, filesConfig: config,
+        watcherConfig: { enabled: true, debounceMs: 100, awaitWriteFinishMs: 50 },
+      });
+      const events: FileChangeEvent[] = [];
+      watcher.on('change', (event: FileChangeEvent) => events.push(event));
+      await watcher.start();
+      await wait(500);
+      await fs.writeFile(path.join(tmpDir, 'private-new.md'), '# New');
+      await fs.writeFile(path.join(tmpDir, 'private-existing.md'), '# Changed');
+      await fs.writeFile(path.join(tmpDir, 'public.md'), '# Public');
+      await waitForEvents(events, ignoreGitignore ? 1 : 3);
+      await wait(400);
+      expect(events.some((event) => event.path === 'public.md')).toBe(true);
+      expect(events.some((event) => event.path === 'private-new.md')).toBe(!ignoreGitignore);
+      expect(events.some((event) => event.path === 'private-existing.md')).toBe(!ignoreGitignore);
+    },
+  );
+
+  it('監視中の .gitignore の変更は監視の再開始時に反映する', { timeout: 15000 }, async () => {
+    await fs.writeFile(path.join(tmpDir, '.gitignore'), 'private.md\n');
+    watcher = new FileWatcher({
+      rootDir: tmpDir,
+      filesConfig: { sources: ['**/*.md'], exclude: [], ignoreGitignore: true, maxFileSize: 1024 },
+      watcherConfig: { enabled: true, debounceMs: 100, awaitWriteFinishMs: 50 },
+    });
+    const events: FileChangeEvent[] = [];
+    watcher.on('change', (event: FileChangeEvent) => events.push(event));
+    await watcher.start();
+    await wait(500);
+    await fs.unlink(path.join(tmpDir, '.gitignore'));
+    await fs.writeFile(path.join(tmpDir, 'private.md'), '# Private');
+    await fs.writeFile(path.join(tmpDir, 'public.md'), '# Public');
+    await waitForEvents(events);
+    await wait(400);
+    expect(events.some((event) => event.path === 'private.md')).toBe(false);
+    await watcher.stop();
+    await watcher.start();
+    await wait(500);
+    await fs.writeFile(path.join(tmpDir, 'private.md'), '# Updated');
+    await waitForEvents(events, 2);
+    expect(events.some((event) => event.path === 'private.md')).toBe(true);
+  });
+
   it('ファイル追加を検出できる', { timeout: 10000 }, async () => {
     const events: FileChangeEvent[] = [];
 
