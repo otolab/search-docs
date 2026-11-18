@@ -2,9 +2,9 @@ import * as watcher from '@parcel/watcher';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
-import { minimatch } from 'minimatch';
 import type { FilesConfig, WatcherConfig } from '@search-docs/types';
 import { buildWatchTargets } from './watch-targets.js';
+import { FileDiscovery } from './file-discovery.js';
 
 export interface FileWatcherOptions {
   /** プロジェクトルート */
@@ -27,12 +27,14 @@ export class FileWatcher extends EventEmitter {
   private rootDir: string;
   private filesConfig: FilesConfig;
   private watcherConfig: WatcherConfig;
+  private discovery: FileDiscovery;
 
   constructor(options: FileWatcherOptions) {
     super();
     this.rootDir = fs.realpathSync(path.resolve(options.rootDir));
     this.filesConfig = options.filesConfig;
     this.watcherConfig = options.watcherConfig;
+    this.discovery = new FileDiscovery({ rootDir: this.rootDir, config: this.filesConfig });
   }
 
   isRunning(): boolean {
@@ -40,6 +42,7 @@ export class FileWatcher extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    await this.discovery.loadGitignore();
     const targets = await buildWatchTargets(this.rootDir, this.filesConfig);
 
     const callback: watcher.SubscribeCallback = (err, events) => {
@@ -51,7 +54,7 @@ export class FileWatcher extends EventEmitter {
       for (const event of events) {
         const eventType = this.convertEventType(event.type);
 
-        if (!this.shouldProcessFile(event.path)) {
+        if (!this.shouldProcessFile(event.path, eventType)) {
           continue;
         }
 
@@ -95,23 +98,17 @@ export class FileWatcher extends EventEmitter {
     this.subscriptions = [];
   }
 
-  private shouldProcessFile(filePath: string): boolean {
+  private shouldProcessFile(filePath: string, eventType: FileChangeEvent['type']): boolean {
     if (!filePath.endsWith('.md')) {
       return false;
     }
 
     const relativePath = path.relative(this.rootDir, filePath);
 
-    if (this.filesConfig.sources && this.filesConfig.sources.length > 0) {
-      const matches = this.filesConfig.sources.some((pattern) =>
-        minimatch(relativePath, pattern)
-      );
-      if (!matches) {
-        return false;
-      }
-    }
-
-    return true;
+    // 既に索引済みのファイルは、除外対象になった後も削除を伝える。
+    return eventType === 'unlink'
+      ? this.discovery.matchesPattern(relativePath)
+      : !this.discovery.shouldIgnore(relativePath);
   }
 
   private convertEventType(type: string): 'add' | 'change' | 'unlink' {

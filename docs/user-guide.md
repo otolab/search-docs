@@ -346,7 +346,7 @@ search-docs server stop
 - `sources`: 監視対象のglobパターン（推奨、v1.8.6以降）
 - `include`: `sources`の旧名称（後方互換のため動作するが非推奨）
 - `exclude`: 除外するglobパターン
-- `ignoreGitignore`: `.gitignore`のパターンを尊重するか
+- `ignoreGitignore`: プロジェクトルートの`.gitignore`のパターンを尊重するか。初期同期時と監視開始時に読み込みます。監視中の変更は監視を再開すると反映され、変更だけでは既存の索引の削除や再走査は行いません。除外対象になった文書も、監視中に実ファイルを削除すると索引とストレージから削除されます。
 
 **sourcesパターンの監視方式**（v1.8.6以降）:
 
