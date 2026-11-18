@@ -152,6 +152,60 @@ describe('WatcherProcess heartbeat failure handling', () => {
 });
 
 describe('WatcherProcess recovery and shutdown', () => {
+  it('stops after an early connection failure even if connection readiness never settles', async () => {
+    const db = {
+      connect: vi.fn().mockRejectedValue(new Error('early connection failure')),
+      waitForConnection: vi.fn(() => new Promise<void>(() => {})),
+      disconnect: vi.fn(),
+    };
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    instance.start();
+    await vi.waitFor(() => expect(db.connect).toHaveBeenCalledOnce());
+    await instance.stop();
+    expect(db.disconnect).toHaveBeenCalled();
+  });
+
+  it('cancels a pending connection wait and disconnects again if connection completes later', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const db = {
+      connect: vi.fn(() => gate),
+      waitForConnection: vi.fn(() => new Promise<void>(() => {})),
+      disconnect: vi.fn(),
+    };
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    instance.start();
+    await instance.stop();
+    expect(db.disconnect).toHaveBeenCalled();
+    release();
+    await vi.waitFor(() => expect(db.disconnect).toHaveBeenCalledTimes(2));
+    expect(instance.getStatus().writerState).not.toBe('watching');
+  });
+
+  it('reports an unlink failure flushed during stop after releasing ownership', async () => {
+    const config = createConfig();
+    config.watcher.enabled = true;
+    const db = {
+      deleteSectionsByPath: vi.fn().mockRejectedValue(new Error('delete failed')),
+      releaseWriter: vi.fn(async () => ({})), disconnect: vi.fn(),
+    };
+    const instance = new WatcherProcess(config, {} as FileStorage, db as unknown as DBEngine);
+    const internal = instance as unknown as {
+      writerState: string; watcher: {
+        emit: (type: string, event: unknown) => void;
+        isRunning: () => boolean; stop: () => Promise<void>;
+      };
+    };
+    internal.writerState = 'watching';
+    internal.watcher.isRunning = () => true;
+    internal.watcher.stop = async () => {
+      internal.watcher.emit('change', { type: 'unlink', path: 'a.md', timestamp: new Date() });
+    };
+    await expect(instance.stop()).rejects.toThrow('delete failed');
+    expect(db.releaseWriter).toHaveBeenCalledOnce();
+    expect(db.disconnect).toHaveBeenCalled();
+  });
+
   it('waits for an in-flight claim and releases it without starting the watcher', async () => {
     let release!: () => void;
     let entered!: () => void;

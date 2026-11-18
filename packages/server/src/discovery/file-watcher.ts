@@ -24,6 +24,7 @@ export interface FileChangeEvent {
 export class FileWatcher extends EventEmitter {
   private subscriptions: watcher.AsyncSubscription[] = [];
   private debounceTimers = new Map<string, { timer: NodeJS.Timeout; type: FileChangeEvent['type'] }>();
+  private acceptingEvents = false;
   private rootDir: string;
   private filesConfig: FilesConfig;
   private watcherConfig: WatcherConfig;
@@ -42,10 +43,12 @@ export class FileWatcher extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    this.acceptingEvents = true;
     await this.discovery.loadGitignore();
     const targets = await buildWatchTargets(this.rootDir, this.filesConfig);
 
     const callback: watcher.SubscribeCallback = (err, events) => {
+      if (!this.acceptingEvents) return;
       if (err) {
         this.emit('error', err);
         return;
@@ -83,6 +86,10 @@ export class FileWatcher extends EventEmitter {
   }
 
   async stop(flush = true): Promise<void> {
+    this.acceptingEvents = false;
+    const pending = [...this.debounceTimers.entries()];
+    for (const [, event] of pending) clearTimeout(event.timer);
+    this.debounceTimers.clear();
     for (const sub of this.subscriptions) {
       try {
         await sub.unsubscribe();
@@ -91,11 +98,9 @@ export class FileWatcher extends EventEmitter {
       }
     }
     this.subscriptions = [];
-    for (const [filePath, pending] of this.debounceTimers) {
-      clearTimeout(pending.timer);
-      if (flush) this.emitFileEvent(pending.type, filePath);
+    for (const [filePath, event] of pending) {
+      if (flush) this.emitFileEvent(event.type, filePath);
     }
-    this.debounceTimers.clear();
   }
 
   private shouldProcessFile(filePath: string, eventType: FileChangeEvent['type']): boolean {

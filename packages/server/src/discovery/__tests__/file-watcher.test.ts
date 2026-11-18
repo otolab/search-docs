@@ -62,6 +62,34 @@ describe('FileWatcher', () => {
     expect(events.some(event => event.type === 'unlink' && event.path === 'pending.md')).toBe(true);
   });
 
+  it('cancels debounce timers before waiting for unsubscribe after ownership loss', async () => {
+    vi.useFakeTimers();
+    try {
+      watcher = new FileWatcher({
+        rootDir: tmpDir,
+        filesConfig: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 1024 },
+        watcherConfig: { enabled: true, debounceMs: 100, awaitWriteFinishMs: 50 },
+      });
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const internal = watcher as unknown as {
+        subscriptions: Array<{ unsubscribe: () => Promise<void> }>;
+        handleFileEvent: (type: 'unlink', filePath: string) => void;
+      };
+      internal.subscriptions = [{ unsubscribe: () => gate }];
+      const events: FileChangeEvent[] = [];
+      watcher.on('change', event => events.push(event));
+      internal.handleFileEvent('unlink', path.join(tmpDir, 'a.md'));
+      const stopping = watcher.stop(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(events).toHaveLength(0);
+      release();
+      await stopping;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([true, false])(
     '初期同期と監視の追加・変更で .gitignore 設定を揃える (ignoreGitignore=%s)',
     { timeout: 15000 },

@@ -45,6 +45,10 @@ export class WatcherProcess {
   private heartbeatUpdates = new Set<Promise<void>>();
   private claimAttempted = false;
   private ownershipGeneration = 0;
+  private stopConnectionWait!: () => void;
+  private readonly connectionStop = new Promise<void>(resolve => { this.stopConnectionWait = resolve; });
+  private deletionFailure: Error | null = null;
+  private eventHandlers = new Set<Promise<void>>();
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
@@ -72,9 +76,14 @@ export class WatcherProcess {
         watcherConfig: config.watcher,
       });
       this.watcher.on('change', (event: FileChangeEvent) => {
-        this.handleFileChange(event).catch((error) => {
+        const handling = this.handleFileChange(event).catch((error) => {
           console.error('File change handling error:', error);
+          if (event.type === 'unlink') {
+            this.deletionFailure = error instanceof Error ? error : new Error(String(error));
+          }
         });
+        this.eventHandlers.add(handling);
+        void handling.finally(() => this.eventHandlers.delete(handling));
       });
       this.watcher.on('error', (error: Error) => {
         console.error('File watcher error:', error);
@@ -99,14 +108,16 @@ export class WatcherProcess {
   start(): void {
     console.log(`[WatcherProcess] Writer ID: ${this.writerId}`);
 
-    // DB接続をバックグラウンドで開始
-    this.dbEngine.connect().catch((error) => {
-      console.error('[WatcherProcess] DB connection failed:', error);
-    });
+    const connection = this.dbEngine.connect();
+    void connection.then(() => {
+      if (this.stopping) this.dbEngine.disconnect();
+    }, () => {});
 
-    // DB接続完了後に調停プロセスを開始
     this.runCoordination(async () => {
-      await this.dbEngine.waitForConnection();
+      await Promise.race([
+        connection.then(() => this.dbEngine.waitForConnection()),
+        this.connectionStop,
+      ]);
       if (this.stopping) return;
       console.log('[WatcherProcess] DB connected, starting writer coordination');
       this.writerState = 'sleeping';
@@ -124,6 +135,7 @@ export class WatcherProcess {
     console.log('[WatcherProcess] Stopping...');
 
     this.stopping = true;
+    this.stopConnectionWait();
     this.stopMasterCheck();
     await this.coordination;
 
@@ -136,6 +148,7 @@ export class WatcherProcess {
     await this.startupSyncWorker.waitForSync();
     await this.indexWorker?.waitForProcessing();
     await this.documentQueue.drain();
+    await Promise.all(this.eventHandlers);
     this.stopHeartbeat();
     await Promise.all(this.heartbeatUpdates);
 
@@ -150,6 +163,7 @@ export class WatcherProcess {
     }
 
     this.dbEngine.disconnect();
+    if (this.deletionFailure) throw this.deletionFailure;
   }
 
   /**
