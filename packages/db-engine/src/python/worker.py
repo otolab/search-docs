@@ -710,6 +710,8 @@ class SearchDocsWorker:
                 result = self.update_index_request(params)
             elif method == "updateManyIndexRequests":
                 result = self.update_many_index_requests(params)
+            elif method == "getIndexedPaths":
+                result = self.get_indexed_paths()
             elif method == "getPathsWithStatus":
                 result = self.get_paths_with_status(params)
             elif method == "claimWriter":
@@ -1403,6 +1405,12 @@ class SearchDocsWorker:
         self._maybe_optimize(table,"index_requests")
 
         return {"updated": True, "count": count}
+
+    def get_indexed_paths(self) -> Dict[str, List]:
+        """Return every distinct section path, including documents without requests."""
+        table = self._get_sections_table()
+        df = table.search().select(["document_path"]).limit(None).to_pandas()
+        return {"paths": df["document_path"].dropna().unique().tolist()}
 
     def get_paths_with_status(self, params: Dict[str, Any]) -> Dict[str, List]:
         """特定のstatusを持つdocument_pathを取得"""

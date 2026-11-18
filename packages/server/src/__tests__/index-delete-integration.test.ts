@@ -323,3 +323,74 @@ it('recovers automatically in another process after writer release fails', async
     await rm(root, { recursive: true, force: true });
   }
 }, 60000);
+
+it('reconciles missing and index-only documents after a real watcher starts', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'startup-reconcile-db-'));
+  const project = join(root, 'project'); await mkdir(project);
+  const embedding = createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/health') { res.end(JSON.stringify({ model: 'test', vectorDimension: 256 })); return; }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[] };
+    res.end(JSON.stringify({ embeddings: input.input.map(() => Array(256).fill(0.1)) }));
+  });
+  embedding.listen(0, '127.0.0.1'); await once(embedding, 'listening');
+  const port = (embedding.address() as { port: number }).port;
+  const db = new DBEngine({ dbPath: join(root, 'db'), embeddingUrl: `http://127.0.0.1:${port}` });
+  const storage = new FileStorage({ basePath: join(root, 'documents') });
+  const config = {
+    version: '1.0', project: { name: 'test', root: project },
+    files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
+    indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+    watcher: { enabled: true, debounceMs: 10, awaitWriteFinishMs: 10 },
+    worker: { enabled: true, interval: 60000, maxConcurrent: 1 },
+  } as unknown as SearchDocsConfig;
+  let watcher: WatcherProcess | undefined;
+  try {
+    await db.connect();
+    watcher = new WatcherProcess(config, storage, db);
+    const inner = watcher as unknown as {
+      writerId: string; indexWorker: IndexWorker;
+      handleFileChange: (event: { type: 'add'; path: string }) => Promise<void>;
+      transitionToWatching: () => Promise<void>;
+      startupSyncWorker: { waitForSync: () => Promise<void> };
+    };
+    await db.claimWriter({ writerId: inner.writerId, host: 'test', pid: process.pid });
+    for (const name of ['missing.md', 'index-only.md', 'race.md']) {
+      await writeFile(join(project, name), '# old');
+      await inner.handleFileChange({ type: 'add', path: name });
+    }
+    await inner.indexWorker.processNextRequests();
+    expect((await db.getSectionsByPath('index-only.md')).sections.length).toBeGreaterThan(0);
+    await rm(join(project, 'missing.md')); await rm(join(project, 'index-only.md')); await rm(join(project, 'race.md'));
+    await storage.delete('index-only.md');
+    const pending = await db.createIndexRequest({ documentPath: 'missing.md', documentHash: 'stale' });
+    await db.updateIndexRequest(pending.id, { status: 'processing' });
+    const originalUpdate = db.updateManyIndexRequests.bind(db);
+    let recreated = false;
+    vi.spyOn(db, 'updateManyIndexRequests').mockImplementation(async (filter, updates) => {
+      if (filter.documentPath === 'race.md' && !recreated) {
+        recreated = true;
+        await writeFile(join(project, 'race.md'), '# fresh');
+      }
+      return originalUpdate(filter, updates);
+    });
+    await inner.transitionToWatching();
+    await inner.startupSyncWorker.waitForSync();
+    expect((await db.getSectionsByPath('missing.md')).sections).toHaveLength(0);
+    expect((await db.getSectionsByPath('index-only.md')).sections).toHaveLength(0);
+    expect(await storage.get('missing.md')).toBeNull();
+    expect((await db.findIndexRequests({ documentPath: 'missing.md' })).find(r => r.id === pending.id)?.status).toBe('skipped');
+    expect(watcher.getStatus().reconciliationWarnings).toEqual([]);
+    await vi.waitFor(async () => expect((await storage.get('race.md'))?.content).toBe('# fresh'), { timeout: 10000, interval: 100 });
+    await inner.indexWorker.processNextRequests();
+    expect((await db.getSectionsByPath('race.md')).sections.length).toBeGreaterThan(0);
+    const freshHash = (await storage.get('race.md'))?.metadata.fileHash;
+    expect((await db.getSectionsByPath('race.md')).sections.every(s => s.documentHash === freshHash)).toBe(true);
+  } finally {
+    if (watcher) await watcher.stop(); else db.disconnect();
+    embedding.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60000);

@@ -1166,9 +1166,13 @@ export class DBEngine extends EventEmitter {
     return result as { updated: boolean; count: number };
   }
 
-  /**
-   * 特定のstatusを持つdocument_pathを取得
-   */
+  /** sections に存在する文書パスを取得 */
+  async getIndexedPaths(): Promise<string[]> {
+    const result = await this.sendRequest('getIndexedPaths', {}) as { paths: string[] };
+    return result.paths;
+  }
+
+  /** 特定の status を持つ文書パスを取得 */
   async getPathsWithStatus(statuses: IndexRequest['status'][]): Promise<string[]> {
     const result = await this.sendRequest('getPathsWithStatus', { statuses });
     const response = result as { paths: string[] };

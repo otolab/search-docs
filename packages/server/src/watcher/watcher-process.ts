@@ -15,6 +15,7 @@ import { FileWatcher, type FileChangeEvent } from '../discovery/file-watcher.js'
 import { IndexWorker } from '../worker/index.js';
 import { DocumentQueue } from '../worker/document-queue.js';
 import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
+import { reconcileStartup } from './startup-reconciliation.js';
 
 /**
  * WatcherProcess
@@ -49,6 +50,7 @@ export class WatcherProcess {
   private readonly connectionStop = new Promise<void>(resolve => { this.stopConnectionWait = resolve; });
   private deletionFailure: Error | null = null;
   private eventHandlers = new Set<Promise<void>>();
+  private reconciliationWarnings: string[] = [];
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
@@ -302,24 +304,39 @@ export class WatcherProcess {
       console.log(`[WatcherProcess] Performance logging enabled at ${logPath}`);
     }
 
-    // StartupSync
-    if (this.startupSyncWorker) {
-      this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
-    }
-
-    // IndexWorker
-    if (this.indexWorker) {
-      this.indexWorker.start();
-    }
-
-    // FileWatcher
-    if (this.watcher && !this.watcher.isRunning()) {
-      await this.watcher.start();
-      console.log('[WatcherProcess] FileWatcher started');
-    }
-
-    // Heartbeat定期更新を開始
+    // Subscribe before checking absence so later recreation is delivered to the queue.
+    this.reconciliationWarnings = [];
     this.startHeartbeat();
+    if (this.watcher && !this.watcher.isRunning()) {
+      try {
+        await this.watcher.start();
+        console.log('[WatcherProcess] FileWatcher started');
+      } catch (error) {
+        const message = `監視を開始できないため起動時照合を保留します: ${error instanceof Error ? error.message : '不明なエラー'}`;
+        this.reconciliationWarnings.push(message);
+        console.warn(message);
+      }
+    }
+    if (this.stopping || this.writerState !== 'watching') return;
+    const generation = this.ownershipGeneration;
+    this.startupSyncWorker.startSync(async () => {
+      if (this.watcher) {
+        await reconcileStartup({
+          root: this.config.project.root, storage: this.storage, db: this.dbEngine,
+          discovery: this.discovery, queue: this.documentQueue,
+          covered: (filePath) => this.watcher?.covers(filePath) ?? false,
+          active: () => !this.stopping && this.writerState === 'watching' && generation === this.ownershipGeneration,
+          report: (message) => { this.reconciliationWarnings.push(message); console.warn(message); },
+        });
+      } else {
+        const message = '監視が無効のため起動時の削除照合を保留しました';
+        this.reconciliationWarnings.push(message);
+        console.warn(message);
+      }
+      if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
+      this.indexWorker?.start();
+      return this.rebuildIndex({ force: false });
+    });
   }
 
   /**
@@ -432,11 +449,13 @@ export class WatcherProcess {
     writerState: 'sleeping' | 'claiming' | 'watching';
     writerId: string;
     indexWorker: { running: boolean; processing: boolean } | null;
+    reconciliationWarnings: string[];
   } {
     return {
       writerState: this.writerState,
       writerId: this.writerId,
       indexWorker: this.indexWorker?.getStatus() ?? null,
+      reconciliationWarnings: this.reconciliationWarnings,
     };
   }
 

@@ -24,7 +24,9 @@ function formatIndexStatus(response: GetStatusResponse): string {
     if (response.watcher) {
       text += `Watcher:\n`;
       text += `  状態: ${response.watcher.state}\n`;
-      text += `  Writer ID: ${response.watcher.writerId}\n\n`;
+      text += `  Writer ID: ${response.watcher.writerId}\n`;
+      for (const warning of response.watcher.reconciliationWarnings ?? []) text += `  ⚠ ${warning}\n`;
+      text += '\n';
     }
 
     // ワーカー状態

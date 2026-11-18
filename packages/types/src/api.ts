@@ -162,6 +162,7 @@ export interface GetStatusResponse {
   watcher?: {
     state: 'sleeping' | 'claiming' | 'watching';
     writerId: string;
+    reconciliationWarnings?: string[];
   };
 }
 

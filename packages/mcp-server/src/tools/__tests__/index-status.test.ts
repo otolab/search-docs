@@ -42,6 +42,7 @@ describe('index_status tool', () => {
         totalSections: 50,
         dirtyCount: 2,
       },
+      watcher: { state: 'watching', writerId: 'test', reconciliationWarnings: ['起動時照合を保留しました'] },
       worker: {
         running: true,
         processing: 1,
@@ -88,6 +89,7 @@ describe('index_status tool', () => {
     expect(result.content[0].text).toContain('総セクション数: 50件');
     expect(result.content[0].text).toContain('Dirtyセクション: 2件');
     expect(result.content[0].text).toContain('実行中: Yes');
+    expect(result.content[0].text).toContain('起動時照合を保留しました');
   });
 
   it('NOT_CONFIGURED状態の場合、エラーを返す', async () => {
