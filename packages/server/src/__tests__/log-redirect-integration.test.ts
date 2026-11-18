@@ -25,7 +25,7 @@ describe('non-TTY writer log redirection', () => {
         const { mkdir } = await import('node:fs/promises');
         await mkdir(project);
         const log = override ? join(root, 'custom.log') : join(project, '.search-docs', 'server.log');
-        const env = { ...process.env, DEBUG: '1' };
+        const env: NodeJS.ProcessEnv = { ...process.env, DEBUG: '1' };
         if (override) env.SEARCH_DOCS_LOG_PATH = log;
         else delete env.SEARCH_DOCS_LOG_PATH;
         const entry = join(process.cwd(), '../mcp-server/dist/server.js');
