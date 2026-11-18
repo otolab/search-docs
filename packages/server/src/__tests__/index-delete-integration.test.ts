@@ -377,6 +377,11 @@ it('reconciles missing and index-only documents after a real watcher starts', as
     await storage.delete('index-only.md');
     const pending = await db.createIndexRequest({ documentPath: 'missing.md', documentHash: 'stale' });
     await db.updateIndexRequest(pending.id, { status: 'processing' });
+    const retryRequests = [];
+    for (const documentPath of ['retry-sections.md', 'retry-copy.md']) {
+      retryRequests.push(await db.createIndexRequest({ documentPath, documentHash: 'stale' }));
+    }
+    for (const request of retryRequests) await db.updateIndexRequest(request.id, { status: 'processing' });
     const originalUpdate = db.updateManyIndexRequests.bind(db);
     let recreated = false;
     vi.spyOn(db, 'updateManyIndexRequests').mockImplementation(async (filter, updates) => {
@@ -411,6 +416,9 @@ it('reconciles missing and index-only documents after a real watcher starts', as
     expect(await storage.get('retry-copy.md')).not.toBeNull();
     expect((await db.getSectionsByPath('retry-sections.md')).sections.length).toBeGreaterThan(0);
     expect((await db.getSectionsByPath('retry-copy.md')).sections).toHaveLength(0);
+    for (const request of retryRequests) {
+      expect((await db.findIndexRequests({ documentPath: request.documentPath })).find(r => r.id === request.id)?.status).toBe('skipped');
+    }
     await inner.transitionToSleeping();
     await inner.transitionToWatching();
     await inner.startupSyncWorker.waitForSync();
