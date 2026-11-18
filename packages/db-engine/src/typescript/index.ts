@@ -1197,20 +1197,21 @@ export class DBEngine extends EventEmitter {
   /**
    * Heartbeat を更新
    */
-  async updateHeartbeat(params: { writerId: string; host: string; pid: number; state: string }): Promise<{ success: boolean; updatedAt: string }> {
+  async updateHeartbeat(params: { writerId: string; host: string; pid: number; state: string; warnings?: string[] }): Promise<{ success: boolean; updatedAt: string }> {
     return await this.sendRequest('updateHeartbeat', {
       writer_id: params.writerId,
       host: params.host,
       pid: params.pid,
       state: params.state,
+      warnings: params.warnings,
     }) as { success: boolean; updatedAt: string };
   }
 
   /**
    * 現在のwriter heartbeat を取得
    */
-  async getWriterHeartbeat(): Promise<{ exists: boolean; heartbeat?: { writerId: string; host: string; pid: number; state: string; updatedAt: string; ageSeconds: number } }> {
-    const result = await this.sendRequest('getWriterHeartbeat') as { exists: boolean; heartbeat?: { writer_id: string; host: string; pid: number; state: string; updated_at: string; age_seconds: number } };
+  async getWriterHeartbeat(): Promise<{ exists: boolean; heartbeat?: { writerId: string; host: string; pid: number; state: string; updatedAt: string; ageSeconds: number; warnings?: string[] } }> {
+    const result = await this.sendRequest('getWriterHeartbeat') as { exists: boolean; heartbeat?: { writer_id: string; host: string; pid: number; state: string; updated_at: string; age_seconds: number; warnings?: string[] } };
     if (!result.exists || !result.heartbeat) {
       return { exists: false };
     }
@@ -1224,6 +1225,7 @@ export class DBEngine extends EventEmitter {
         state: hb.state,
         updatedAt: hb.updated_at,
         ageSeconds: hb.age_seconds,
+        warnings: hb.warnings,
       },
     };
   }

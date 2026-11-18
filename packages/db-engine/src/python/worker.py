@@ -1453,6 +1453,8 @@ class SearchDocsWorker:
         host = params["host"]
         pid = params["pid"]
         state = params.get("state", "watching")
+        if params.get("warnings") is not None:
+            state = json.dumps({"state": state, "warnings": params["warnings"]}, ensure_ascii=False)
         table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
         now = pd.Timestamp.now(tz='UTC').floor('ms')
         self._add_heartbeat_with_retry(table, {
@@ -1473,6 +1475,17 @@ class SearchDocsWorker:
         if len(results) == 0:
             return {"exists": False}
         row = results[0]
+        state = row["state"]
+        warnings = None
+        try:
+            decoded = json.loads(state)
+            if (isinstance(decoded, dict) and isinstance(decoded.get("state"), str)
+                    and isinstance(decoded.get("warnings"), list)
+                    and all(isinstance(item, str) for item in decoded["warnings"])):
+                state = decoded["state"]
+                warnings = decoded["warnings"]
+        except (ValueError, TypeError):
+            pass
         updated_at = row["updated_at"]
         # タイムゾーンなしの既存データも UTC で保存されている。
         if updated_at.tzinfo is None:
@@ -1484,7 +1497,8 @@ class SearchDocsWorker:
                 "writer_id": row["writer_id"],
                 "host": row["host"],
                 "pid": int(row["pid"]),
-                "state": row["state"],
+                "state": state,
+                "warnings": warnings,
                 "updated_at": updated_at.isoformat(),
                 "age_seconds": age_seconds,
             }

@@ -16,7 +16,6 @@ import { IndexWorker } from '../worker/index.js';
 import { DocumentQueue } from '../worker/document-queue.js';
 import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
 import { reconcileStartup } from './startup-reconciliation.js';
-import { SharedWarnings } from './shared-warnings.js';
 
 /**
  * WatcherProcess
@@ -52,10 +51,11 @@ export class WatcherProcess {
   private deletionFailure: Error | null = null;
   private eventHandlers = new Set<Promise<void>>();
   private reconciliationWarnings: string[] = [];
-  private sharedWarnings: SharedWarnings;
+  private heartbeatTail: Promise<void> = Promise.resolve();
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
+  private static readonly STATUS_TIMEOUT_MS = 60_000;
   private static readonly MASTER_TIMEOUT_MS = 120_000;           // 2分でmaster期限切れ
   private static readonly MASTER_CHECK_INTERVAL_MS = 45_000;     // sleeping時の確認間隔
   private static readonly CLAIM_JITTER_MAX_MS = 5_000;           // claim前のランダム待ち
@@ -67,7 +67,6 @@ export class WatcherProcess {
     private dbEngine: DBEngine,
   ) {
     this.writerId = `${os.hostname()}-${process.pid}-${randomUUID()}`;
-    this.sharedWarnings = new SharedWarnings(path.resolve(config.project.root, config.storage.indexPath), this.writerId);
     this.splitter = new MarkdownSplitter(config.indexing);
     this.discovery = new FileDiscovery({
       rootDir: config.project.root,
@@ -173,7 +172,6 @@ export class WatcherProcess {
       }
     }
 
-    await this.sharedWarnings.close().catch(error => console.warn('[WatcherProcess] Failed to remove warning status:', error));
     this.dbEngine.disconnect();
     if (this.deletionFailure && releaseFailure) {
       throw new AggregateError([this.deletionFailure, releaseFailure], 'Deletion and writer release failed during shutdown');
@@ -288,12 +286,17 @@ export class WatcherProcess {
 
     console.log('[WatcherProcess] → WATCHING');
 
-    // Heartbeat を watching に更新
+    const syncingMessage = '起動時照合を実行中です';
+    this.reconciliationWarnings = [syncingMessage];
+    // Publish the initial status atomically with the heartbeat.
+    await this.heartbeatTail;
+    if (this.stopping) return;
     await this.dbEngine.updateHeartbeat({
       writerId: this.writerId,
       host: os.hostname(),
       pid: process.pid,
       state: 'watching',
+      warnings: this.reconciliationWarnings,
     });
     if (this.stopping) return;
 
@@ -312,9 +315,6 @@ export class WatcherProcess {
     }
 
     // Subscribe before checking absence so later recreation is delivered to the queue.
-    const syncingMessage = '起動時照合を実行中です';
-    this.reconciliationWarnings = [syncingMessage];
-    this.sharedWarnings.publish(this.reconciliationWarnings);
     this.startHeartbeat();
     if (this.watcher && !this.watcher.isRunning()) {
       try {
@@ -347,7 +347,7 @@ export class WatcherProcess {
       }
       if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
       this.reconciliationWarnings = this.reconciliationWarnings.filter(message => message !== syncingMessage);
-      this.sharedWarnings.publish(this.reconciliationWarnings);
+      this.publishHeartbeat();
       this.indexWorker?.start();
       return this.rebuildIndex({ force: false });
     });
@@ -355,7 +355,7 @@ export class WatcherProcess {
 
   private reportWarning(message: string): void {
     this.reconciliationWarnings.push(message);
-    this.sharedWarnings.publish(this.reconciliationWarnings);
+    this.publishHeartbeat();
     console.warn(message);
   }
 
@@ -363,13 +363,9 @@ export class WatcherProcess {
     if (this.writerState === 'watching') return [...this.reconciliationWarnings];
     try {
       const result = await this.dbEngine.getWriterHeartbeat();
-      if (!result.exists || !result.heartbeat || result.heartbeat.ageSeconds > WatcherProcess.MASTER_TIMEOUT_MS / 1000) return ['writer の照合・監視状態を確認できません'];
-      const warnings = await this.sharedWarnings.read(result.heartbeat.writerId);
-      const current = await this.dbEngine.getWriterHeartbeat();
-      if (!current.exists || current.heartbeat?.writerId !== result.heartbeat.writerId || current.heartbeat.ageSeconds > WatcherProcess.MASTER_TIMEOUT_MS / 1000) return ['writer の照合・監視状態を確認できません'];
-      // A readable snapshot alone cannot prove a subsequent publication did not
-      // fail, including a failure to invalidate this very snapshot.
-      return [...warnings, '別プロセスの照合・監視状態は最新性を確認できません'];
+      const heartbeat = result.heartbeat;
+      if (!result.exists || !heartbeat || heartbeat.state !== 'watching' || heartbeat.ageSeconds > WatcherProcess.STATUS_TIMEOUT_MS / 1000 || !heartbeat.warnings) return ['writer の照合・監視状態を確認できません'];
+      return heartbeat.warnings;
     } catch {
       return ['writer の照合・監視状態を確認できません'];
     }
@@ -404,21 +400,26 @@ export class WatcherProcess {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      const update = (async () => {
-        try {
-          await this.dbEngine.updateHeartbeat({
-            writerId: this.writerId,
-            host: os.hostname(),
-            pid: process.pid,
-            state: 'watching',
-          });
-        } catch (error) {
-          await this.handleHeartbeatUpdateFailure(error);
-        }
-      })();
-      this.heartbeatUpdates.add(update);
-      void update.finally(() => this.heartbeatUpdates.delete(update));
+      this.publishHeartbeat();
     }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
+  }
+
+  private publishHeartbeat(): void {
+    const generation = this.ownershipGeneration;
+    const update = this.heartbeatTail.then(async () => {
+      if (this.writerState !== 'watching' || generation !== this.ownershipGeneration) return;
+      try {
+        await this.dbEngine.updateHeartbeat({
+          writerId: this.writerId, host: os.hostname(), pid: process.pid,
+          state: 'watching', warnings: [...this.reconciliationWarnings],
+        });
+      } catch (error) {
+        await this.handleHeartbeatUpdateFailure(error);
+      }
+    });
+    this.heartbeatTail = update;
+    this.heartbeatUpdates.add(update);
+    void update.finally(() => this.heartbeatUpdates.delete(update));
   }
 
   /**
