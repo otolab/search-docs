@@ -96,7 +96,9 @@ table.add([{'writer_id': 'other', 'host': 'test', 'pid': 1, 'state': 'watching',
       constants.MASTER_CHECK_INTERVAL_MS = 500;
       constants.CLAIM_JITTER_MAX_MS = 0;
       constants.CLAIM_READBACK_DELAY_MS = 0;
-      watcher = new WatcherProcess(createConfig(), {} as FileStorage, db);
+      const config = createConfig();
+      config.storage.indexPath = join(root, 'db');
+      watcher = new WatcherProcess(config, {} as FileStorage, db);
       const internal = watcher as unknown as {
         checkAndClaimMaster: () => Promise<void>;
         startMasterCheck: () => void;

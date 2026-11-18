@@ -287,7 +287,7 @@ export class SearchDocsServer implements SearchDocsService {
       watcher: this.watcherProcess ? {
         state: this.watcherProcess.getStatus().writerState,
         writerId: this.watcherProcess.getStatus().writerId,
-        reconciliationWarnings: this.watcherProcess.getStatus().reconciliationWarnings,
+        reconciliationWarnings: await this.watcherProcess.getVisibleWarnings(),
       } : undefined,
     };
   }

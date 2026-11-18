@@ -3,6 +3,8 @@ import { WatcherProcess } from '../watcher/watcher-process.js';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import type { SearchDocsConfig } from '@search-docs/types';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 type WatcherProcessInternals = {
   writerId: string;
@@ -49,7 +51,7 @@ function createConfig(): SearchDocsConfig {
     },
     storage: {
       documentsPath: process.cwd(),
-      indexPath: process.cwd(),
+      indexPath: join(tmpdir(), `search-docs-watcher-test-${process.pid}`),
       cachePath: process.cwd(),
     },
     worker: {
@@ -152,6 +154,65 @@ describe('WatcherProcess heartbeat failure handling', () => {
 });
 
 describe('WatcherProcess recovery and shutdown', () => {
+  it('reports a watcher error even when there are no reconciliation candidates', () => {
+    const config = createConfig();
+    config.watcher.enabled = true;
+    const instance = new WatcherProcess(config, {} as FileStorage, {} as DBEngine);
+    const internal = instance as unknown as {
+      writerState: string;
+      watcher: { emit: (event: string, error: Error) => void };
+    };
+    internal.writerState = 'watching';
+    internal.watcher.emit('error', new Error('injected subscription failure'));
+    expect(instance.getStatus().reconciliationWarnings).toContainEqual(expect.stringContaining('injected subscription failure'));
+  });
+
+  it('starts a new synchronization after an old generation loses and regains ownership', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const db = {
+      updateHeartbeat: vi.fn(async () => ({})),
+      updateManyIndexRequests: vi.fn(async () => ({})),
+      getIndexedPaths: vi.fn(async () => []),
+      getPathsWithStatus: vi.fn(async () => []),
+    };
+    const storage = {
+      getBasePath: () => process.cwd(),
+      list: vi.fn(async () => { entered(); await gate; return []; }),
+    };
+    const instance = new WatcherProcess(createConfig(), storage as unknown as FileStorage, db as unknown as DBEngine);
+    const internal = instance as unknown as {
+      watcher: { isRunning: () => boolean; start: () => Promise<void>; stop: () => Promise<void>; covers: () => boolean };
+      indexWorker: { start: () => void; stop: () => void };
+      transitionToWatching: () => Promise<void>; transitionToSleeping: () => Promise<void>;
+      rebuildIndex: () => Promise<{ success: boolean; documentsProcessed: number; sectionsCreated: number }>;
+      startupSyncWorker: { waitForSync: () => Promise<void> };
+      stopHeartbeat: () => void;
+    };
+    let running = false;
+    internal.watcher = { isRunning: () => running, start: async () => { running = true; }, stop: async () => { running = false; }, covers: () => true };
+    const startWorker = vi.fn();
+    internal.indexWorker = { start: startWorker, stop: vi.fn() };
+    internal.rebuildIndex = vi.fn(async () => ({ success: true, documentsProcessed: 0, sectionsCreated: 0 }));
+    try {
+      await internal.transitionToWatching();
+      await started;
+      await internal.transitionToSleeping();
+      await internal.transitionToWatching();
+      expect(startWorker).not.toHaveBeenCalled();
+      release();
+      await internal.startupSyncWorker.waitForSync();
+      expect(storage.list).toHaveBeenCalledTimes(2);
+      expect(startWorker).toHaveBeenCalledOnce();
+      expect(internal.rebuildIndex).toHaveBeenCalledOnce();
+    } finally {
+      release();
+      internal.stopHeartbeat();
+    }
+  });
+
   it('stops after an early connection failure even if connection readiness never settles', async () => {
     const db = {
       connect: vi.fn().mockRejectedValue(new Error('early connection failure')),

@@ -23,13 +23,16 @@ export class StartupSyncWorker {
    * @param rebuildFn - インデックス再構築関数
    */
   startSync(rebuildFn: () => Promise<RebuildIndexResponse>): void {
-    if (this.isSyncing) {
-      console.warn('[StartupSyncWorker] Sync already in progress');
-      return;
-    }
-
     this.isSyncing = true;
-    this.syncPromise = this.runSync(rebuildFn);
+    const previous = this.syncPromise;
+    const current = (async () => {
+      if (previous) await previous;
+      await this.runSync(rebuildFn);
+    })();
+    this.syncPromise = current;
+    void current.then(() => {
+      if (this.syncPromise === current) this.isSyncing = false;
+    });
   }
 
   /**
@@ -50,8 +53,6 @@ export class StartupSyncWorker {
       );
     } catch (error) {
       console.error('[StartupSyncWorker] Sync failed:', error);
-    } finally {
-      this.isSyncing = false;
     }
   }
 

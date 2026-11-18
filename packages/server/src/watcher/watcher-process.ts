@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as path from 'path';
 import * as os from 'os';
 import type {
@@ -16,6 +16,7 @@ import { IndexWorker } from '../worker/index.js';
 import { DocumentQueue } from '../worker/document-queue.js';
 import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
 import { reconcileStartup } from './startup-reconciliation.js';
+import { SharedWarnings } from './shared-warnings.js';
 
 /**
  * WatcherProcess
@@ -51,6 +52,7 @@ export class WatcherProcess {
   private deletionFailure: Error | null = null;
   private eventHandlers = new Set<Promise<void>>();
   private reconciliationWarnings: string[] = [];
+  private sharedWarnings: SharedWarnings;
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
@@ -64,7 +66,8 @@ export class WatcherProcess {
     private storage: FileStorage,
     private dbEngine: DBEngine,
   ) {
-    this.writerId = `${os.hostname()}-${process.pid}-${Date.now()}`;
+    this.writerId = `${os.hostname()}-${process.pid}-${randomUUID()}`;
+    this.sharedWarnings = new SharedWarnings(path.resolve(config.project.root, config.storage.indexPath), this.writerId);
     this.splitter = new MarkdownSplitter(config.indexing);
     this.discovery = new FileDiscovery({
       rootDir: config.project.root,
@@ -89,6 +92,9 @@ export class WatcherProcess {
       });
       this.watcher.on('error', (error: Error) => {
         console.error('File watcher error:', error);
+        if (!this.stopping && this.writerState === 'watching') {
+          this.reportWarning(`ファイル監視に失敗しました: ${error.message}`);
+        }
       });
     }
 
@@ -167,6 +173,7 @@ export class WatcherProcess {
       }
     }
 
+    await this.sharedWarnings.close().catch(error => console.warn('[WatcherProcess] Failed to remove warning status:', error));
     this.dbEngine.disconnect();
     if (this.deletionFailure && releaseFailure) {
       throw new AggregateError([this.deletionFailure, releaseFailure], 'Deletion and writer release failed during shutdown');
@@ -305,7 +312,9 @@ export class WatcherProcess {
     }
 
     // Subscribe before checking absence so later recreation is delivered to the queue.
-    this.reconciliationWarnings = [];
+    const syncingMessage = '起動時照合を実行中です';
+    this.reconciliationWarnings = [syncingMessage];
+    this.sharedWarnings.publish(this.reconciliationWarnings);
     this.startHeartbeat();
     if (this.watcher && !this.watcher.isRunning()) {
       try {
@@ -313,30 +322,55 @@ export class WatcherProcess {
         console.log('[WatcherProcess] FileWatcher started');
       } catch (error) {
         const message = `監視を開始できないため起動時照合を保留します: ${error instanceof Error ? error.message : '不明なエラー'}`;
-        this.reconciliationWarnings.push(message);
+        this.reportWarning(message);
         console.warn(message);
       }
     }
     if (this.stopping || this.writerState !== 'watching') return;
     const generation = this.ownershipGeneration;
     this.startupSyncWorker.startSync(async () => {
+      if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
       if (this.watcher) {
         await reconcileStartup({
           root: this.config.project.root, storage: this.storage, db: this.dbEngine,
           discovery: this.discovery, queue: this.documentQueue,
           covered: (filePath) => this.watcher?.covers(filePath) ?? false,
           active: () => !this.stopping && this.writerState === 'watching' && generation === this.ownershipGeneration,
-          report: (message) => { this.reconciliationWarnings.push(message); console.warn(message); },
+          report: (message) => {
+            if (!this.stopping && this.writerState === 'watching' && generation === this.ownershipGeneration) this.reportWarning(message);
+          },
         });
       } else {
         const message = '監視が無効のため起動時の削除照合を保留しました';
-        this.reconciliationWarnings.push(message);
+        this.reportWarning(message);
         console.warn(message);
       }
       if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
+      this.reconciliationWarnings = this.reconciliationWarnings.filter(message => message !== syncingMessage);
+      this.sharedWarnings.publish(this.reconciliationWarnings);
       this.indexWorker?.start();
       return this.rebuildIndex({ force: false });
     });
+  }
+
+  private reportWarning(message: string): void {
+    this.reconciliationWarnings.push(message);
+    this.sharedWarnings.publish(this.reconciliationWarnings);
+    console.warn(message);
+  }
+
+  async getVisibleWarnings(): Promise<string[]> {
+    if (this.writerState === 'watching') return [...this.reconciliationWarnings];
+    try {
+      const result = await this.dbEngine.getWriterHeartbeat();
+      if (!result.exists || !result.heartbeat || result.heartbeat.ageSeconds > WatcherProcess.MASTER_TIMEOUT_MS / 1000) return ['writer の照合・監視状態を確認できません'];
+      const warnings = await this.sharedWarnings.read(result.heartbeat.writerId);
+      const current = await this.dbEngine.getWriterHeartbeat();
+      if (!current.exists || current.heartbeat?.writerId !== result.heartbeat.writerId || current.heartbeat.ageSeconds > WatcherProcess.MASTER_TIMEOUT_MS / 1000) return ['writer の照合・監視状態を確認できません'];
+      return warnings;
+    } catch {
+      return ['writer の照合・監視状態を確認できません'];
+    }
   }
 
   /**

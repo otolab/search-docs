@@ -47,6 +47,7 @@ describe('index deletion with LanceDB', () => {
       version: '1.0', project: { name: 'test', root: project },
       files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
       indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+      storage: { indexPath: join(root, 'db') },
       watcher: { enabled: false, debounceMs: 10, awaitWriteFinishMs: 10 },
       worker: { enabled: true, interval: 60000, maxConcurrent: 1 },
     } as unknown as SearchDocsConfig;
@@ -210,6 +211,7 @@ it('drains a debounced deletion through the MCP stopService entry point', async 
     project: { name: 'test', root: project },
     files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
     indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+    storage: { indexPath: join(root, 'db') },
     watcher: { enabled: true, debounceMs: 5000, awaitWriteFinishMs: 50 },
     worker: { enabled: true, interval: 100, maxConcurrent: 1 },
   } as unknown as SearchDocsConfig;
@@ -299,6 +301,11 @@ it('recovers automatically in another process after writer release fails', async
     const requestId = await invoke(children[0], 'processing');
     const initial = await invoke(children[1], 'coordinate');
     expect(initial.writerState).toBe('sleeping');
+    await invoke(children[0], 'warning');
+    await vi.waitFor(async () => {
+      const status = await invoke(children[1], 'service-status');
+      expect(status.watcher.reconciliationWarnings).toContain('injected deferred reconciliation');
+    }, { timeout: 10000 });
     await expect(invoke(children[0], 'fail-release-stop')).rejects.toThrow('injected writer release failure');
     const stillOwned = await invoke(children[1], 'status');
     expect(stillOwned.heartbeat.heartbeat.writerId).toBe(oldWriter);
@@ -343,6 +350,7 @@ it('reconciles missing and index-only documents after a real watcher starts', as
     version: '1.0', project: { name: 'test', root: project },
     files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
     indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+    storage: { indexPath: join(root, 'db') },
     watcher: { enabled: true, debounceMs: 10, awaitWriteFinishMs: 10 },
     worker: { enabled: true, interval: 60000, maxConcurrent: 1 },
   } as unknown as SearchDocsConfig;
@@ -354,16 +362,18 @@ it('reconciles missing and index-only documents after a real watcher starts', as
       writerId: string; indexWorker: IndexWorker;
       handleFileChange: (event: { type: 'add'; path: string }) => Promise<void>;
       transitionToWatching: () => Promise<void>;
+      transitionToSleeping: () => Promise<void>;
       startupSyncWorker: { waitForSync: () => Promise<void> };
     };
     await db.claimWriter({ writerId: inner.writerId, host: 'test', pid: process.pid });
-    for (const name of ['missing.md', 'index-only.md', 'race.md']) {
+    for (const name of ['missing.md', 'index-only.md', 'race.md', 'retry-sections.md', 'retry-copy.md']) {
       await writeFile(join(project, name), '# old');
       await inner.handleFileChange({ type: 'add', path: name });
     }
     await inner.indexWorker.processNextRequests();
     expect((await db.getSectionsByPath('index-only.md')).sections.length).toBeGreaterThan(0);
     await rm(join(project, 'missing.md')); await rm(join(project, 'index-only.md')); await rm(join(project, 'race.md'));
+    await rm(join(project, 'retry-sections.md')); await rm(join(project, 'retry-copy.md'));
     await storage.delete('index-only.md');
     const pending = await db.createIndexRequest({ documentPath: 'missing.md', documentHash: 'stale' });
     await db.updateIndexRequest(pending.id, { status: 'processing' });
@@ -376,12 +386,38 @@ it('reconciles missing and index-only documents after a real watcher starts', as
       }
       return originalUpdate(filter, updates);
     });
+    const originalDeleteSections = db.deleteSectionsByPath.bind(db);
+    let failSections = true;
+    vi.spyOn(db, 'deleteSectionsByPath').mockImplementation(async name => {
+      if (name === 'retry-sections.md' && failSections) { failSections = false; throw new Error('injected sections failure'); }
+      return originalDeleteSections(name);
+    });
+    const originalDeleteCopy = storage.delete.bind(storage);
+    let failCopy = true;
+    vi.spyOn(storage, 'delete').mockImplementation(async name => {
+      if (name === 'retry-copy.md' && failCopy) { failCopy = false; throw new Error('injected copy failure'); }
+      return originalDeleteCopy(name);
+    });
     await inner.transitionToWatching();
     await inner.startupSyncWorker.waitForSync();
     expect((await db.getSectionsByPath('missing.md')).sections).toHaveLength(0);
     expect((await db.getSectionsByPath('index-only.md')).sections).toHaveLength(0);
     expect(await storage.get('missing.md')).toBeNull();
     expect((await db.findIndexRequests({ documentPath: 'missing.md' })).find(r => r.id === pending.id)?.status).toBe('skipped');
+    expect(watcher.getStatus().reconciliationWarnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('retry-sections.md'), expect.stringContaining('retry-copy.md'),
+    ]));
+    expect(await storage.get('retry-sections.md')).not.toBeNull();
+    expect(await storage.get('retry-copy.md')).not.toBeNull();
+    expect((await db.getSectionsByPath('retry-sections.md')).sections.length).toBeGreaterThan(0);
+    expect((await db.getSectionsByPath('retry-copy.md')).sections).toHaveLength(0);
+    await inner.transitionToSleeping();
+    await inner.transitionToWatching();
+    await inner.startupSyncWorker.waitForSync();
+    for (const name of ['retry-sections.md', 'retry-copy.md']) {
+      expect(await storage.get(name)).toBeNull();
+      expect((await db.getSectionsByPath(name)).sections).toHaveLength(0);
+    }
     expect(watcher.getStatus().reconciliationWarnings).toEqual([]);
     await vi.waitFor(async () => expect((await storage.get('race.md'))?.content).toBe('# fresh'), { timeout: 10000, interval: 100 });
     await inner.indexWorker.processNextRequests();

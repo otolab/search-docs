@@ -110,4 +110,47 @@ describe('startup reconciliation', () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it('reports an indexed nested path when the managed parent does not exist', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'startup-index-only-'));
+    const project = join(root, 'project'); const managed = join(root, 'managed');
+    await mkdir(project); await mkdir(managed); await mkdir(join(project, 'nested'));
+    const db = { getIndexedPaths: vi.fn().mockResolvedValue(['nested/a.md']), getPathsWithStatus: vi.fn().mockResolvedValue([]), deleteSectionsByPath: vi.fn() };
+    const report = vi.fn();
+    try {
+      await reconcileStartup({ root: project, storage: new FileStorage({ basePath: managed }), db: db as unknown as DBEngine, discovery: new FileDiscovery({ rootDir: project, config: { sources: ['**/*.md'], exclude: [], respectGitignore: false, maxFileSize: 1000 } }), queue: new DocumentQueue(), covered: () => true, active: () => true, report });
+      expect(db.deleteSectionsByPath).not.toHaveBeenCalled();
+      expect(report).toHaveBeenCalledWith(expect.stringContaining('nested/a.md'));
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it.each(['sections', 'copy'])('retries after a partial failure deleting %s', async (failure) => {
+    const root = await mkdtemp(join(tmpdir(), 'startup-retry-'));
+    const project = join(root, 'project'); const managed = join(root, 'managed');
+    await mkdir(project); await mkdir(managed);
+    const storage = new FileStorage({ basePath: managed });
+    await storage.save('a.md', { path: 'a.md', content: 'old', metadata: { createdAt: new Date(), updatedAt: new Date(), fileHash: '' } });
+    let pending = true; let indexed = true;
+    const db = {
+      getIndexedPaths: vi.fn(async () => indexed ? ['a.md'] : []),
+      getPathsWithStatus: vi.fn(async () => pending ? ['a.md'] : []),
+      updateManyIndexRequests: vi.fn(async () => { pending = false; }),
+      deleteSectionsByPath: vi.fn(async () => { if (failure === 'sections' && indexed) { indexed = false; throw new Error('injected sections failure'); } indexed = false; }),
+    };
+    if (failure === 'copy') {
+      const original = storage.delete.bind(storage);
+      vi.spyOn(storage, 'delete').mockImplementationOnce(async () => { throw new Error('injected copy failure'); }).mockImplementation(original);
+    }
+    const report = vi.fn();
+    const options = { root: project, storage, db: db as unknown as DBEngine, discovery: new FileDiscovery({ rootDir: project, config: { sources: ['**/*.md'], exclude: [], respectGitignore: false, maxFileSize: 1000 } }), queue: new DocumentQueue(), covered: () => true, active: () => true, report };
+    try {
+      await reconcileStartup(options);
+      expect(pending).toBe(false);
+      expect(report).toHaveBeenCalledWith(expect.stringContaining('a.md'));
+      expect(await storage.get('a.md')).not.toBeNull();
+      await reconcileStartup(options);
+      expect(indexed).toBe(false);
+      expect(await storage.get('a.md')).toBeNull();
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
 });

@@ -2,8 +2,9 @@ import { DBEngine } from '@search-docs/db-engine';
 import { FileStorage } from '@search-docs/storage';
 import { WatcherProcess } from '../../../dist/watcher/watcher-process.js';
 import { IndexWorker } from '../../../dist/worker/index-worker.js';
+import { SearchDocsServer } from '../../../dist/server/search-docs-server.js';
 
-let db, storage, watcher;
+let db, storage, watcher, service;
 process.on('message', async ({ id, command, args }) => {
   try {
     let value;
@@ -15,9 +16,12 @@ process.on('message', async ({ id, command, args }) => {
         project: { root: args.project },
         files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
         indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+        storage: { indexPath: args.dbPath },
         watcher: { enabled: false }, worker: { enabled: false },
       };
       watcher = new WatcherProcess(config, storage, db);
+      service = new SearchDocsServer(config, storage, db);
+      service.setWatcherProcess(watcher);
       watcher.startupSyncWorker = { startSync() {}, async waitForSync() {} };
     } else if (command === 'claim') {
       await db.claimWriter({ writerId: watcher.writerId, host: 'test', pid: process.pid });
@@ -33,6 +37,10 @@ process.on('message', async ({ id, command, args }) => {
       value = watcher.getStatus();
     } else if (command === 'status') {
       value = { status: watcher.getStatus(), heartbeat: await db.getWriterHeartbeat() };
+    } else if (command === 'warning') {
+      watcher.reportWarning('injected deferred reconciliation');
+    } else if (command === 'service-status') {
+      value = await service.getStatus();
     } else if (command === 'fail-release-stop') {
       db.releaseWriter = async () => { throw new Error('injected writer release failure'); };
       await watcher.stop();
