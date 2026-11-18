@@ -786,7 +786,7 @@ writer は監視を開始した後、保存済み文書・索引・未完了 req
 
 - MCP サーバでは `--project-dir` で指定したディレクトリ（省略時はプロセスの作業ディレクトリ）の `.search-docs/server.log` を確認します。`SEARCH_DOCS_LOG_PATH` を設定した場合はそのパスです。通常の MCP クライアントによる非 TTY 起動では標準エラーに警告は転送されません。
 - Docker MCP サーバの既定はコンテナ内の `/workspace/.search-docs/server.log` です。例えば `-v "$PWD/.search-docs:/workspace/.search-docs"` でマウントした場合、ホストの `.search-docs/server.log` で確認できます。`--project-dir` や `SEARCH_DOCS_LOG_PATH` を変更した場合は、変更先と対応するマウントを確認してください。通常の非 TTY 起動では `docker logs` だけではこの警告を確認できません。
-- `search-docs server start` の writer は既定でプロジェクトの `.search-docs/server.log` に出力します。`--log` で指定した場合はそのパスです。直接 HTTP サーバを起動する場合は `SEARCH_DOCS_LOG_PATH`、未指定ならプロジェクトの `.search-docs/server.log` です。
+- `search-docs server start` の CLI 起動ログは、`--log` で指定したパス、未指定ならプロジェクトの `.search-docs/server.log` に出力します。writer の警告ログは起動モードで異なります。デーモンモードでは CLI と同じパスを使い、親環境の `SEARCH_DOCS_LOG_PATH` より優先されます。`--foreground` では `--log` は writer に渡されず、親環境の `SEARCH_DOCS_LOG_PATH`、未指定ならプロジェクトの `.search-docs/server.log` が使われます。たとえば `--foreground --log /tmp/custom.log` では、環境変数がなければ警告は既定の `server.log` を確認してください。直接 HTTP サーバを起動する場合も `SEARCH_DOCS_LOG_PATH`、未指定ならプロジェクトの `.search-docs/server.log` です。
 
 標準出力が TTY の場合はコンソールにも出力されます。ログは約 1 MiB ごとに切り替わり、現行ファイルと `.1`〜`.3` を保持します。古い警告はローテーションで消えるため、必要なら早めに保存してください。ログ先が書き込み不能、容量不足、コンテナ内だけに保存してコンテナを削除した場合などは全文を取得できず、ログ出力エラーでプロセスが停止する場合もあります。ログは永続的な監査記録ではありません。
 
