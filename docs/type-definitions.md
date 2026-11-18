@@ -214,7 +214,9 @@ export interface SearchDocsConfig {
 export interface FileDiscoveryConfig {
   include: string[];
   exclude: string[];
-  respectGitignore: boolean;
+  respectGitignore?: boolean;
+  /** @deprecated respectGitignoreに同じ値を指定 */
+  ignoreGitignore?: boolean;
 }
 ```
 
@@ -224,7 +226,10 @@ export interface FileDiscoveryConfig {
 |-----------|---|------|-----------|------|
 | include | string[] | ✓ | ['**/*.md'] | 含めるファイルパターン（glob） |
 | exclude | string[] | ✓ | ['**/node_modules/**', '**/.git/**'] | 除外するパターン |
-| respectGitignore | boolean | ✓ | true | .gitignoreを考慮するか |
+| respectGitignore | boolean | — | true | .gitignoreを適用するか |
+| ignoreGitignore | boolean | — | — | 非推奨の旧名。同じ値でrespectGitignoreへ移行 |
+
+両方を同時に指定すると設定の検証時にエラーになります。どちらも省略した場合は `.gitignore` を適用します。
 
 **使用例**:
 ```typescript

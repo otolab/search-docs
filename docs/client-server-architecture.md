@@ -285,7 +285,8 @@ interface SearchDocsConfig {
   files: {
     include: string[];      // globパターン
     exclude: string[];      // globパターン
-    respectGitignore: boolean;
+    respectGitignore?: boolean;
+    ignoreGitignore?: boolean; // 非推奨の旧名
   };
   indexing: {
     maxTokensPerSection: number;
@@ -362,7 +363,7 @@ class FileDiscovery {
 
     // 3. .gitignoreの尊重
     let files = this.filterExcluded(included, excluded);
-    if (this.config.files.respectGitignore) {
+    if (this.config.files.respectGitignore ?? this.config.files.ignoreGitignore ?? true) {
       files = await this.filterGitignored(files);
     }
 
