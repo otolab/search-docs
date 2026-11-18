@@ -13,6 +13,8 @@ type WatcherProcessInternals = {
   };
   startHeartbeat: () => void;
   stopHeartbeat: () => void;
+  handleFileChange: (event: { type: 'unlink'; path: string; timestamp: Date }) => Promise<void>;
+  transitionToWatching: () => Promise<void>;
 };
 
 function createConfig(): SearchDocsConfig {
@@ -146,5 +148,44 @@ describe('WatcherProcess heartbeat failure handling', () => {
     expect(watcher.stop).toHaveBeenCalledOnce();
     expect(watcherProcess.getStatus().writerState).toBe('sleeping');
     processInternals.stopHeartbeat();
+  });
+});
+
+describe('WatcherProcess recovery and shutdown', () => {
+  it('waits for an in-flight deletion before releasing writer ownership', async () => {
+    let unblock!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { unblock = resolve; });
+    const db = {
+      deleteSectionsByPath: vi.fn(async () => { entered(); await gate; }),
+      releaseWriter: vi.fn(async () => ({})),
+      disconnect: vi.fn(),
+    };
+    const storage = { delete: vi.fn(async () => {}) };
+    const instance = new WatcherProcess(createConfig(), storage as unknown as FileStorage, db as unknown as DBEngine);
+    const internal = internals(instance);
+    internal.writerState = 'watching';
+    const deletion = internal.handleFileChange({ type: 'unlink', path: 'a.md', timestamp: new Date() });
+    await started;
+    const stopping = instance.stop();
+    await Promise.resolve();
+    expect(db.releaseWriter).not.toHaveBeenCalled();
+    unblock();
+    await Promise.all([deletion, stopping]);
+    expect(storage.delete).toHaveBeenCalledWith('a.md');
+    expect(db.releaseWriter).toHaveBeenCalledOnce();
+  });
+
+  it('returns interrupted processing requests to pending before starting workers', async () => {
+    const db = {
+      updateHeartbeat: vi.fn(async () => {}),
+      updateManyIndexRequests: vi.fn(async () => ({ updated: true, count: 1 })),
+    };
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    const internal = internals(instance);
+    internal.startHeartbeat = vi.fn();
+    await internal.transitionToWatching();
+    expect(db.updateManyIndexRequests).toHaveBeenCalledWith({ status: 'processing' }, { status: 'pending' });
   });
 });

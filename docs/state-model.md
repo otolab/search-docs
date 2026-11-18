@@ -99,6 +99,10 @@ Heartbeatテーブルによる調停で、複数プロセス間から1つだけ�
 
 **master期限**: `MASTER_TIMEOUT_MS`(120秒)。この間heartbeatが更新されないとmasterは期限切れとみなされる。
 
+同一 watcher 内では、同じ文書パスの索引処理・更新・削除を到着順に実行する。通常停止では処理中の操作を待ってから master 権限を解放する。新しい master は、前の処理で残った `processing` リクエストを `pending` に戻して再試行する。
+
+heartbeat は保存操作を fence しない。期限切れ後に旧 writer が復帰した場合や、停止時に既に DB に送られた操作が後から完了した場合、新旧 writer の書き込みが重なり得る。このため、プロセス間で削除後の旧索引や文書コピーの復活を完全には防げない。通常停止時の順序も、権限が待機中に失効せず処理が完了することが前提となる。
+
 ### 3. connectionState（DB層）
 
 DBEngine（TypeScript）がPythonワーカープロセスの接続状態を管理する。

@@ -13,6 +13,7 @@ import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
 import { FileDiscovery } from '../discovery/file-discovery.js';
 import { FileWatcher, type FileChangeEvent } from '../discovery/file-watcher.js';
 import { IndexWorker } from '../worker/index.js';
+import { DocumentQueue } from '../worker/document-queue.js';
 import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
 
 /**
@@ -26,6 +27,7 @@ import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
  * FileWatcherを起動する（masterのみがwatching状態になる）。
  */
 export class WatcherProcess {
+  private documentQueue = new DocumentQueue();
   private splitter: MarkdownSplitter;
   private discovery: FileDiscovery;
   private watcher?: FileWatcher;
@@ -76,6 +78,7 @@ export class WatcherProcess {
     if (config.worker.enabled) {
       this.indexWorker = new IndexWorker({
         dbEngine: this.dbEngine,
+        documentQueue: this.documentQueue,
         storage: this.storage,
         splitter: this.splitter,
         interval: config.worker.interval,
@@ -109,8 +112,18 @@ export class WatcherProcess {
   async stop(): Promise<void> {
     console.log('[WatcherProcess] Stopping...');
 
-    this.stopHeartbeat();
     this.stopMasterCheck();
+
+    if (this.indexWorker) {
+      this.indexWorker.stop();
+    }
+    if (this.watcher?.isRunning()) {
+      await this.watcher.stop();
+    }
+    await this.startupSyncWorker.waitForSync();
+    await this.indexWorker?.waitForProcessing();
+    await this.documentQueue.drain();
+    this.stopHeartbeat();
 
     // Release mastership if we're the master
     if (this.writerState === 'watching') {
@@ -122,12 +135,6 @@ export class WatcherProcess {
       }
     }
 
-    if (this.indexWorker) {
-      this.indexWorker.stop();
-    }
-    if (this.watcher?.isRunning()) {
-      await this.watcher.stop();
-    }
     this.dbEngine.disconnect();
   }
 
@@ -230,7 +237,6 @@ export class WatcherProcess {
     if (this.writerState === 'watching') return;
 
     console.log('[WatcherProcess] → WATCHING');
-    this.writerState = 'watching';
 
     // Heartbeat を watching に更新
     await this.dbEngine.updateHeartbeat({
@@ -239,6 +245,10 @@ export class WatcherProcess {
       pid: process.pid,
       state: 'watching',
     });
+
+    // 前の writer が処理中に終了したリクエストを再実行できるようにする。
+    await this.dbEngine.updateManyIndexRequests({ status: 'processing' }, { status: 'pending' });
+    this.writerState = 'watching';
 
     // パフォーマンスログ設定
     console.log('[WatcherProcess] ENABLE_PERFORMANCE_LOG:', process.env.ENABLE_PERFORMANCE_LOG);
@@ -382,6 +392,10 @@ export class WatcherProcess {
   // ---- 以下、既存の書き込み系メソッド（変更なし） ----
 
   private async handleFileChange(event: FileChangeEvent): Promise<void> {
+    return this.documentQueue.run(event.path, () => this.handleLockedFileChange(event));
+  }
+
+  private async handleLockedFileChange(event: FileChangeEvent): Promise<void> {
     console.log(`File ${event.type}: ${event.path}`);
 
     switch (event.type) {
@@ -427,6 +441,10 @@ export class WatcherProcess {
   }
 
   private async indexDocument(filePath: string, force = false): Promise<{ success: boolean; sectionsCreated: number }> {
+    return this.documentQueue.run(filePath, () => this.indexLockedDocument(filePath, force));
+  }
+
+  private async indexLockedDocument(filePath: string, force: boolean): Promise<{ success: boolean; sectionsCreated: number }> {
     const absolutePath = path.join(this.config.project.root, filePath);
     const stat = await fs.stat(absolutePath);
     if (stat.size > this.config.files.maxFileSize) {

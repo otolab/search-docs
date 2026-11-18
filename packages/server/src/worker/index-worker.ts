@@ -6,9 +6,11 @@
 import type { DBEngine, IndexRequest } from '@search-docs/db-engine';
 import type { DocumentStorage } from '@search-docs/types';
 import type { Splitter } from '../splitter/index.js';
+import { DocumentQueue } from './document-queue.js';
 
 export interface IndexWorkerOptions {
   dbEngine: DBEngine;
+  documentQueue?: DocumentQueue;
   storage: DocumentStorage;
   splitter: Splitter;
   interval?: number; // ms（デフォルト: 5000）
@@ -18,6 +20,7 @@ export interface IndexWorkerOptions {
 
 export class IndexWorker {
   private dbEngine: DBEngine;
+  private documentQueue: DocumentQueue;
   private storage: DocumentStorage;
   private splitter: Splitter;
   private interval: number;
@@ -26,9 +29,12 @@ export class IndexWorker {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private isProcessing = false;
+  private processingDone: Promise<void> | null = null;
+  private generation = 0;
 
   constructor(options: IndexWorkerOptions) {
     this.dbEngine = options.dbEngine;
+    this.documentQueue = options.documentQueue ?? new DocumentQueue();
     this.storage = options.storage;
     this.splitter = options.splitter;
     this.interval = options.interval ?? 5000;
@@ -67,6 +73,7 @@ export class IndexWorker {
    * ワーカーを停止
    */
   stop(): void {
+    this.generation++;
     if (!this.isRunning) {
       console.log('[IndexWorker] Not running');
       return;
@@ -92,6 +99,9 @@ export class IndexWorker {
     }
 
     this.isProcessing = true;
+    const generation = this.generation;
+    let finish!: () => void;
+    this.processingDone = new Promise<void>(resolve => { finish = resolve; });
 
     try {
       // 1. 処理すべきリクエストを取得
@@ -105,6 +115,7 @@ export class IndexWorker {
 
       // 2. 1件ずつ処理（将来的には並列化可能）
       for (let i = 0; i < requests.length; i++) {
+        if (generation !== this.generation) break;
         await this.processRequest(requests[i]);
 
         // ドキュメント処理後の待機（最後のドキュメントの後は待機しない）
@@ -114,7 +125,13 @@ export class IndexWorker {
       }
     } finally {
       this.isProcessing = false;
+      this.processingDone = null;
+      finish();
     }
+  }
+
+  async waitForProcessing(): Promise<void> {
+    await this.processingDone;
   }
 
   /**
@@ -164,6 +181,12 @@ export class IndexWorker {
    * 1つのリクエストを処理
    */
   private async processRequest(request: IndexRequest): Promise<void> {
+    const generation = this.generation;
+    return this.documentQueue.run(request.documentPath, () => this.processLockedRequest(request, generation));
+  }
+
+  private async processLockedRequest(request: IndexRequest, generation: number): Promise<void> {
+    if (generation !== this.generation) return;
     const hashPrefix = request.documentHash.slice(0, 8);
     console.log(`[IndexWorker] Processing: ${request.documentPath} (${hashPrefix})`);
 
@@ -173,6 +196,7 @@ export class IndexWorker {
         status: 'processing',
         startedAt: new Date().toISOString(),
       });
+      if (generation !== this.generation) return;
 
       // 2. 同じdocument_pathの古いpendingリクエストをskip
       await this.dbEngine.updateManyIndexRequests(
@@ -186,9 +210,11 @@ export class IndexWorker {
           completedAt: new Date().toISOString(),
         }
       );
+      if (generation !== this.generation) return;
 
       // 3. storageから文書を取得
       const doc = await this.storage.get(request.documentPath);
+      if (generation !== this.generation) return;
       if (!doc) {
         throw new Error(`Document not found: ${request.documentPath}`);
       }
@@ -209,6 +235,7 @@ export class IndexWorker {
         request.documentPath,
         request.documentHash
       );
+      if (generation !== this.generation) return;
 
       if (existingSections.length > 0) {
         console.log(
@@ -220,6 +247,7 @@ export class IndexWorker {
           request.documentPath,
           request.documentHash
         );
+        if (generation !== this.generation) return;
 
         await this.dbEngine.updateIndexRequest(request.id, {
           status: 'completed',
@@ -238,16 +266,19 @@ export class IndexWorker {
 
       // 7. 新しいindexを保存（一括追加）
       await this.dbEngine.addSections(sections);
+      if (generation !== this.generation) return;
       console.log(`[IndexWorker] Created ${sections.length} sections for ${request.documentPath}`);
 
       // LanceDBの書き込み完了を待つ（100ms）
       await new Promise(resolve => setTimeout(resolve, 100));
+      if (generation !== this.generation) return;
 
       // 8. 古いindexを削除
       await this.dbEngine.deleteSectionsByPathExceptHash(
         request.documentPath,
         request.documentHash
       );
+      if (generation !== this.generation) return;
 
       // 9. リクエストを完了マーク
       await this.dbEngine.updateIndexRequest(request.id, {
@@ -257,6 +288,7 @@ export class IndexWorker {
 
       console.log(`[IndexWorker] Completed: ${request.documentPath} (${hashPrefix})`);
     } catch (error) {
+      if (generation !== this.generation) return;
       console.error(`[IndexWorker] Failed to process ${request.documentPath}:`, error);
 
       await this.dbEngine.updateIndexRequest(request.id, {
