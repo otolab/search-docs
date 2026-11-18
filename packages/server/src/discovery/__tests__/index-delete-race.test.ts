@@ -57,6 +57,7 @@ describe('indexing and deletion', () => {
     };
     const config = {
       project: { root }, files: { sources: ['**/*.md'], exclude: [], maxFileSize: 10000 },
+      storage: { indexPath: join(root, 'index') },
       indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
       watcher: { enabled: false }, worker: { enabled: true },
     } as unknown as SearchDocsConfig;
@@ -104,6 +105,7 @@ describe('indexing and deletion', () => {
     };
     const config = {
       project: { root: process.cwd() }, files: { sources: ['**/*.md'], exclude: [], maxFileSize: 10000 },
+      storage: { indexPath: join(tmpdir(), 'index-delete-race-test') },
       indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
       watcher: { enabled: false }, worker: { enabled: true },
     } as unknown as SearchDocsConfig;
