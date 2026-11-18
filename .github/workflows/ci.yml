@@ -30,3 +30,35 @@ jobs:
 
       - name: Unit tests
         run: pnpm test:unit
+
+  heartbeat-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          uv sync --project packages/db-engine --locked
+
+      - name: Build
+        run: pnpm build
+
+      - name: Heartbeat timezone tests
+        run: uv run --project packages/db-engine --locked python -m pytest packages/db-engine/src/python/__tests__/test_heartbeat_timezone.py -q
+
+      - name: Heartbeat integration test
+        run: pnpm --filter @search-docs/server test:heartbeat-integration
