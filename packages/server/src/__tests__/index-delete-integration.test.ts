@@ -117,3 +117,69 @@ describe('index deletion with LanceDB', () => {
     }
   }, 60000);
 });
+
+it('hands over between independent Node writers using the same LanceDB', async () => {
+  const { fork } = await import('node:child_process');
+  const root = await mkdtemp(join(tmpdir(), 'writer-process-db-'));
+  const project = join(root, 'project');
+  await mkdir(project);
+  const server = createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/health') { res.end(JSON.stringify({ model: 'test', vectorDimension: 256 })); return; }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[] };
+    res.end(JSON.stringify({ embeddings: input.input.map(() => Array(256).fill(0.1)) }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const port = (server.address() as { port: number }).port;
+  const children = [0, 1].map(() => fork(join(process.cwd(), 'src/__tests__/fixtures/issue150-writer.mjs'), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }));
+  let sequence = 0;
+  const invoke = (child: typeof children[number], command: string, args: unknown = {}) => new Promise<any>((resolve, reject) => {
+    const id = ++sequence;
+    const timer = setTimeout(() => { child.off('message', receive); reject(new Error(`${command} timed out`)); }, 15000);
+    const receive = (message: { id: number; value?: unknown; error?: string }) => {
+      if (message.id !== id) return;
+      clearTimeout(timer); child.off('message', receive);
+      if (message.error) reject(new Error(message.error)); else resolve(message.value);
+    };
+    child.on('message', receive);
+    child.send({ id, command, args });
+  });
+  try {
+    const args = { project, dbPath: join(root, 'db'), storagePath: join(root, 'documents'), embeddingUrl: `http://127.0.0.1:${port}` };
+    await invoke(children[0], 'init', args);
+    await invoke(children[1], 'init', args);
+    expect(children[0].pid).not.toBe(children[1].pid);
+    await invoke(children[0], 'claim');
+    await writeFile(join(project, 'a.md'), '# Old');
+    await invoke(children[0], 'event', { type: 'add', path: 'a.md' });
+    await invoke(children[0], 'run');
+    expect((await invoke(children[0], 'inspect')).sections.length).toBeGreaterThan(0);
+    await invoke(children[0], 'event', { type: 'unlink', path: 'a.md' });
+    const deleted = await invoke(children[0], 'inspect');
+    expect(deleted.sections).toHaveLength(0);
+    expect(deleted.document).toBeNull();
+    await writeFile(join(project, 'a.md'), '# New');
+    await invoke(children[0], 'event', { type: 'add', path: 'a.md' });
+    const requestId = await invoke(children[0], 'processing');
+    await invoke(children[0], 'stop');
+    await invoke(children[0], 'exit');
+    await invoke(children[1], 'claim');
+    const recovered = await invoke(children[1], 'inspect');
+    expect(recovered.requests.find((r: { id: string }) => r.id === requestId).status).toBe('pending');
+    await invoke(children[1], 'run');
+    const result = await invoke(children[1], 'inspect');
+    expect(result.requests.find((r: { id: string }) => r.id === requestId).status).toBe('completed');
+    expect(result.document.content).toBe('# New');
+    expect(result.sections.length).toBeGreaterThan(0);
+    expect(result.sections.every((s: { documentHash: string }) => s.documentHash === result.document.metadata.fileHash)).toBe(true);
+    await invoke(children[1], 'stop');
+    await invoke(children[1], 'exit');
+  } finally {
+    for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60000);
