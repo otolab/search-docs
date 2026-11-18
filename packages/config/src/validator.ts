@@ -115,6 +115,14 @@ function validateFilesConfig(files: unknown): void {
     }
   }
 
+  if (f.respectGitignore !== undefined && typeof f.respectGitignore !== 'boolean') {
+    throw new Error('config.files.respectGitignore must be a boolean');
+  }
+
+  if (f.respectGitignore !== undefined && f.ignoreGitignore !== undefined) {
+    throw new Error('config.files.respectGitignore and config.files.ignoreGitignore cannot both be specified');
+  }
+
   if (f.ignoreGitignore !== undefined && typeof f.ignoreGitignore !== 'boolean') {
     throw new Error('config.files.ignoreGitignore must be a boolean');
   }

@@ -35,6 +35,8 @@ describe('config init', () => {
     const config = JSON.parse(content);
 
     expect(config.version).toBe('1.0');
+    expect(config.files.respectGitignore).toBe(true);
+    expect(config.files).not.toHaveProperty('ignoreGitignore');
     expect(config.project.name).toMatch(/\.test-config-init-/);
     expect(config.server.host).toBe('127.0.0.1');
     expect(config.server.port).toBeGreaterThanOrEqual(49152);

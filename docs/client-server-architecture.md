@@ -231,7 +231,7 @@ search-docs-server start --port 24280
       "**/dist/**",
       "**/build/**"
     ],
-    "ignoreGitignore": true
+    "respectGitignore": true
   },
   "indexing": {
     "maxTokensPerSection": 2000,
@@ -285,7 +285,8 @@ interface SearchDocsConfig {
   files: {
     include: string[];      // globパターン
     exclude: string[];      // globパターン
-    ignoreGitignore: boolean;
+    respectGitignore?: boolean;
+    ignoreGitignore?: boolean; // 非推奨の旧名
   };
   indexing: {
     maxTokensPerSection: number;
@@ -362,7 +363,7 @@ class FileDiscovery {
 
     // 3. .gitignoreの尊重
     let files = this.filterExcluded(included, excluded);
-    if (this.config.files.ignoreGitignore) {
+    if (this.config.files.respectGitignore ?? this.config.files.ignoreGitignore ?? true) {
       files = await this.filterGitignored(files);
     }
 
@@ -621,7 +622,7 @@ interface RebuildIndexResponse {
 
 ### .gitignoreの尊重
 
-`ignoreGitignore: true` の場合:
+`respectGitignore: true` の場合:
 1. `.gitignore`を解析
 2. gitignoreパターンに一致するファイルを除外
 3. includeパターンでマッチしても除外される
@@ -630,7 +631,7 @@ interface RebuildIndexResponse {
 
 ```
 1. excludeパターン（最優先）
-2. .gitignore（ignoreGitignore=trueの場合）
+2. .gitignore（respectGitignore=trueの場合）
 3. includeパターン
 ```
 

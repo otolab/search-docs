@@ -34,13 +34,17 @@ export class FileDiscovery {
     this.config = options.config;
   }
 
+  private get respectGitignore(): boolean {
+    return this.config.respectGitignore ?? this.config.ignoreGitignore ?? true;
+  }
+
   /**
    * ファイルを検索
    * @returns 見つかったファイルのパス一覧（プロジェクトルートからの相対パス）
    */
   async findFiles(): Promise<string[]> {
     // .gitignoreを読み込む
-    if (this.config.ignoreGitignore) {
+    if (this.respectGitignore) {
       await this.loadGitignore();
     }
 
@@ -103,7 +107,7 @@ export class FileDiscovery {
    */
   shouldIgnore(filePath: string): boolean {
     // .gitignoreフィルタ
-    if (this.config.ignoreGitignore && this.ignoreFilter) {
+    if (this.respectGitignore && this.ignoreFilter) {
       if (this.ignoreFilter.ignores(filePath)) {
         return true;
       }
@@ -118,7 +122,7 @@ export class FileDiscovery {
    */
   async loadGitignore(): Promise<void> {
     this.ignoreFilter = null;
-    if (!this.config.ignoreGitignore) return;
+    if (!this.respectGitignore) return;
     try {
       // ignoreパッケージを動的にロード
       if (!ignoreFactory) {

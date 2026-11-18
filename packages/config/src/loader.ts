@@ -18,6 +18,14 @@ export function checkConfigDeprecations(rawConfig: unknown): ConfigDeprecation[]
     const files = (rawConfig as Record<string, unknown>).files;
     if (files && typeof files === 'object') {
       const f = files as Record<string, unknown>;
+      if (f.ignoreGitignore !== undefined) {
+        deprecations.push({
+          field: 'files.ignoreGitignore',
+          message: '"files.ignoreGitignore" は非推奨です。',
+          migration: '同じ真偽値のまま "files.respectGitignore" に名前を変更してください。両方を同時に指定することはできません。',
+          currentValue: f.ignoreGitignore,
+        });
+      }
       if (f.include !== undefined && f.sources === undefined) {
         deprecations.push({
           field: 'files.include',
@@ -301,7 +309,7 @@ export class ConfigLoader {
           return raw?.sources ?? raw?.include ?? DEFAULT_CONFIG.files.sources;
         })(),
         exclude: config.files?.exclude ?? DEFAULT_CONFIG.files.exclude,
-        ignoreGitignore: config.files?.ignoreGitignore ?? DEFAULT_CONFIG.files.ignoreGitignore,
+        respectGitignore: config.files?.respectGitignore ?? config.files?.ignoreGitignore ?? DEFAULT_CONFIG.files.respectGitignore,
         maxFileSize: config.files?.maxFileSize ?? DEFAULT_CONFIG.files.maxFileSize,
       },
       indexing: {

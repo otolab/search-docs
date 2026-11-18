@@ -34,8 +34,10 @@ export interface FilesConfig {
   sources: string[];
   /** 除外するファイルパターン（glob） */
   exclude: string[];
-  /** .gitignoreを尊重するか */
-  ignoreGitignore: boolean;
+  /** .gitignoreを尊重するか（デフォルト: true） */
+  respectGitignore?: boolean;
+  /** @deprecated respectGitignoreに同じ値を指定してください。 */
+  ignoreGitignore?: boolean;
   /** 読み込み対象の最大ファイルサイズ（バイト）。超過時はスキップ */
   maxFileSize: number;
 }
@@ -120,7 +122,7 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
   files: {
     sources: ['**/*.md'],
     exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'],
-    ignoreGitignore: true,
+    respectGitignore: true,
     maxFileSize: 10 * 1024 * 1024, // 10MB
   },
   indexing: {

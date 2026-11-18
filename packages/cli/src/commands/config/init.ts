@@ -57,7 +57,7 @@ function createDefaultConfig(options: {
         '**/dist/**',
         '**/build/**',
       ],
-      ignoreGitignore: true,
+      respectGitignore: true,
       maxFileSize: 10 * 1024 * 1024,
     },
     indexing: {
