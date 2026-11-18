@@ -367,7 +367,9 @@ export class WatcherProcess {
       const warnings = await this.sharedWarnings.read(result.heartbeat.writerId);
       const current = await this.dbEngine.getWriterHeartbeat();
       if (!current.exists || current.heartbeat?.writerId !== result.heartbeat.writerId || current.heartbeat.ageSeconds > WatcherProcess.MASTER_TIMEOUT_MS / 1000) return ['writer の照合・監視状態を確認できません'];
-      return warnings;
+      // A readable snapshot alone cannot prove a subsequent publication did not
+      // fail, including a failure to invalidate this very snapshot.
+      return [...warnings, '別プロセスの照合・監視状態は最新性を確認できません'];
     } catch {
       return ['writer の照合・監視状態を確認できません'];
     }

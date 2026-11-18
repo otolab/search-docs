@@ -301,10 +301,19 @@ it('recovers automatically in another process after writer release fails', async
     const requestId = await invoke(children[0], 'processing');
     const initial = await invoke(children[1], 'coordinate');
     expect(initial.writerState).toBe('sleeping');
+    await invoke(children[0], 'clean-warning');
+    const uncertainty = '別プロセスの照合・監視状態は最新性を確認できません';
+    let status = await invoke(children[1], 'service-status');
+    expect(status.watcher.reconciliationWarnings).toContain(uncertainty);
+    expect(await invoke(children[0], 'fail-warning-publication')).toEqual([]);
+    status = await invoke(children[1], 'service-status');
+    expect(status.watcher.reconciliationWarnings).toContain(uncertainty);
+    expect(status.watcher.reconciliationWarnings).not.toContain('injected deferred reconciliation');
     await invoke(children[0], 'warning');
     await vi.waitFor(async () => {
       const status = await invoke(children[1], 'service-status');
       expect(status.watcher.reconciliationWarnings).toContain('injected deferred reconciliation');
+      expect(status.watcher.reconciliationWarnings).toContain(uncertainty);
     }, { timeout: 10000 });
     await expect(invoke(children[0], 'fail-release-stop')).rejects.toThrow('injected writer release failure');
     const stillOwned = await invoke(children[1], 'status');
@@ -314,6 +323,8 @@ it('recovers automatically in another process after writer release fails', async
       expect(result.status.writerState).toBe('watching');
       expect(result.heartbeat.heartbeat.writerId).toBe(result.status.writerId);
     }, { timeout: 20000, interval: 250 });
+    status = await invoke(children[1], 'service-status');
+    expect(status.watcher.reconciliationWarnings).not.toContain(uncertainty);
     const recovered = await invoke(children[1], 'inspect');
     expect(recovered.requests.find((r: { id: string }) => r.id === requestId).status).toBe('pending');
     await invoke(children[1], 'run');

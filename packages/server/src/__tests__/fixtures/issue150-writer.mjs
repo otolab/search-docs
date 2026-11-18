@@ -3,6 +3,7 @@ import { FileStorage } from '@search-docs/storage';
 import { WatcherProcess } from '../../../dist/watcher/watcher-process.js';
 import { IndexWorker } from '../../../dist/worker/index-worker.js';
 import { SearchDocsServer } from '../../../dist/server/search-docs-server.js';
+import { promises as fs } from 'node:fs';
 
 let db, storage, watcher, service;
 process.on('message', async ({ id, command, args }) => {
@@ -39,6 +40,29 @@ process.on('message', async ({ id, command, args }) => {
       value = { status: watcher.getStatus(), heartbeat: await db.getWriterHeartbeat() };
     } else if (command === 'warning') {
       watcher.reportWarning('injected deferred reconciliation');
+    } else if (command === 'clean-warning') {
+      watcher.reconciliationWarnings = [];
+      watcher.sharedWarnings.publish([]);
+      await watcher.sharedWarnings.pending;
+    } else if (command === 'fail-warning-publication') {
+      const writeFile = fs.writeFile;
+      const rm = fs.rm;
+      fs.writeFile = async (file, ...rest) => {
+        if (String(file).includes('.search-docs-warnings-')) throw new Error('injected write failure');
+        return writeFile(file, ...rest);
+      };
+      fs.rm = async (file, ...rest) => {
+        if (String(file).includes('.search-docs-warnings-')) throw new Error('injected remove failure');
+        return rm(file, ...rest);
+      };
+      try {
+        watcher.reportWarning('injected deferred reconciliation');
+        await watcher.sharedWarnings.pending;
+      } finally {
+        fs.writeFile = writeFile;
+        fs.rm = rm;
+      }
+      value = await watcher.sharedWarnings.read(watcher.writerId);
     } else if (command === 'service-status') {
       value = await service.getStatus();
     } else if (command === 'fail-release-stop') {
