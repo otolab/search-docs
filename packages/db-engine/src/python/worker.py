@@ -15,7 +15,7 @@ import time
 import threading
 import copy
 from typing import Any, Dict, Optional, List, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import lancedb
 import pyarrow as pa
 import pandas as pd
@@ -1465,14 +1465,11 @@ class SearchDocsWorker:
         if len(results) == 0:
             return {"exists": False}
         row = results[0]
-        now = datetime.now(tz=None)
         updated_at = row["updated_at"]
-        # datetime.datetime または pd.Timestamp のどちらが来ても対応
-        if isinstance(updated_at, pd.Timestamp):
-            updated_at = updated_at.to_pydatetime().replace(tzinfo=None)
-        elif hasattr(updated_at, 'tzinfo') and updated_at.tzinfo is not None:
-            updated_at = updated_at.replace(tzinfo=None)
-        age_seconds = (now - updated_at).total_seconds()
+        # タイムゾーンなしの既存データも UTC で保存されている。
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        age_seconds = (datetime.now(timezone.utc) - updated_at).total_seconds()
         return {
             "exists": True,
             "heartbeat": {
