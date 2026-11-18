@@ -200,7 +200,7 @@ async function main() {
     // 既存サービスを停止
     if (serviceInstances) {
       debugLog('Stopping existing service before refresh...');
-      stopService(serviceInstances);
+      await stopService(serviceInstances);
       serviceInstances = null;
     }
 
@@ -261,23 +261,25 @@ async function main() {
   updateToolAvailability(systemState.state, toolHandles);
 
   // プロセス終了時のクリーンアップ
-  const shutdown = () => {
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     debugLog('Shutdown signal received');
-    // 全体タイムアウト: 3秒で強制終了
-    setTimeout(() => {
-      debugLog('Shutdown timeout, forcing exit');
+    try {
+      if (serviceInstances) {
+        await stopService(serviceInstances);
+        serviceInstances = null;
+      }
+      process.exit(0);
+    } catch (error) {
+      console.error('[mcp-server] Shutdown failed:', error);
       process.exit(1);
-    }, 3000).unref();
-
-    if (serviceInstances) {
-      stopService(serviceInstances);
-      serviceInstances = null;
     }
-    process.exit(0);
   };
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => { void shutdown(); });
+  process.on('SIGTERM', () => { void shutdown(); });
 
   // サーバの起動
   const transport = new StdioServerTransport();

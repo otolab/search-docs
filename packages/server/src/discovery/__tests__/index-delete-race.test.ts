@@ -7,6 +7,7 @@ import type { FileStorage } from '@search-docs/storage';
 import type { SearchDocsConfig, Document, Section } from '@search-docs/types';
 import { WatcherProcess } from '../../watcher/watcher-process.js';
 import type { IndexWorker } from '../../worker/index-worker.js';
+import { DocumentQueue } from '../../worker/document-queue.js';
 
 function deferred() {
   let resolve!: () => void;
@@ -15,6 +16,25 @@ function deferred() {
 }
 
 describe('indexing and deletion', () => {
+  it('unblocks the next operation and drain after a failed write', async () => {
+    const queue = new DocumentQueue();
+    const entered = deferred();
+    const release = deferred();
+    const failed = queue.run('a.md', async () => {
+      entered.resolve();
+      await release.promise;
+      throw new Error('write failed');
+    });
+    await entered.promise;
+    const deletion = vi.fn(async () => {});
+    const next = queue.run('a.md', deletion);
+    const drained = queue.drain();
+    release.resolve();
+    await expect(failed).rejects.toThrow('write failed');
+    await Promise.all([next, drained]);
+    expect(deletion).toHaveBeenCalledOnce();
+  });
+
   it('preserves deletion and recreation order when indexing is in progress', async () => {
     const root = await mkdtemp(join(tmpdir(), 'index-delete-race-'));
     try {

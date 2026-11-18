@@ -152,6 +152,50 @@ describe('WatcherProcess heartbeat failure handling', () => {
 });
 
 describe('WatcherProcess recovery and shutdown', () => {
+  it('waits for an in-flight claim and releases it without starting the watcher', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const db = {
+      connect: vi.fn(async () => {}), waitForConnection: vi.fn(async () => {}),
+      getWriterHeartbeat: vi.fn(async () => ({ exists: false })),
+      claimWriter: vi.fn(async () => { entered(); await gate; }),
+      releaseWriter: vi.fn(async () => ({})), disconnect: vi.fn(),
+    };
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    (instance as unknown as { sleep: () => Promise<void> }).sleep = async () => {};
+    instance.start();
+    await started;
+    const stopping = instance.stop();
+    expect(db.releaseWriter).not.toHaveBeenCalled();
+    release();
+    await stopping;
+    expect(db.releaseWriter).toHaveBeenCalledOnce();
+    expect(db.getWriterHeartbeat).toHaveBeenCalledOnce();
+    expect(instance.getStatus().writerState).not.toBe('watching');
+  });
+
+  it('stops the index worker before waiting for watcher unsubscribe', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, {} as DBEngine);
+    const internal = instance as unknown as {
+      writerState: string;
+      watcher: { isRunning: () => boolean; stop: () => Promise<void> };
+      indexWorker: { stop: () => void };
+      transitionToSleeping: () => Promise<void>;
+    };
+    const stopWorker = vi.fn();
+    internal.writerState = 'watching';
+    internal.watcher = { isRunning: () => true, stop: () => gate };
+    internal.indexWorker = { stop: stopWorker };
+    const sleeping = internal.transitionToSleeping();
+    expect(stopWorker).toHaveBeenCalledOnce();
+    release();
+    await sleeping;
+  });
+
   it('waits for an in-flight deletion before releasing writer ownership', async () => {
     let unblock!: () => void;
     let entered!: () => void;
@@ -175,6 +219,35 @@ describe('WatcherProcess recovery and shutdown', () => {
     await Promise.all([deletion, stopping]);
     expect(storage.delete).toHaveBeenCalledWith('a.md');
     expect(db.releaseWriter).toHaveBeenCalledOnce();
+  });
+
+  it('keeps heartbeats running while a normal stop waits for a write', async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: () => void;
+      let entered!: () => void;
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const db = {
+        deleteSectionsByPath: vi.fn(async () => { entered(); await gate; }),
+        updateHeartbeat: vi.fn(async () => {}), releaseWriter: vi.fn(async () => ({})), disconnect: vi.fn(),
+      };
+      const instance = new WatcherProcess(createConfig(), { delete: async () => {} } as unknown as FileStorage, db as unknown as DBEngine);
+      const internal = internals(instance);
+      internal.writerState = 'watching';
+      internal.startHeartbeat();
+      const deletion = internal.handleFileChange({ type: 'unlink', path: 'a.md', timestamp: new Date() });
+      await started;
+      const stopping = instance.stop();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(db.updateHeartbeat).toHaveBeenCalledOnce();
+      expect(db.releaseWriter).not.toHaveBeenCalled();
+      release();
+      await Promise.all([deletion, stopping]);
+      expect(db.releaseWriter).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns interrupted processing requests to pending before starting workers', async () => {

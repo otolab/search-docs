@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DBEngine } from '@search-docs/db-engine';
 import { FileStorage } from '@search-docs/storage';
 import type { SearchDocsConfig } from '@search-docs/types';
@@ -183,3 +183,78 @@ it('hands over between independent Node writers using the same LanceDB', async (
     await rm(root, { recursive: true, force: true });
   }
 }, 60000);
+
+it('drains a debounced deletion through the MCP stopService entry point', async () => {
+  const mcpStatePath = '../../../mcp-server/dist/' + 'state.js';
+  const { stopService } = await import(mcpStatePath);
+  const root = await mkdtemp(join(tmpdir(), 'mcp-stop-db-'));
+  const project = join(root, 'project');
+  await mkdir(project);
+  const file = join(project, 'a.md');
+  await writeFile(file, '# Old');
+  const server = createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/health') { res.end(JSON.stringify({ model: 'test', vectorDimension: 256 })); return; }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[] };
+    res.end(JSON.stringify({ embeddings: input.input.map(() => Array(256).fill(0.1)) }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const port = (server.address() as { port: number }).port;
+  const db = new DBEngine({ dbPath: join(root, 'db'), embeddingUrl: `http://127.0.0.1:${port}` });
+  const observer = new DBEngine({ dbPath: join(root, 'db'), embeddingUrl: `http://127.0.0.1:${port}` });
+  const storage = new FileStorage({ basePath: join(root, 'documents') });
+  const config = {
+    project: { name: 'test', root: project },
+    files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
+    indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+    watcher: { enabled: true, debounceMs: 5000, awaitWriteFinishMs: 50 },
+    worker: { enabled: true, interval: 100, maxConcurrent: 1 },
+  } as unknown as SearchDocsConfig;
+  const constants = WatcherProcess as unknown as Record<string, number>;
+  const jitter = constants.CLAIM_JITTER_MAX_MS;
+  const delay = constants.CLAIM_READBACK_DELAY_MS;
+  constants.CLAIM_JITTER_MAX_MS = 0;
+  constants.CLAIM_READBACK_DELAY_MS = 0;
+  let stopped = false;
+  const watcher = new WatcherProcess(config, storage, db);
+  try {
+    watcher.start();
+    await vi.waitFor(async () => expect((await db.getSectionsByPath('a.md')).sections.length).toBeGreaterThan(0), { timeout: 15000 });
+    await import('node:fs/promises').then(fs => fs.unlink(file));
+    const internal = watcher as unknown as { watcher: { debounceTimers: Map<string, { type: string }> } };
+    await vi.waitFor(() => expect([...internal.watcher.debounceTimers.values()].some(event => event.type === 'unlink')).toBe(true), { timeout: 5000 });
+    await stopService({ watcherProcess: watcher, dbEngine: db, service: { stop() {} }, embeddingServer: { shutdown() {} } } as never);
+    stopped = true;
+    await observer.connect();
+    expect((await observer.getSectionsByPath('a.md')).sections).toHaveLength(0);
+    expect(await storage.get('a.md')).toBeNull();
+    expect((await observer.getWriterHeartbeat()).exists).toBe(false);
+    const restartedDb = new DBEngine({ dbPath: join(root, 'db'), embeddingUrl: `http://127.0.0.1:${port}` });
+    const restarted = new WatcherProcess(config, storage, restartedDb);
+    try {
+      restarted.start();
+      await vi.waitFor(() => expect(restarted.getStatus().writerState).toBe('watching'), { timeout: 10000 });
+      await restarted.stop();
+      const checkDb = new DBEngine({ dbPath: join(root, 'db'), embeddingUrl: `http://127.0.0.1:${port}` });
+      try {
+        await checkDb.connect();
+        expect((await checkDb.getSectionsByPath('a.md')).sections).toHaveLength(0);
+        expect(await storage.get('a.md')).toBeNull();
+      } finally {
+        checkDb.disconnect();
+      }
+    } finally {
+      restartedDb.disconnect();
+    }
+  } finally {
+    if (!stopped) await watcher.stop();
+    observer.disconnect();
+    constants.CLAIM_JITTER_MAX_MS = jitter;
+    constants.CLAIM_READBACK_DELAY_MS = delay;
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30000);

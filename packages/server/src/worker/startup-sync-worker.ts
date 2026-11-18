@@ -65,9 +65,7 @@ export class StartupSyncWorker {
   }
 
   /**
-   * 同期完了を待機（テスト用）
-   *
-   * 注意: 本番環境では使用しない。テストでのみ使用。
+   * 同期完了を待機（通常停止時に書き込み完了を確認する）。
    */
   async waitForSync(): Promise<void> {
     if (this.syncPromise) {

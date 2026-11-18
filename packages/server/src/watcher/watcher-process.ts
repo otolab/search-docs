@@ -39,6 +39,12 @@ export class WatcherProcess {
   private writerState: 'sleeping' | 'claiming' | 'watching' = 'sleeping';
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private masterCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private stopping = false;
+  private stopPromise: Promise<void> | null = null;
+  private coordination: Promise<void> | null = null;
+  private heartbeatUpdates = new Set<Promise<void>>();
+  private claimAttempted = false;
+  private ownershipGeneration = 0;
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
@@ -99,20 +105,27 @@ export class WatcherProcess {
     });
 
     // DB接続完了後に調停プロセスを開始
-    this.dbEngine.waitForConnection().then(async () => {
+    this.runCoordination(async () => {
+      await this.dbEngine.waitForConnection();
+      if (this.stopping) return;
       console.log('[WatcherProcess] DB connected, starting writer coordination');
       this.writerState = 'sleeping';
       await this.checkAndClaimMaster();
-      this.startMasterCheck();
-    }).catch((error) => {
-      console.error('[WatcherProcess] Failed to start writer coordination:', error);
+      if (!this.stopping) this.startMasterCheck();
     });
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (!this.stopPromise) this.stopPromise = this.stopInternal();
+    return this.stopPromise;
+  }
+
+  private async stopInternal(): Promise<void> {
     console.log('[WatcherProcess] Stopping...');
 
+    this.stopping = true;
     this.stopMasterCheck();
+    await this.coordination;
 
     if (this.indexWorker) {
       this.indexWorker.stop();
@@ -124,9 +137,10 @@ export class WatcherProcess {
     await this.indexWorker?.waitForProcessing();
     await this.documentQueue.drain();
     this.stopHeartbeat();
+    await Promise.all(this.heartbeatUpdates);
 
     // Release mastership if we're the master
-    if (this.writerState === 'watching') {
+    if (this.writerState === 'watching' || this.claimAttempted) {
       try {
         await this.dbEngine.releaseWriter({ writerId: this.writerId });
         console.log('[WatcherProcess] Released writer mastership');
@@ -163,7 +177,9 @@ export class WatcherProcess {
    */
   private async checkAndClaimMaster(): Promise<void> {
     try {
+      if (this.stopping) return;
       const response = await this.dbEngine.getWriterHeartbeat();
+      if (this.stopping) return;
 
       if (!response.exists) {
         console.log('[WatcherProcess] No master found, attempting to claim');
@@ -205,8 +221,10 @@ export class WatcherProcess {
     const jitter = Math.random() * WatcherProcess.CLAIM_JITTER_MAX_MS;
     console.log(`[WatcherProcess] Waiting ${jitter.toFixed(0)}ms jitter before claim`);
     await this.sleep(jitter);
+    if (this.stopping) return;
 
     this.writerState = 'claiming';
+    this.claimAttempted = true;
     await this.dbEngine.claimWriter({
       writerId: this.writerId,
       host: os.hostname(),
@@ -215,9 +233,11 @@ export class WatcherProcess {
     console.log(`[WatcherProcess] Claimed, waiting ${WatcherProcess.CLAIM_READBACK_DELAY_MS}ms for readback`);
 
     await this.sleep(WatcherProcess.CLAIM_READBACK_DELAY_MS);
+    if (this.stopping) return;
 
     // Readback
     const readback = await this.dbEngine.getWriterHeartbeat();
+    if (this.stopping) return;
 
     if (!readback.exists || readback.heartbeat!.writerId !== this.writerId) {
       const winner = readback.heartbeat?.writerId ?? 'unknown';
@@ -234,7 +254,7 @@ export class WatcherProcess {
    * Watching状態に遷移（FileWatcher/IndexWorker/StartupSync起動）
    */
   private async transitionToWatching(): Promise<void> {
-    if (this.writerState === 'watching') return;
+    if (this.stopping || this.writerState === 'watching') return;
 
     console.log('[WatcherProcess] → WATCHING');
 
@@ -245,9 +265,11 @@ export class WatcherProcess {
       pid: process.pid,
       state: 'watching',
     });
+    if (this.stopping) return;
 
     // 前の writer が処理中に終了したリクエストを再実行できるようにする。
     await this.dbEngine.updateManyIndexRequests({ status: 'processing' }, { status: 'pending' });
+    if (this.stopping) return;
     this.writerState = 'watching';
 
     // パフォーマンスログ設定
@@ -287,17 +309,17 @@ export class WatcherProcess {
 
     console.log('[WatcherProcess] → SLEEPING');
     this.writerState = 'sleeping';
+    this.ownershipGeneration++;
 
     this.stopHeartbeat();
-
-    if (this.watcher?.isRunning()) {
-      await this.watcher.stop();
-      console.log('[WatcherProcess] FileWatcher stopped');
-    }
 
     if (this.indexWorker) {
       this.indexWorker.stop();
       console.log('[WatcherProcess] IndexWorker stopped');
+    }
+    if (this.watcher?.isRunning()) {
+      await this.watcher.stop(false);
+      console.log('[WatcherProcess] FileWatcher stopped');
     }
   }
 
@@ -308,7 +330,7 @@ export class WatcherProcess {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      void (async () => {
+      const update = (async () => {
         try {
           await this.dbEngine.updateHeartbeat({
             writerId: this.writerId,
@@ -320,6 +342,8 @@ export class WatcherProcess {
           await this.handleHeartbeatUpdateFailure(error);
         }
       })();
+      this.heartbeatUpdates.add(update);
+      void update.finally(() => this.heartbeatUpdates.delete(update));
     }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
   }
 
@@ -362,7 +386,7 @@ export class WatcherProcess {
     if (this.masterCheckTimer) return;
 
     this.masterCheckTimer = setInterval(() => {
-      void this.checkAndClaimMaster();
+      this.runCoordination(() => this.checkAndClaimMaster());
     }, WatcherProcess.MASTER_CHECK_INTERVAL_MS);
   }
 
@@ -371,6 +395,16 @@ export class WatcherProcess {
       clearInterval(this.masterCheckTimer);
       this.masterCheckTimer = null;
     }
+  }
+
+  private runCoordination(operation: () => Promise<void>): void {
+    if (this.stopping || this.coordination) return;
+    const pending = operation().catch(error => {
+      console.error('[WatcherProcess] Writer coordination failed:', error);
+    }).finally(() => {
+      if (this.coordination === pending) this.coordination = null;
+    });
+    this.coordination = pending;
   }
 
   getStatus(): {
@@ -392,10 +426,12 @@ export class WatcherProcess {
   // ---- 以下、既存の書き込み系メソッド（変更なし） ----
 
   private async handleFileChange(event: FileChangeEvent): Promise<void> {
-    return this.documentQueue.run(event.path, () => this.handleLockedFileChange(event));
+    const generation = this.ownershipGeneration;
+    return this.documentQueue.run(event.path, () => this.handleLockedFileChange(event, generation));
   }
 
-  private async handleLockedFileChange(event: FileChangeEvent): Promise<void> {
+  private async handleLockedFileChange(event: FileChangeEvent, generation: number): Promise<void> {
+    if (generation !== this.ownershipGeneration) return;
     console.log(`File ${event.type}: ${event.path}`);
 
     switch (event.type) {
@@ -403,6 +439,7 @@ export class WatcherProcess {
       case 'change': {
         const absolutePath = path.join(this.config.project.root, event.path);
         const stat = await fs.stat(absolutePath);
+        if (generation !== this.ownershipGeneration) return;
         if (stat.size > this.config.files.maxFileSize) {
           console.warn(
             `Skipping oversized file ${event.path} (${stat.size} bytes > ${this.config.files.maxFileSize} bytes)`
@@ -411,9 +448,11 @@ export class WatcherProcess {
         }
 
         const content = await fs.readFile(absolutePath, 'utf-8');
+        if (generation !== this.ownershipGeneration) return;
         const hash = createHash('sha256').update(content).digest('hex');
 
         const existingDoc = await this.storage.get(event.path);
+        if (generation !== this.ownershipGeneration) return;
         const document: Document = {
           path: event.path,
           content,
@@ -425,6 +464,7 @@ export class WatcherProcess {
         };
 
         await this.storage.save(event.path, document);
+        if (generation !== this.ownershipGeneration) return;
         await this.dbEngine.createIndexRequest({
           documentPath: event.path,
           documentHash: hash,
@@ -435,28 +475,35 @@ export class WatcherProcess {
 
       case 'unlink':
         await this.dbEngine.deleteSectionsByPath(event.path);
+        if (generation !== this.ownershipGeneration) return;
         await this.storage.delete(event.path);
         break;
     }
   }
 
   private async indexDocument(filePath: string, force = false): Promise<{ success: boolean; sectionsCreated: number }> {
-    return this.documentQueue.run(filePath, () => this.indexLockedDocument(filePath, force));
+    const generation = this.ownershipGeneration;
+    return this.documentQueue.run(filePath, () => this.indexLockedDocument(filePath, force, generation));
   }
 
-  private async indexLockedDocument(filePath: string, force: boolean): Promise<{ success: boolean; sectionsCreated: number }> {
+  private async indexLockedDocument(filePath: string, force: boolean, generation: number): Promise<{ success: boolean; sectionsCreated: number }> {
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     const absolutePath = path.join(this.config.project.root, filePath);
     const stat = await fs.stat(absolutePath);
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     if (stat.size > this.config.files.maxFileSize) {
       return { success: false, sectionsCreated: 0 };
     }
 
     const content = await fs.readFile(absolutePath, 'utf-8');
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     const hash = createHash('sha256').update(content).digest('hex');
 
     const existingDoc = await this.storage.get(filePath);
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     if (existingDoc && existingDoc.metadata.fileHash === hash && !force) {
       const { sections: existingSections } = await this.dbEngine.getSectionsByPath(filePath);
+      if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
       if (existingSections.length > 0) {
         return { success: true, sectionsCreated: 0 };
       }
@@ -473,6 +520,7 @@ export class WatcherProcess {
     };
 
     await this.storage.save(filePath, document);
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     await this.dbEngine.createIndexRequest({
       documentPath: filePath,
       documentHash: hash,
@@ -483,6 +531,7 @@ export class WatcherProcess {
 
   private async rebuildIndex(request: { paths?: string[]; force?: boolean } = {}): Promise<RebuildIndexResponse> {
     const { paths, force = false } = request;
+    const generation = this.ownershipGeneration;
 
     let filesToIndex: string[];
     if (paths && paths.length > 0) {
@@ -495,6 +544,7 @@ export class WatcherProcess {
     let sectionsCreated = 0;
 
     for (const fp of filesToIndex) {
+      if (generation !== this.ownershipGeneration) break;
       try {
         const result = await this.indexDocument(fp, force);
         documentsProcessed++;

@@ -23,7 +23,7 @@ export interface FileChangeEvent {
 
 export class FileWatcher extends EventEmitter {
   private subscriptions: watcher.AsyncSubscription[] = [];
-  private debounceTimers = new Map<string, NodeJS.Timeout>();
+  private debounceTimers = new Map<string, { timer: NodeJS.Timeout; type: FileChangeEvent['type'] }>();
   private rootDir: string;
   private filesConfig: FilesConfig;
   private watcherConfig: WatcherConfig;
@@ -82,12 +82,7 @@ export class FileWatcher extends EventEmitter {
     this.emit('ready');
   }
 
-  async stop(): Promise<void> {
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.debounceTimers.clear();
-
+  async stop(flush = true): Promise<void> {
     for (const sub of this.subscriptions) {
       try {
         await sub.unsubscribe();
@@ -96,6 +91,11 @@ export class FileWatcher extends EventEmitter {
       }
     }
     this.subscriptions = [];
+    for (const [filePath, pending] of this.debounceTimers) {
+      clearTimeout(pending.timer);
+      if (flush) this.emitFileEvent(pending.type, filePath);
+    }
+    this.debounceTimers.clear();
   }
 
   private shouldProcessFile(filePath: string, eventType: FileChangeEvent['type']): boolean {
@@ -127,21 +127,23 @@ export class FileWatcher extends EventEmitter {
   private handleFileEvent(type: 'add' | 'change' | 'unlink', filePath: string): void {
     const existingTimer = this.debounceTimers.get(filePath);
     if (existingTimer) {
-      clearTimeout(existingTimer);
+      clearTimeout(existingTimer.timer);
     }
 
     const timer = setTimeout(() => {
       this.debounceTimers.delete(filePath);
 
-      const event: FileChangeEvent = {
-        type,
-        path: filePath.replace(this.rootDir + '/', ''),
-        timestamp: new Date(),
-      };
-
-      this.emit('change', event);
+      this.emitFileEvent(type, filePath);
     }, this.watcherConfig.debounceMs);
 
-    this.debounceTimers.set(filePath, timer);
+    this.debounceTimers.set(filePath, { timer, type });
+  }
+
+  private emitFileEvent(type: FileChangeEvent['type'], filePath: string): void {
+    this.emit('change', {
+      type,
+      path: filePath.replace(this.rootDir + '/', ''),
+      timestamp: new Date(),
+    } satisfies FileChangeEvent);
   }
 }
