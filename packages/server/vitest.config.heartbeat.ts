@@ -3,6 +3,6 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/__tests__/writer-heartbeat-integration.test.ts', 'src/__tests__/index-delete-integration.test.ts'],
+    include: ['src/__tests__/writer-heartbeat-integration.test.ts', 'src/__tests__/index-delete-integration.test.ts', 'src/__tests__/log-redirect-integration.test.ts'],
   },
 });

@@ -55,12 +55,15 @@ export class WatcherProcess {
   private heartbeatTail: Promise<void> = Promise.resolve();
   private heartbeatQueued = false;
   private heartbeatDirty = false;
+  private warningTimer: ReturnType<typeof setTimeout> | null = null;
+  private warningDirty = false;
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
   private static readonly STATUS_TIMEOUT_MS = 60_000;
   private static readonly MAX_WARNINGS = 25;
   private static readonly MAX_WARNING_LENGTH = 512;
+  private static readonly WARNING_INTERVAL_MS = 250;
   private static readonly MASTER_TIMEOUT_MS = 120_000;           // 2分でmaster期限切れ
   private static readonly MASTER_CHECK_INTERVAL_MS = 45_000;     // sleeping時の確認間隔
   private static readonly CLAIM_JITTER_MAX_MS = 5_000;           // claim前のランダム待ち
@@ -353,6 +356,7 @@ export class WatcherProcess {
       }
       if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
       this.reconciliationWarnings = this.reconciliationWarnings.filter(message => message !== syncingMessage);
+      this.clearWarningTimer();
       this.publishHeartbeat();
       this.indexWorker?.start();
       return this.rebuildIndex({ force: false });
@@ -367,7 +371,18 @@ export class WatcherProcess {
     } else {
       this.omittedWarnings++;
     }
-    this.publishHeartbeat();
+    if (!this.warningTimer) {
+      this.publishHeartbeat();
+      this.warningTimer = setTimeout(() => {
+        this.warningTimer = null;
+        if (this.warningDirty) {
+          this.warningDirty = false;
+          this.publishHeartbeat();
+        }
+      }, WatcherProcess.WARNING_INTERVAL_MS);
+    } else {
+      this.warningDirty = true;
+    }
     console.warn(message);
   }
 
@@ -475,10 +490,17 @@ export class WatcherProcess {
   }
 
   private stopHeartbeat(): void {
+    this.clearWarningTimer();
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  private clearWarningTimer(): void {
+    if (this.warningTimer) clearTimeout(this.warningTimer);
+    this.warningTimer = null;
+    this.warningDirty = false;
   }
 
   /**

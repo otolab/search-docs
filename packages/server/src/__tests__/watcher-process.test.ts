@@ -154,6 +154,31 @@ describe('WatcherProcess heartbeat failure handling', () => {
 });
 
 describe('WatcherProcess recovery and shutdown', () => {
+  it('limits asynchronous warning publications and cancels the timer on stop', async () => {
+    vi.useFakeTimers();
+    const db = { updateHeartbeat: vi.fn(async () => {}), releaseWriter: vi.fn(async () => ({ success: true })), disconnect: vi.fn() };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    const internal = instance as unknown as { writerState: string; reportWarning: (message: string) => void };
+    internal.writerState = 'watching';
+    try {
+      for (let i = 0; i < 100; i++) {
+        internal.reportWarning(`warning ${i}`);
+        await vi.advanceTimersByTimeAsync(10);
+      }
+      await vi.advanceTimersByTimeAsync(250);
+      expect(db.updateHeartbeat.mock.calls.length).toBeLessThanOrEqual(10);
+      expect((await instance.getVisibleWarnings()).at(-1)).toContain('75 件');
+      await instance.stop();
+      const count = db.updateHeartbeat.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(db.updateHeartbeat).toHaveBeenCalledTimes(count);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('coalesces many warnings during a slow heartbeat and drains on stop', async () => {
     let release!: () => void;
     let entered!: () => void;

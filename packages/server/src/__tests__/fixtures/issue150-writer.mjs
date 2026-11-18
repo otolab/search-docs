@@ -41,6 +41,7 @@ process.on('message', async ({ id, command, args }) => {
     } else if (command === 'warning') {
       watcher.reportWarning('injected deferred reconciliation');
     } else if (command === 'clean-warning') {
+      watcher.clearWarningTimer();
       watcher.reconciliationWarnings = [];
       watcher.omittedWarnings = 0;
       watcher.publishHeartbeat();
@@ -57,6 +58,7 @@ process.on('message', async ({ id, command, args }) => {
       };
       try {
         for (let i = 0; i < args.count; i++) watcher.reportWarning(`起動時照合を保留しました: docs/${i}.md（監視範囲を確認できません）`);
+        await new Promise(resolve => setTimeout(resolve, 300));
         await watcher.heartbeatTail;
         value = { updates, bytes, elapsedMs: performance.now() - started };
       } finally {
@@ -68,6 +70,7 @@ process.on('message', async ({ id, command, args }) => {
       originalHeartbeat = db.updateHeartbeat.bind(db);
       db.updateHeartbeat = async () => { throw new Error('injected heartbeat write failure'); };
       watcher.reportWarning('injected deferred reconciliation');
+      await new Promise(resolve => setTimeout(resolve, 300));
       await watcher.heartbeatTail;
     } else if (command === 'restore-publication') {
       db.updateHeartbeat = originalHeartbeat;

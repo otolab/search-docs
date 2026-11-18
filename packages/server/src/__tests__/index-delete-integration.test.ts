@@ -472,3 +472,92 @@ it('reconciles missing and index-only documents after a real watcher starts', as
     await rm(root, { recursive: true, force: true });
   }
 }, 60000);
+
+it('measures asynchronous deferred reconciliation with LanceDB', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'reconcile-many-db-'));
+  const project = join(root, 'project');
+  const documents = join(root, 'documents');
+  await mkdir(project); await mkdir(documents);
+  const { symlink } = await import('node:fs/promises');
+  const count = 200;
+  for (let i = 0; i < count; i++) {
+    const name = `held-${i}.md`;
+    await symlink('missing-target', join(project, name));
+    await writeFile(join(documents, `${name}.json`), '{}');
+  }
+  const embedding = createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/health') { res.end(JSON.stringify({ model: 'test', vectorDimension: 256 })); return; }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[] };
+    res.end(JSON.stringify({ embeddings: input.input.map(() => Array(256).fill(0.1)) }));
+  });
+  embedding.listen(0, '127.0.0.1'); await once(embedding, 'listening');
+  const port = (embedding.address() as { port: number }).port;
+  const db = new DBEngine({ dbPath: join(root, 'db'), embeddingUrl: `http://127.0.0.1:${port}` });
+  const storage = new FileStorage({ basePath: documents });
+  const config = {
+    version: '1.0', project: { name: 'test', root: project },
+    files: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 100000 },
+    indexing: { maxTokensPerSection: 2000, minTokensForSplit: 100, maxDepth: 3, vectorDimension: 256, embeddingModel: 'test' },
+    storage: { indexPath: join(root, 'db') },
+    watcher: { enabled: true, debounceMs: 10, awaitWriteFinishMs: 10 },
+    worker: { enabled: true, interval: 60000, maxConcurrent: 1 },
+  } as unknown as SearchDocsConfig;
+  let watcher: WatcherProcess | undefined;
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    await db.connect();
+    watcher = new WatcherProcess(config, storage, db);
+    const inner = watcher as unknown as {
+      writerId: string; indexWorker: IndexWorker;
+      transitionToWatching: () => Promise<void>;
+      startupSyncWorker: { waitForSync: () => Promise<void> };
+      handleFileChange: (event: { type: 'add'; path: string }) => Promise<void>;
+    };
+    await db.claimWriter({ writerId: inner.writerId, host: 'test', pid: process.pid });
+    let updates = 0; let bytes = 0;
+    const originalUpdate = db.updateHeartbeat.bind(db);
+    vi.spyOn(db, 'updateHeartbeat').mockImplementation(async data => {
+      updates++; bytes += Buffer.byteLength(JSON.stringify(data));
+      return originalUpdate(data);
+    });
+    let warningCount = 0;
+    let concurrentIndex: Promise<void> | undefined;
+    let addedDuringSync = false;
+    warn.mockImplementation(message => {
+      if (String(message).includes('起動時照合を保留しました:') && ++warningCount === 20) {
+        addedDuringSync = true;
+        concurrentIndex = writeFile(join(project, 'live.md'), '# Live')
+          .then(() => inner.handleFileChange({ type: 'add', path: 'live.md' }));
+      }
+    });
+    const started = performance.now();
+    await inner.transitionToWatching();
+    await inner.startupSyncWorker.waitForSync();
+    await concurrentIndex;
+    const elapsed = performance.now() - started;
+    await vi.waitFor(async () => {
+      const result = await db.getWriterHeartbeat();
+      expect(result.heartbeat?.warnings?.join(' ')).toContain(`${count - 25} 件`);
+    }, { timeout: 10000 });
+    expect(updates).toBeLessThanOrEqual(5 + 2 * Math.ceil(elapsed / 250));
+    const actualWarnings = warn.mock.calls.filter(call => String(call[0]).includes('起動時照合を保留しました:'));
+    expect(actualWarnings).toHaveLength(count);
+    expect(addedDuringSync).toBe(true);
+    await inner.indexWorker.processNextRequests();
+    await vi.waitFor(async () => {
+      expect((await db.getSectionsByPath('live.md')).sections.length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+    const stopStarted = performance.now();
+    await watcher.stop(); watcher = undefined;
+    const stopMs = performance.now() - stopStarted;
+    console.log('[issue150] asynchronous reconciliation measurement', { count, updates, bytes, elapsedMs: Math.round(elapsed), stopMs: Math.round(stopMs) });
+  } finally {
+    warn.mockRestore();
+    if (watcher) await watcher.stop(); else db.disconnect();
+    embedding.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60000);
