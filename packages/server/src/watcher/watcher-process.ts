@@ -152,18 +152,25 @@ export class WatcherProcess {
     this.stopHeartbeat();
     await Promise.all(this.heartbeatUpdates);
 
+    let releaseFailure: unknown;
     // Release mastership if we're the master
     if (this.writerState === 'watching' || this.claimAttempted) {
       try {
-        await this.dbEngine.releaseWriter({ writerId: this.writerId });
-        console.log('[WatcherProcess] Released writer mastership');
+        const result = await this.dbEngine.releaseWriter({ writerId: this.writerId });
+        if (result.success) console.log('[WatcherProcess] Released writer mastership');
+        else console.log('[WatcherProcess] Writer mastership already belongs to another writer');
       } catch (error) {
         console.error('[WatcherProcess] Failed to release mastership:', error);
+        releaseFailure = error;
       }
     }
 
     this.dbEngine.disconnect();
+    if (this.deletionFailure && releaseFailure) {
+      throw new AggregateError([this.deletionFailure, releaseFailure], 'Deletion and writer release failed during shutdown');
+    }
     if (this.deletionFailure) throw this.deletionFailure;
+    if (releaseFailure) throw new Error(`Writer release failed during shutdown; takeover may be delayed until heartbeat expiry: ${String(releaseFailure)}`);
   }
 
   /**

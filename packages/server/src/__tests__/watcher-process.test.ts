@@ -316,3 +316,17 @@ describe('WatcherProcess recovery and shutdown', () => {
     expect(db.updateManyIndexRequests).toHaveBeenCalledWith({ status: 'processing' }, { status: 'pending' });
   });
 });
+
+describe('shutdown release failures', () => {
+  it('reports release failure after disconnecting, so a later writer can recover on expiry', async () => {
+    const db = {
+      releaseWriter: vi.fn().mockRejectedValue(new Error('release unavailable')),
+      disconnect: vi.fn(),
+    };
+    const watcher = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    internals(watcher).writerState = 'watching';
+    await expect(watcher.stop()).rejects.toThrow('release unavailable');
+    expect(db.disconnect).toHaveBeenCalledOnce();
+    expect(db.releaseWriter).toHaveBeenCalledOnce();
+  });
+});

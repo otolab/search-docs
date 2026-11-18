@@ -13,6 +13,7 @@ import { setupLogRedirect } from '@search-docs/server';
 
 import { detectSystemState, createService, stopService, type SystemState, type ServiceInstances } from './state.js';
 import { ServerManager } from './server-manager.js';
+import { refreshServiceState } from './refresh-service-state.js';
 import {
   registerInitTool,
   registerSystemStatusTool,
@@ -196,36 +197,15 @@ async function main() {
   let toolHandles: ToolHandles | null = null;
 
   // システム状態を再検出する関数
-  const refreshSystemState = async () => {
-    // 既存サービスを停止
-    if (serviceInstances) {
-      debugLog('Stopping existing service before refresh...');
-      await stopService(serviceInstances);
-      serviceInstances = null;
-    }
-
-    const newState = await detectSystemState(cwd);
-    // systemStateオブジェクトのプロパティを更新
-    Object.assign(systemState, newState);
-
-    // 設定があればサービスを再作成
-    if (systemState.state === 'RUNNING' && systemState.config) {
-      try {
-        serviceInstances = await createService(systemState.config, systemState.projectRoot, VERSION);
-        systemState.service = serviceInstances.service;
-        debugLog('✓ Service recreated after refresh');
-      } catch (error) {
-        debugLog(`✗ Service recreation failed: ${(error as Error).message}`);
-      }
-    }
-
-    debugLog(`System state refreshed: ${systemState.state}`);
-
-    // ツールの有効/無効を更新
-    if (toolHandles) {
-      updateToolAvailability(systemState.state, toolHandles);
-    }
-  };
+  const refreshSystemState = () => refreshServiceState({
+    cwd, version: VERSION, systemState,
+    getInstances: () => serviceInstances,
+    setInstances: (instances) => { serviceInstances = instances; },
+    onRefreshed: () => {
+      if (toolHandles) updateToolAvailability(systemState.state, toolHandles);
+    },
+    debugLog,
+  });
 
   // サーバマネージャーの作成（複数プロジェクト管理用）
   const serverManager = new ServerManager();
