@@ -170,7 +170,7 @@ export class WatcherProcess {
       throw new AggregateError([this.deletionFailure, releaseFailure], 'Deletion and writer release failed during shutdown');
     }
     if (this.deletionFailure) throw this.deletionFailure;
-    if (releaseFailure) throw new Error(`Writer release failed during shutdown; takeover may be delayed until heartbeat expiry: ${String(releaseFailure)}`);
+    if (releaseFailure) throw new Error(`Writer release failed during shutdown; takeover may be delayed until heartbeat expiry: ${releaseFailure instanceof Error ? releaseFailure.message : 'unknown error'}`);
   }
 
   /**

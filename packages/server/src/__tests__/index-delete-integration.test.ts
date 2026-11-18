@@ -258,3 +258,68 @@ it('drains a debounced deletion through the MCP stopService entry point', async 
     await rm(root, { recursive: true, force: true });
   }
 }, 30000);
+
+it('recovers automatically in another process after writer release fails', async () => {
+  const { fork } = await import('node:child_process');
+  const root = await mkdtemp(join(tmpdir(), 'writer-release-failure-'));
+  const project = join(root, 'project');
+  await mkdir(project);
+  const server = createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/health') { res.end(JSON.stringify({ model: 'test', vectorDimension: 256 })); return; }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[] };
+    res.end(JSON.stringify({ embeddings: input.input.map(() => Array(256).fill(0.1)) }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const port = (server.address() as { port: number }).port;
+  const children = [0, 1].map(() => fork(join(process.cwd(), 'src/__tests__/fixtures/issue150-writer.mjs'), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }));
+  let sequence = 0;
+  const invoke = (child: typeof children[number], command: string, args: unknown = {}) => new Promise<any>((resolve, reject) => {
+    const id = ++sequence;
+    const timer = setTimeout(() => { child.off('message', receive); reject(new Error(`${command} timed out`)); }, 15000);
+    const receive = (message: { id: number; value?: unknown; error?: string }) => {
+      if (message.id !== id) return;
+      clearTimeout(timer); child.off('message', receive);
+      if (message.error) reject(new Error(message.error)); else resolve(message.value);
+    };
+    child.on('message', receive);
+    child.send({ id, command, args });
+  });
+  try {
+    const args = { project, dbPath: join(root, 'db'), storagePath: join(root, 'documents'), embeddingUrl: `http://127.0.0.1:${port}` };
+    await invoke(children[0], 'init', args);
+    await invoke(children[1], 'init', args);
+    expect(children[0].pid).not.toBe(children[1].pid);
+    const oldWriter = await invoke(children[0], 'claim');
+    await writeFile(join(project, 'a.md'), '# Recovery');
+    await invoke(children[0], 'event', { type: 'add', path: 'a.md' });
+    const requestId = await invoke(children[0], 'processing');
+    const initial = await invoke(children[1], 'coordinate');
+    expect(initial.writerState).toBe('sleeping');
+    await expect(invoke(children[0], 'fail-release-stop')).rejects.toThrow('injected writer release failure');
+    const stillOwned = await invoke(children[1], 'status');
+    expect(stillOwned.heartbeat.heartbeat.writerId).toBe(oldWriter);
+    await vi.waitFor(async () => {
+      const result = await invoke(children[1], 'status');
+      expect(result.status.writerState).toBe('watching');
+      expect(result.heartbeat.heartbeat.writerId).toBe(result.status.writerId);
+    }, { timeout: 20000, interval: 250 });
+    const recovered = await invoke(children[1], 'inspect');
+    expect(recovered.requests.find((r: { id: string }) => r.id === requestId).status).toBe('pending');
+    await invoke(children[1], 'run');
+    const completed = await invoke(children[1], 'inspect');
+    expect(completed.requests.find((r: { id: string }) => r.id === requestId).status).toBe('completed');
+    expect(completed.document.content).toBe('# Recovery');
+    expect(completed.sections.length).toBeGreaterThan(0);
+    await invoke(children[1], 'stop');
+    await invoke(children[1], 'exit');
+    await invoke(children[0], 'exit');
+  } finally {
+    for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60000);

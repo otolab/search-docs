@@ -11,7 +11,7 @@ export async function refreshServiceState(options: {
   debugLog: (message: string) => void;
 }): Promise<void> {
   const { cwd, version, systemState, getInstances, setInstances, onRefreshed, debugLog } = options;
-  let stopError: unknown;
+  let stopError: Error | undefined;
   const previous = getInstances();
   setInstances(null);
   systemState.service = undefined;
@@ -19,7 +19,7 @@ export async function refreshServiceState(options: {
     try {
       await stopService(previous);
     } catch (error) {
-      stopError = error;
+      stopError = error instanceof Error ? error : new Error('Unknown shutdown failure');
     }
   }
   const newState = await detectSystemState(cwd);
@@ -31,7 +31,7 @@ export async function refreshServiceState(options: {
       systemState.service = instances.service;
       debugLog('Service recreated after refresh');
     } catch (error) {
-      if (stopError) throw new AggregateError([stopError, error], `Service shutdown and recreation failed: ${String(stopError)}; ${String(error)}`);
+      if (stopError) throw new AggregateError([stopError, error], `Service shutdown and recreation failed: ${stopError instanceof Error ? stopError.message : 'unknown error'}; ${error instanceof Error ? error.message : 'unknown error'}`);
       throw error;
     }
   }

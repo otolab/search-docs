@@ -23,6 +23,19 @@ process.on('message', async ({ id, command, args }) => {
       await db.claimWriter({ writerId: watcher.writerId, host: 'test', pid: process.pid });
       await watcher.transitionToWatching();
       value = watcher.getStatus().writerId;
+    } else if (command === 'coordinate') {
+      WatcherProcess.MASTER_TIMEOUT_MS = 8000;
+      WatcherProcess.MASTER_CHECK_INTERVAL_MS = 250;
+      WatcherProcess.CLAIM_JITTER_MAX_MS = 0;
+      WatcherProcess.CLAIM_READBACK_DELAY_MS = 0;
+      await watcher.checkAndClaimMaster();
+      watcher.startMasterCheck();
+      value = watcher.getStatus();
+    } else if (command === 'status') {
+      value = { status: watcher.getStatus(), heartbeat: await db.getWriterHeartbeat() };
+    } else if (command === 'fail-release-stop') {
+      db.releaseWriter = async () => { throw new Error('injected writer release failure'); };
+      await watcher.stop();
     } else if (command === 'event') {
       await watcher.handleFileChange(args);
     } else if (command === 'processing') {
