@@ -154,6 +154,49 @@ describe('WatcherProcess heartbeat failure handling', () => {
 });
 
 describe('WatcherProcess recovery and shutdown', () => {
+  it('coalesces many warnings during a slow heartbeat and drains on stop', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const updateHeartbeat = vi.fn(async () => { if (updateHeartbeat.mock.calls.length === 1) { entered(); await gate; } });
+    const db = { updateHeartbeat, releaseWriter: vi.fn(async () => ({ success: true })), disconnect: vi.fn() };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine);
+    const internal = instance as unknown as {
+      writerState: string; heartbeatUpdates: Set<Promise<void>>;
+      reportWarning: (message: string) => void;
+      publishHeartbeat: () => void;
+      documentQueue: { run: (key: string, task: () => Promise<void>) => Promise<void> };
+    };
+    internal.writerState = 'watching';
+    try {
+      internal.reportWarning('保留 0');
+      await started;
+      for (let i = 1; i < 1000; i++) internal.reportWarning(`保留 ${i}`);
+      for (let i = 0; i < 10; i++) internal.publishHeartbeat();
+      expect(internal.heartbeatUpdates.size).toBe(1);
+      expect(updateHeartbeat).toHaveBeenCalledTimes(1);
+      const indexed = vi.fn(async () => {});
+      await internal.documentQueue.run('independent.md', indexed);
+      expect(indexed).toHaveBeenCalledOnce();
+      const warnings = await instance.getVisibleWarnings();
+      expect(warnings).toHaveLength(26);
+      expect(warnings[0]).toBe('保留 0');
+      expect(warnings[25]).toContain('975 件');
+      expect(warn).toHaveBeenCalledWith('保留 999');
+      const stopping = instance.stop();
+      expect(db.releaseWriter).not.toHaveBeenCalled();
+      release();
+      await stopping;
+      expect(updateHeartbeat).toHaveBeenCalledTimes(2);
+      expect(db.releaseWriter).toHaveBeenCalledOnce();
+    } finally {
+      release();
+      warn.mockRestore();
+    }
+  });
+
   it('reports a watcher error even when there are no reconciliation candidates', () => {
     const config = createConfig();
     config.watcher.enabled = true;

@@ -42,8 +42,26 @@ process.on('message', async ({ id, command, args }) => {
       watcher.reportWarning('injected deferred reconciliation');
     } else if (command === 'clean-warning') {
       watcher.reconciliationWarnings = [];
+      watcher.omittedWarnings = 0;
       watcher.publishHeartbeat();
       await watcher.heartbeatTail;
+    } else if (command === 'many-warnings') {
+      const previous = db.updateHeartbeat.bind(db);
+      let updates = 0;
+      let bytes = 0;
+      const started = performance.now();
+      db.updateHeartbeat = async params => {
+        updates++;
+        bytes += Buffer.byteLength(JSON.stringify(params));
+        return previous(params);
+      };
+      try {
+        for (let i = 0; i < args.count; i++) watcher.reportWarning(`起動時照合を保留しました: docs/${i}.md（監視範囲を確認できません）`);
+        await watcher.heartbeatTail;
+        value = { updates, bytes, elapsedMs: performance.now() - started };
+      } finally {
+        db.updateHeartbeat = previous;
+      }
     } else if (command === 'legacy-heartbeat') {
       await db.updateHeartbeat({ writerId: watcher.writerId, host: 'test', pid: process.pid, state: 'watching' });
     } else if (command === 'fail-warning-publication') {

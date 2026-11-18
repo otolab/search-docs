@@ -51,11 +51,16 @@ export class WatcherProcess {
   private deletionFailure: Error | null = null;
   private eventHandlers = new Set<Promise<void>>();
   private reconciliationWarnings: string[] = [];
+  private omittedWarnings = 0;
   private heartbeatTail: Promise<void> = Promise.resolve();
+  private heartbeatQueued = false;
+  private heartbeatDirty = false;
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
   private static readonly STATUS_TIMEOUT_MS = 60_000;
+  private static readonly MAX_WARNINGS = 25;
+  private static readonly MAX_WARNING_LENGTH = 512;
   private static readonly MASTER_TIMEOUT_MS = 120_000;           // 2分でmaster期限切れ
   private static readonly MASTER_CHECK_INTERVAL_MS = 45_000;     // sleeping時の確認間隔
   private static readonly CLAIM_JITTER_MAX_MS = 5_000;           // claim前のランダム待ち
@@ -288,6 +293,7 @@ export class WatcherProcess {
 
     const syncingMessage = '起動時照合を実行中です';
     this.reconciliationWarnings = [syncingMessage];
+    this.omittedWarnings = 0;
     // Publish the initial status atomically with the heartbeat.
     await this.heartbeatTail;
     if (this.stopping) return;
@@ -354,13 +360,25 @@ export class WatcherProcess {
   }
 
   private reportWarning(message: string): void {
-    this.reconciliationWarnings.push(message);
+    if (this.reconciliationWarnings.length < WatcherProcess.MAX_WARNINGS + (this.reconciliationWarnings.includes('起動時照合を実行中です') ? 1 : 0)) {
+      this.reconciliationWarnings.push(message.length > WatcherProcess.MAX_WARNING_LENGTH
+        ? `${message.slice(0, WatcherProcess.MAX_WARNING_LENGTH)}…（全文は writer のログを確認）`
+        : message);
+    } else {
+      this.omittedWarnings++;
+    }
     this.publishHeartbeat();
     console.warn(message);
   }
 
+  private visibleWarnings(): string[] {
+    const warnings = [...this.reconciliationWarnings];
+    if (this.omittedWarnings > 0) warnings.push(`ほか ${this.omittedWarnings} 件の警告があります。対象と理由は writer のログを確認してください。`);
+    return warnings;
+  }
+
   async getVisibleWarnings(): Promise<string[]> {
-    if (this.writerState === 'watching') return [...this.reconciliationWarnings];
+    if (this.writerState === 'watching') return this.visibleWarnings();
     try {
       const result = await this.dbEngine.getWriterHeartbeat();
       const heartbeat = result.heartbeat;
@@ -405,17 +423,26 @@ export class WatcherProcess {
   }
 
   private publishHeartbeat(): void {
+    this.heartbeatDirty = true;
+    if (this.heartbeatQueued) return;
+    this.heartbeatQueued = true;
     const generation = this.ownershipGeneration;
     const update = this.heartbeatTail.then(async () => {
-      if (this.writerState !== 'watching' || generation !== this.ownershipGeneration) return;
-      try {
-        await this.dbEngine.updateHeartbeat({
-          writerId: this.writerId, host: os.hostname(), pid: process.pid,
-          state: 'watching', warnings: [...this.reconciliationWarnings],
-        });
-      } catch (error) {
-        await this.handleHeartbeatUpdateFailure(error);
-      }
+      do {
+        this.heartbeatDirty = false;
+        if (this.writerState !== 'watching' || generation !== this.ownershipGeneration) return;
+        try {
+          await this.dbEngine.updateHeartbeat({
+            writerId: this.writerId, host: os.hostname(), pid: process.pid,
+            state: 'watching', warnings: this.visibleWarnings(),
+          });
+        } catch (error) {
+          await this.handleHeartbeatUpdateFailure(error);
+        }
+      } while (this.heartbeatDirty);
+    }).finally(() => {
+      this.heartbeatQueued = false;
+      if (this.heartbeatDirty && this.writerState === 'watching') this.publishHeartbeat();
     });
     this.heartbeatTail = update;
     this.heartbeatUpdates.add(update);

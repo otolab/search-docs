@@ -310,6 +310,18 @@ it('recovers automatically in another process after writer release fails', async
     expect(output).toContain('照合・監視: 正常');
     expect(output).not.toContain(uncertainty);
     expect(output).not.toContain('injected deferred reconciliation');
+    for (const count of [10, 100, 500]) {
+      const bulk = await invoke(children[0], 'many-warnings', { count });
+      console.log(`[issue150] ${count} warning heartbeat measurement:`, bulk);
+      expect(bulk.updates).toBeLessThanOrEqual(2);
+      expect(bulk.bytes).toBeLessThan(20000);
+      if (count < 500) await invoke(children[0], 'clean-warning');
+    }
+    output = await invoke(children[1], 'tool-status');
+    expect(output).toContain('docs/0.md');
+    expect(output).toContain('監視範囲を確認できません');
+    expect(output).toContain('475 件');
+    await invoke(children[0], 'clean-warning');
     await invoke(children[0], 'fail-warning-publication');
     await vi.waitFor(async () => {
       const text = await invoke(children[1], 'tool-status');
