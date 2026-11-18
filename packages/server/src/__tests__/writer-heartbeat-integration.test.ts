@@ -73,11 +73,13 @@ describe('writer coordination with LanceDB', () => {
 import sys
 from datetime import datetime, timedelta, timezone
 import lancedb
-from schemas import get_writer_heartbeat_schema
+from schemas import get_writer_heartbeat_schema, get_index_requests_schema
 path, age = sys.argv[1:]
 db = lancedb.connect(path)
 if 'writer_heartbeat' not in db.table_names():
     db.create_table('writer_heartbeat', schema=get_writer_heartbeat_schema())
+if 'index_requests' not in db.table_names():
+    db.create_table('index_requests', schema=get_index_requests_schema())
 table = db.open_table('writer_heartbeat')
 table.add([{'writer_id': 'other', 'host': 'test', 'pid': 1, 'state': 'watching',
             'updated_at': datetime.now(timezone.utc) - timedelta(seconds=int(age))}], mode='overwrite')
@@ -98,9 +100,9 @@ table.add([{'writer_id': 'other', 'host': 'test', 'pid': 1, 'state': 'watching',
       const internal = watcher as unknown as {
         checkAndClaimMaster: () => Promise<void>;
         startMasterCheck: () => void;
-        startupSyncWorker: { startSync: () => void };
+        startupSyncWorker: { startSync: () => void; waitForSync: () => Promise<void> };
       };
-      internal.startupSyncWorker = { startSync: () => {} };
+      internal.startupSyncWorker = { startSync: () => {}, waitForSync: async () => {} };
       const claim = vi.spyOn(db, 'claimWriter');
       await internal.checkAndClaimMaster();
       expect(claim).not.toHaveBeenCalled();
