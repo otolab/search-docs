@@ -74,6 +74,15 @@ class MockDBEngine {
     return matching.length;
   }
 
+  async skipCapturedIndexRequests(documentPath: string, ids: string[]): Promise<void> {
+    for (const id of ids) {
+      const request = this.requests.get(id);
+      if (request?.status === 'pending' && request.documentPath === documentPath) {
+        request.status = 'skipped';
+      }
+    }
+  }
+
   async findSectionsByPathAndHash(documentPath: string, documentHash: string): Promise<Section[]> {
     return this.sections.filter(
       (s) => s.documentPath === documentPath && s.documentHash === documentHash
@@ -238,6 +247,106 @@ Content of section 2.
       // セクションが作成されているか確認
       const sections = await dbEngine.findSectionsByPathAndHash(testPath, testHash);
       expect(sections.length).toBeGreaterThan(0);
+    });
+
+    it('同一パス・ハッシュの後続リクエストでセクションを重複作成しない', async () => {
+      await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      await worker.processNextRequests();
+      const original = await dbEngine.findSectionsByPathAndHash(testPath, testHash);
+
+      await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      await worker.processNextRequests();
+
+      const after = await dbEngine.findSectionsByPathAndHash(testPath, testHash);
+      expect(original.length).toBeGreaterThan(0);
+      expect(after.map(section => section.id).sort()).toEqual(original.map(section => section.id).sort());
+      const requests = await dbEngine.findIndexRequests({ documentPath: testPath });
+      expect(requests.map(request => request.status)).toEqual(['completed', 'completed']);
+    });
+
+    it('同時刻の同一要求だけを処理成功後にまとめる', async () => {
+      const first = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      const duplicate = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      const different = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: 'other' });
+      duplicate.createdAt = first.createdAt;
+      different.createdAt = first.createdAt;
+
+      await worker.processNextRequests();
+
+      expect(first.status).toBe('completed');
+      expect(duplicate.status).toBe('skipped');
+      expect(different.status).toBe('pending');
+    });
+
+    it('索引作成中に追加された要求はまとめず次回に残す', async () => {
+      const first = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      const duplicate = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      duplicate.createdAt = first.createdAt;
+      const add = dbEngine.addSections.bind(dbEngine);
+      let later: IndexRequest | undefined;
+      vi.spyOn(dbEngine, 'addSections').mockImplementation(async sections => {
+        later = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+        return await add(sections);
+      });
+
+      await worker.processNextRequests();
+
+      expect(duplicate.status).toBe('skipped');
+      expect(later?.status).toBe('pending');
+      await worker.processNextRequests();
+      expect(later?.status).toBe('completed');
+    });
+
+    it('索引作成に失敗した場合、同時刻の重複要求を残して再試行する', async () => {
+      const first = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      const duplicate = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      duplicate.createdAt = first.createdAt;
+      vi.spyOn(dbEngine, 'addSections').mockRejectedValueOnce(new Error('write failed'));
+
+      await worker.processNextRequests();
+      expect(first.status).toBe('failed');
+      expect(duplicate.status).toBe('pending');
+      await worker.processNextRequests();
+      expect(duplicate.status).toBe('completed');
+    });
+
+    it('最新要求の索引作成が失敗しても取得済みの古い要求を残す', async () => {
+      const older = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: 'old' });
+      const newest = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      older.createdAt = '2020-01-01T00:00:00.000Z';
+      newest.createdAt = '2020-01-01T00:00:01.000Z';
+      vi.spyOn(dbEngine, 'addSections').mockRejectedValueOnce(new Error('write failed'));
+      await worker.processNextRequests();
+      expect(newest.status).toBe('failed');
+      expect(older.status).toBe('pending');
+    });
+
+    it('重複要求の整理が失敗した場合、次回に再処理する', async () => {
+      const first = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      const duplicate = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      duplicate.createdAt = first.createdAt;
+      vi.spyOn(dbEngine, 'skipCapturedIndexRequests').mockRejectedValueOnce(new Error('cleanup failed'));
+      await worker.processNextRequests();
+      expect(first.status).toBe('completed');
+      expect(duplicate.status).toBe('pending');
+      await worker.processNextRequests();
+      expect(duplicate.status).toBe('completed');
+    });
+
+    it('同時刻の古い内容を先に選んでも現在の内容の要求を残す', async () => {
+      const stale = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: 'old' });
+      const duplicate = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: 'old' });
+      const current = await dbEngine.createIndexRequest({ documentPath: testPath, documentHash: testHash });
+      duplicate.createdAt = stale.createdAt;
+      current.createdAt = stale.createdAt;
+      await worker.processNextRequests();
+      expect(stale.status).toBe('completed');
+      expect(duplicate.status).toBe('pending');
+      expect(current.status).toBe('pending');
+      await worker.processNextRequests();
+      await worker.processNextRequests();
+      expect(current.status).toBe('completed');
+      expect((await dbEngine.findSectionsByPathAndHash(testPath, testHash)).length).toBeGreaterThan(0);
     });
 
     it('同じdocument_pathの最新リクエストのみ処理する', async () => {

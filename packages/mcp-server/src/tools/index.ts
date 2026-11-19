@@ -14,6 +14,7 @@ export { registerSystemStatusTool } from './system-status.js';
 export { registerListRelatedProjectsTool } from './list-related-projects.js';
 export { registerAddRelatedProjectTool } from './add-related-project.js';
 export { registerMaintenanceRepairTool } from './maintenance-repair.js';
+export { registerDiagnoseDuplicatesTool } from './diagnose-duplicates.js';
 export { registerIndexPurgeTool } from './index-purge.js';
 
 export type { ToolRegistrationContext, RegisteredTool } from './types.js';

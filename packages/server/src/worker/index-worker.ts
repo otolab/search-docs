@@ -116,7 +116,7 @@ export class IndexWorker {
       // 2. 1件ずつ処理（将来的には並列化可能）
       for (let i = 0; i < requests.length; i++) {
         if (generation !== this.generation) break;
-        await this.processRequest(requests[i]);
+        await this.processRequest(requests[i].request, requests[i].duplicates);
 
         // ドキュメント処理後の待機（最後のドキュメントの後は待機しない）
         if (this.delayBetweenDocuments > 0 && i < requests.length - 1) {
@@ -138,7 +138,7 @@ export class IndexWorker {
    * 次に処理すべきリクエストを取得
    * 各document_path毎に最新のpendingリクエストのみを返す
    */
-  private async getNextRequests(): Promise<IndexRequest[]> {
+  private async getNextRequests(): Promise<Array<{ request: IndexRequest; duplicates: string[] }>> {
     // 1. すべてのpendingリクエストを取得
     const allPending = await this.dbEngine.findIndexRequests({
       status: 'pending',
@@ -159,7 +159,7 @@ export class IndexWorker {
     }
 
     // 3. 各グループで最新のもののみ抽出
-    const latest: IndexRequest[] = [];
+    const latest: Array<{ request: IndexRequest; duplicates: string[] }> = [];
     for (const [_path, requests] of grouped) {
       // created_at降順でソートして最新を取得
       requests.sort((a, b) => {
@@ -167,7 +167,13 @@ export class IndexWorker {
         const bTime = new Date(b.createdAt).getTime();
         return bTime - aTime;
       });
-      latest.push(requests[0]);
+      const request = requests[0];
+      latest.push({
+        request,
+        duplicates: requests.slice(1)
+          .filter(other => other.documentHash === request.documentHash || other.createdAt < request.createdAt)
+          .map(other => other.id),
+      });
     }
 
     console.log(
@@ -180,12 +186,12 @@ export class IndexWorker {
   /**
    * 1つのリクエストを処理
    */
-  private async processRequest(request: IndexRequest): Promise<void> {
+  private async processRequest(request: IndexRequest, duplicates: string[] = []): Promise<void> {
     const generation = this.generation;
-    return this.documentQueue.run(request.documentPath, () => this.processLockedRequest(request, generation));
+    return this.documentQueue.run(request.documentPath, () => this.processLockedRequest(request, generation, duplicates));
   }
 
-  private async processLockedRequest(request: IndexRequest, generation: number): Promise<void> {
+  private async processLockedRequest(request: IndexRequest, generation: number, duplicates: string[]): Promise<void> {
     if (generation !== this.generation) return;
     const hashPrefix = request.documentHash.slice(0, 8);
     console.log(`[IndexWorker] Processing: ${request.documentPath} (${hashPrefix})`);
@@ -198,21 +204,7 @@ export class IndexWorker {
       });
       if (generation !== this.generation) return;
 
-      // 2. 同じdocument_pathの古いpendingリクエストをskip
-      await this.dbEngine.updateManyIndexRequests(
-        {
-          documentPath: request.documentPath,
-          status: 'pending',
-          createdAt: { $lt: request.createdAt },
-        },
-        {
-          status: 'skipped',
-          completedAt: new Date().toISOString(),
-        }
-      );
-      if (generation !== this.generation) return;
-
-      // 3. storageから文書を取得
+      // 2. storageから文書を取得
       const doc = await this.storage.get(request.documentPath);
       if (generation !== this.generation) return;
       if (!doc) {
@@ -253,6 +245,7 @@ export class IndexWorker {
           status: 'completed',
           completedAt: new Date().toISOString(),
         });
+        await this.skipDuplicates(request, duplicates, generation);
         return;
       }
 
@@ -285,6 +278,7 @@ export class IndexWorker {
         status: 'completed',
         completedAt: new Date().toISOString(),
       });
+      await this.skipDuplicates(request, duplicates, generation);
 
       console.log(`[IndexWorker] Completed: ${request.documentPath} (${hashPrefix})`);
     } catch (error) {
@@ -296,6 +290,16 @@ export class IndexWorker {
         completedAt: new Date().toISOString(),
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  private async skipDuplicates(request: IndexRequest, ids: string[], generation: number): Promise<void> {
+    if (ids.length === 0 || generation !== this.generation) return;
+    try {
+      await this.dbEngine.skipCapturedIndexRequests(request.documentPath, ids);
+    } catch (error) {
+      // Failed cleanup leaves the requests pending for a later pass.
+      console.error(`[IndexWorker] Failed to skip duplicate requests for ${request.documentPath}:`, error);
     }
   }
 

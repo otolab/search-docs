@@ -215,6 +215,8 @@ interface PerformanceLog {
 
 export class DBEngine extends EventEmitter {
   private worker: ChildProcess | null = null;
+  private diagnosticRunning = false;
+  private diagnosticTerminate: (() => void) | null = null;
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
@@ -698,6 +700,7 @@ export class DBEngine extends EventEmitter {
    * データベースとの接続を切断
    */
   disconnect(): void {
+    this.diagnosticTerminate?.();
     // メモリ監視を停止
     this.stopMemoryMonitoring();
 
@@ -893,6 +896,78 @@ export class DBEngine extends EventEmitter {
     );
 
     return { sections: convertedSections };
+  }
+
+  async diagnoseDuplicateSections(): Promise<{
+    version: number; complete: boolean; rowsRead: number; bytesRead: number;
+    candidates: Array<{ path: string; rootIds: string[]; rootCount: number }>; ambiguous: number; omitted: number;
+  }> {
+    if (this.diagnosticRunning) throw new Error('重複候補の検査は既に実行中です。');
+    this.diagnosticRunning = true;
+    {
+      const root = getPackageRoot();
+      const script = path.join(root, 'src/python/duplicate_diagnostics.py');
+      const docker = process.env.IS_DOCKER === 'true';
+      const command = docker ? 'python' : 'uv';
+      const args = docker ? [script, path.resolve(this.options.dbPath)]
+        : ['--project', root, 'run', 'python', script, path.resolve(this.options.dbPath)];
+      const result = await new Promise<string>((resolve, reject) => {
+        const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+        let output = '';
+        let errors = '';
+        let settled = false;
+        const finish = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (error) reject(error); else resolve(output);
+        };
+        const terminate = () => {
+          if (!child.pid) return;
+          try {
+            if (process.platform === 'win32') {
+              const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+              killer.on('error', () => child.kill('SIGKILL'));
+              killer.unref();
+            } else {
+              process.kill(-child.pid, 'SIGKILL');
+            }
+          } catch {
+            child.kill('SIGKILL');
+          }
+        };
+        this.diagnosticTerminate = terminate;
+        const timer = setTimeout(() => {
+          terminate();
+          finish(new Error('重複候補の検査が時間制限を超えました。'));
+        }, 30000);
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', (chunk: string) => {
+          output += chunk;
+          if (Buffer.byteLength(output) > 1024 * 1024) {
+            terminate();
+            finish(new Error('重複候補の検査結果が大きすぎます。'));
+          }
+        });
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', (chunk: string) => { errors = (errors + chunk).slice(-4096); });
+        child.on('error', error => {
+          this.diagnosticRunning = false;
+          this.diagnosticTerminate = null;
+          finish(error);
+        });
+        child.on('close', code => {
+          this.diagnosticRunning = false;
+          this.diagnosticTerminate = null;
+          if (code === 0) finish();
+          else finish(new Error(`重複候補の検査が終了しました (${code}): ${errors}`));
+        });
+      });
+      return JSON.parse(result) as {
+        version: number; complete: boolean; rowsRead: number; bytesRead: number;
+        candidates: Array<{ path: string; rootIds: string[]; rootCount: number }>; ambiguous: number; omitted: number;
+      };
+    }
   }
 
   /**
@@ -1164,6 +1239,10 @@ export class DBEngine extends EventEmitter {
 
     const result = await this.sendRequest('updateManyIndexRequests', pythonParams);
     return result as { updated: boolean; count: number };
+  }
+
+  async skipCapturedIndexRequests(documentPath: string, ids: string[]): Promise<void> {
+    await this.sendRequest('skipCapturedIndexRequests', { documentPath, ids });
   }
 
   /** sections に存在する文書パスを取得 */
