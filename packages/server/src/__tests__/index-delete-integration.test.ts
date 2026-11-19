@@ -561,3 +561,91 @@ it('measures asynchronous deferred reconciliation with LanceDB', async () => {
     await rm(root, { recursive: true, force: true });
   }
 }, 60000);
+
+it.skipIf(process.platform === 'win32')('keeps heartbeat and avoids takeover while an isolated diagnostic stalls and times out', async () => {
+  const { fork } = await import('node:child_process');
+  const { access, readFile } = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'diagnostic-heartbeat-'));
+  const project = join(root, 'project');
+  await mkdir(project);
+  const marker = join(root, 'diagnostic-started');
+  // Inject a stall at the diagnostic query's batch-read boundary, after checkout.
+  // Other Python workers use the real lancedb module without this proxy.
+  await writeFile(join(root, 'sitecustomize.py'), `
+import os, sys, time
+if sys.argv[0].endswith('duplicate_diagnostics.py'):
+    import lancedb
+    original_connect = lancedb.connect
+    class Proxy:
+        def __init__(self, target): self.target = target
+        def __getattr__(self, name): return getattr(self.target, name)
+        def open_table(self, *args): return Proxy(self.target.open_table(*args))
+        def search(self): return Proxy(self.target.search())
+        def select(self, *args): return Proxy(self.target.select(*args))
+        def limit(self, *args): return Proxy(self.target.limit(*args))
+        def to_batches(self, **kwargs):
+            with open(os.environ['ISSUE149_MARKER'], 'w') as marker:
+                marker.write(str(os.getpid()))
+            time.sleep(40)
+            return self.target.to_batches(**kwargs)
+    lancedb.connect = lambda *args, **kwargs: Proxy(original_connect(*args, **kwargs))
+`);
+  const server = createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/health') { res.end(JSON.stringify({ model: 'test', vectorDimension: 256 })); return; }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[] };
+    res.end(JSON.stringify({ embeddings: input.input.map(() => Array(256).fill(0.1)) }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const port = (server.address() as { port: number }).port;
+  const env = { ...process.env, PYTHONPATH: `${root}${process.platform === 'win32' ? ';' : ':'}${process.env.PYTHONPATH ?? ''}`, ISSUE149_MARKER: marker };
+  const children = [0, 1].map(() => fork(join(process.cwd(), 'src/__tests__/fixtures/issue150-writer.mjs'), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env }));
+  let sequence = 0;
+  const invoke = (child: typeof children[number], command: string, args: unknown = {}) => new Promise<any>((resolve, reject) => {
+    const id = ++sequence;
+    const timer = setTimeout(() => { child.off('message', receive); reject(new Error(`${command} timed out`)); }, 38000);
+    const receive = (message: { id: number; value?: unknown; error?: string }) => {
+      if (message.id !== id) return;
+      clearTimeout(timer); child.off('message', receive);
+      if (message.error) reject(new Error(message.error)); else resolve(message.value);
+    };
+    child.on('message', receive);
+    child.send({ id, command, args });
+  });
+  try {
+    const args = { project, dbPath: join(root, 'db'), storagePath: join(root, 'documents'), embeddingUrl: `http://127.0.0.1:${port}` };
+    await invoke(children[0], 'init', args);
+    await invoke(children[1], 'init', args);
+    await invoke(children[0], 'short-heartbeat');
+    const writer = await invoke(children[0], 'claim');
+    await invoke(children[1], 'coordinate');
+    // Delay the isolated diagnostic process longer than the accelerated 8s lease.
+    const diagnostic = invoke(children[0], 'diagnose').then(() => 'unexpected success', error => String(error));
+    await vi.waitFor(async () => { await access(marker); }, { timeout: 5000 });
+    await expect(invoke(children[0], 'diagnose')).rejects.toThrow('既に実行中');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    const during = await invoke(children[1], 'status');
+    expect(during.status.writerState).toBe('sleeping');
+    expect(during.heartbeat.heartbeat.writerId).toBe(writer);
+    expect(during.heartbeat.heartbeat.ageSeconds).toBeLessThan(8);
+    expect(await diagnostic).toContain('時間制限');
+    const diagnosticPid = Number(await readFile(marker, 'utf8'));
+    await vi.waitFor(() => expect(() => process.kill(diagnosticPid, 0)).toThrow(), { timeout: 5000 });
+    const after = await invoke(children[1], 'status');
+    expect(after.status.writerState).toBe('sleeping');
+    expect(after.heartbeat.heartbeat.writerId).toBe(writer);
+    await rm(join(root, 'sitecustomize.py'));
+    expect((await invoke(children[0], 'diagnose')).complete).toBe(true);
+    await invoke(children[0], 'stop');
+    await invoke(children[0], 'exit');
+    await invoke(children[1], 'stop');
+    await invoke(children[1], 'exit');
+  } finally {
+    for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 60000);

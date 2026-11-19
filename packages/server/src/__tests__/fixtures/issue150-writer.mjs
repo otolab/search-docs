@@ -28,6 +28,10 @@ process.on('message', async ({ id, command, args }) => {
       await db.claimWriter({ writerId: watcher.writerId, host: 'test', pid: process.pid });
       await watcher.transitionToWatching();
       value = watcher.getStatus().writerId;
+    } else if (command === 'short-heartbeat') {
+      WatcherProcess.HEARTBEAT_INTERVAL_MS = 500;
+    } else if (command === 'diagnose') {
+      value = await db.diagnoseDuplicateSections();
     } else if (command === 'coordinate') {
       WatcherProcess.MASTER_TIMEOUT_MS = 8000;
       WatcherProcess.MASTER_CHECK_INTERVAL_MS = 250;

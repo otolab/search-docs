@@ -37,6 +37,39 @@ def test_scan_limit_is_incomplete(tmp_path):
     assert not diagnose(db, max_bytes=1)['complete']
 
 
+def test_single_oversized_row_is_incomplete(tmp_path):
+    db = lancedb.connect(str(tmp_path))
+    db.create_table('sections', pa.Table.from_pylist([row('large', None, [], 'x' * (65 * 1024 * 1024))]))
+    result = diagnose(db)
+    assert result['rowsRead'] == 1
+    assert result['bytesRead'] > 64 * 1024 * 1024
+    assert result['complete'] is False
+    assert result['candidates'] == []
+
+
+def test_oversized_batch_is_rejected_before_python_conversion():
+    class Batch:
+        num_rows = 100
+        nbytes = 1000
+        def to_pylist(self):
+            raise AssertionError('oversized batch must not be converted')
+    class Query:
+        def select(self, _): return self
+        def limit(self, _): return self
+        def to_batches(self, batch_size):
+            assert batch_size == 1
+            return iter([Batch()])
+    class Table:
+        version = 1
+        def checkout(self, _): pass
+        def search(self): return Query()
+    class DB:
+        def open_table(self, _): return Table()
+    result = diagnose(DB(), max_bytes=100)
+    assert not result['complete']
+    assert result['bytesRead'] == 1000
+
+
 def test_same_headings_with_different_content_and_cycles_are_not_candidates(tmp_path):
     db = lancedb.connect(str(tmp_path))
     rows = [row('r1', None, [], 'one'), row('r2', None, [], 'two'),

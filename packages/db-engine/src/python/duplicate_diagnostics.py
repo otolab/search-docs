@@ -16,7 +16,9 @@ def diagnose(db, max_rows=MAX_ROWS, max_bytes=MAX_BYTES):
     rows_read = 0
     bytes_read = 0
     complete = True
-    for batch in table.search().select(COLUMNS).limit(None).to_batches():
+    # Limit each delivered batch to one row; a single row can still exceed
+    # max_bytes and storage/decompression can read more than is delivered.
+    for batch in table.search().select(COLUMNS).limit(None).to_batches(batch_size=1):
         rows_read += batch.num_rows
         bytes_read += batch.nbytes
         if rows_read > max_rows or bytes_read > max_bytes:
@@ -76,3 +78,13 @@ def diagnose(db, max_rows=MAX_ROWS, max_bytes=MAX_BYTES):
     return {"version": version, "complete": True, "rowsRead": rows_read, "bytesRead": bytes_read,
             "candidates": candidates[:MAX_RESULTS], "ambiguous": ambiguous,
             "omitted": max(0, len(candidates) - MAX_RESULTS)}
+
+
+if __name__ == '__main__':
+    import json
+    import sys
+    import lancedb
+
+    if len(sys.argv) != 2:
+        raise SystemExit('usage: duplicate_diagnostics.py DB_PATH')
+    print(json.dumps(diagnose(lancedb.connect(sys.argv[1])), ensure_ascii=False))

@@ -47,7 +47,6 @@ pa.set_memory_pool(pa.system_memory_pool())
 
 # 埋め込みモデルをインポート
 from embedding import create_embedding_model
-from duplicate_diagnostics import diagnose
 # スキーマ定義をインポート
 from schemas import (
     get_sections_schema,
@@ -686,8 +685,6 @@ class SearchDocsWorker:
                 result = self.search(params)
             elif method == "getSectionsByPath":
                 result = self.get_sections_by_path(params)
-            elif method == "diagnoseDuplicateSections":
-                result = diagnose(self.db)
             elif method == "getSectionById":
                 result = self.get_section_by_id(params)
             elif method == "deleteSectionsByPath":
