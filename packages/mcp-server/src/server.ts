@@ -25,6 +25,7 @@ import {
   registerListRelatedProjectsTool,
   registerAddRelatedProjectTool,
   registerMaintenanceRepairTool,
+  registerDiagnoseDuplicatesTool,
   registerIndexPurgeTool,
   type RegisteredTool,
 } from './tools/index.js';
@@ -103,6 +104,7 @@ interface ToolHandles {
   listRelatedProjects: RegisteredTool;
   addRelatedProject: RegisteredTool;
   maintenanceRepair: RegisteredTool;
+  diagnoseDuplicates: RegisteredTool;
   indexPurge: RegisteredTool;
 }
 
@@ -131,6 +133,7 @@ function updateToolAvailability(_state: SystemState, handles: ToolHandles): void
   handles.listRelatedProjects.enable();
   handles.addRelatedProject.enable();
   handles.maintenanceRepair.enable();
+  handles.diagnoseDuplicates.enable();
   handles.indexPurge.enable();
   debugLog('All tools enabled (state check delegated to each tool)');
 }
@@ -236,6 +239,7 @@ async function main() {
     listRelatedProjects: registerListRelatedProjectsTool(context),
     addRelatedProject: registerAddRelatedProjectTool(context),
     maintenanceRepair: registerMaintenanceRepairTool(context),
+    diagnoseDuplicates: registerDiagnoseDuplicatesTool(context),
     indexPurge: registerIndexPurgeTool(context),
   };
 

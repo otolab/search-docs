@@ -895,6 +895,16 @@ export class DBEngine extends EventEmitter {
     return { sections: convertedSections };
   }
 
+  async diagnoseDuplicateSections(): Promise<{
+    version: number; complete: boolean; rowsRead: number; bytesRead: number;
+    candidates: Array<{ path: string; rootIds: string[]; rootCount: number }>; ambiguous: number; omitted: number;
+  }> {
+    return await this.sendRequest('diagnoseDuplicateSections', {}, 600000) as {
+      version: number; complete: boolean; rowsRead: number; bytesRead: number;
+      candidates: Array<{ path: string; rootIds: string[]; rootCount: number }>; ambiguous: number; omitted: number;
+    };
+  }
+
   /**
    * IDでセクションを取得
    */
@@ -1164,6 +1174,10 @@ export class DBEngine extends EventEmitter {
 
     const result = await this.sendRequest('updateManyIndexRequests', pythonParams);
     return result as { updated: boolean; count: number };
+  }
+
+  async skipCapturedIndexRequests(documentPath: string, ids: string[]): Promise<void> {
+    await this.sendRequest('skipCapturedIndexRequests', { documentPath, ids });
   }
 
   /** sections に存在する文書パスを取得 */

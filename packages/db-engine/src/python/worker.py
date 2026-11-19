@@ -47,6 +47,7 @@ pa.set_memory_pool(pa.system_memory_pool())
 
 # 埋め込みモデルをインポート
 from embedding import create_embedding_model
+from duplicate_diagnostics import diagnose
 # スキーマ定義をインポート
 from schemas import (
     get_sections_schema,
@@ -685,6 +686,8 @@ class SearchDocsWorker:
                 result = self.search(params)
             elif method == "getSectionsByPath":
                 result = self.get_sections_by_path(params)
+            elif method == "diagnoseDuplicateSections":
+                result = diagnose(self.db)
             elif method == "getSectionById":
                 result = self.get_section_by_id(params)
             elif method == "deleteSectionsByPath":
@@ -710,6 +713,8 @@ class SearchDocsWorker:
                 result = self.update_index_request(params)
             elif method == "updateManyIndexRequests":
                 result = self.update_many_index_requests(params)
+            elif method == "skipCapturedIndexRequests":
+                result = self.skip_captured_index_requests(params)
             elif method == "getIndexedPaths":
                 result = self.get_indexed_paths()
             elif method == "getPathsWithStatus":
@@ -1405,6 +1410,21 @@ class SearchDocsWorker:
         self._maybe_optimize(table,"index_requests")
 
         return {"updated": True, "count": count}
+
+    def skip_captured_index_requests(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Skip only captured pending requests for the specified path."""
+        ids = params.get("ids", [])
+        path = params.get("documentPath")
+        if not ids:
+            return {"updated": True}
+        if not path or len(ids) > 1000 or not all(isinstance(i, str) for i in ids):
+            raise ValueError("Invalid duplicate request filter")
+        quoted = ", ".join(f"'{_escape_sql(i)}'" for i in ids)
+        where = f"id IN ({quoted}) AND status = 'pending' AND document_path = '{_escape_sql(path)}'"
+        self._get_index_requests_table().update(
+            where=where, values={"status": "skipped", "completed_at": pd.Timestamp.now(tz='UTC').floor('ms')}
+        )
+        return {"updated": True}
 
     def get_indexed_paths(self) -> Dict[str, List]:
         """Return every distinct section path, including documents without requests."""
