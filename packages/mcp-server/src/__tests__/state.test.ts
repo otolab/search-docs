@@ -3,12 +3,44 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { detectSystemState, getStateErrorMessage } from '../state.js';
-import type { SystemState } from '../state.js';
+import { detectSystemState, getStateErrorMessage, stopService } from '../state.js';
+import type { SystemState, ServiceInstances } from '../state.js';
 import { ConfigLoader } from '@search-docs/config';
 
 // モック
 vi.mock('@search-docs/config');
+
+describe('stopService', () => {
+  it('waits for writer drain before stopping dependencies', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const instances = {
+      watcherProcess: { stop: vi.fn(() => gate) },
+      service: { stop: vi.fn() },
+      dbEngine: { disconnect: vi.fn() },
+      embeddingServer: { shutdown: vi.fn() },
+    };
+    const stopped = stopService(instances as unknown as ServiceInstances);
+    expect(instances.dbEngine.disconnect).not.toHaveBeenCalled();
+    release();
+    await stopped;
+    expect(instances.service.stop).toHaveBeenCalledOnce();
+    expect(instances.dbEngine.disconnect).toHaveBeenCalledOnce();
+    expect(instances.embeddingServer.shutdown).toHaveBeenCalledOnce();
+  });
+
+  it('cleans up dependencies when writer stop fails', async () => {
+    const instances = {
+      watcherProcess: { stop: vi.fn().mockRejectedValue(new Error('stop failed')) },
+      service: { stop: vi.fn() },
+      dbEngine: { disconnect: vi.fn() },
+      embeddingServer: { shutdown: vi.fn() },
+    };
+    await expect(stopService(instances as unknown as ServiceInstances)).rejects.toThrow('stop failed');
+    expect(instances.dbEngine.disconnect).toHaveBeenCalledOnce();
+    expect(instances.embeddingServer.shutdown).toHaveBeenCalledOnce();
+  });
+});
 
 describe('state', () => {
   describe('detectSystemState', () => {

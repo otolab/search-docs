@@ -11,8 +11,10 @@ import { createRequire } from 'module';
 import * as path from 'path';
 import { setupLogRedirect } from '@search-docs/server';
 
-import { detectSystemState, createService, stopService, type SystemState, type ServiceInstances } from './state.js';
+import { detectSystemState, createService, type SystemState, type ServiceInstances } from './state.js';
 import { ServerManager } from './server-manager.js';
+import { refreshServiceState } from './refresh-service-state.js';
+import { ServiceLifecycle, registerShutdownHandlers } from './service-lifecycle.js';
 import {
   registerInitTool,
   registerSystemStatusTool,
@@ -196,36 +198,16 @@ async function main() {
   let toolHandles: ToolHandles | null = null;
 
   // システム状態を再検出する関数
-  const refreshSystemState = async () => {
-    // 既存サービスを停止
-    if (serviceInstances) {
-      debugLog('Stopping existing service before refresh...');
-      stopService(serviceInstances);
-      serviceInstances = null;
-    }
-
-    const newState = await detectSystemState(cwd);
-    // systemStateオブジェクトのプロパティを更新
-    Object.assign(systemState, newState);
-
-    // 設定があればサービスを再作成
-    if (systemState.state === 'RUNNING' && systemState.config) {
-      try {
-        serviceInstances = await createService(systemState.config, systemState.projectRoot, VERSION);
-        systemState.service = serviceInstances.service;
-        debugLog('✓ Service recreated after refresh');
-      } catch (error) {
-        debugLog(`✗ Service recreation failed: ${(error as Error).message}`);
-      }
-    }
-
-    debugLog(`System state refreshed: ${systemState.state}`);
-
-    // ツールの有効/無効を更新
-    if (toolHandles) {
-      updateToolAvailability(systemState.state, toolHandles);
-    }
-  };
+  const lifecycle = new ServiceLifecycle(() => refreshServiceState({
+    cwd, version: VERSION, systemState,
+    getInstances: () => serviceInstances,
+    setInstances: (instances) => { serviceInstances = instances; },
+    onRefreshed: () => {
+      if (toolHandles) updateToolAvailability(systemState.state, toolHandles);
+    },
+    debugLog,
+  }), () => serviceInstances, (instances) => { serviceInstances = instances; });
+  const refreshSystemState = () => lifecycle.refresh();
 
   // サーバマネージャーの作成（複数プロジェクト管理用）
   const serverManager = new ServerManager();
@@ -260,24 +242,9 @@ async function main() {
   // 初期状態に応じてツールの有効/無効を設定
   updateToolAvailability(systemState.state, toolHandles);
 
-  // プロセス終了時のクリーンアップ
-  const shutdown = () => {
-    debugLog('Shutdown signal received');
-    // 全体タイムアウト: 3秒で強制終了
-    setTimeout(() => {
-      debugLog('Shutdown timeout, forcing exit');
-      process.exit(1);
-    }, 3000).unref();
-
-    if (serviceInstances) {
-      stopService(serviceInstances);
-      serviceInstances = null;
-    }
-    process.exit(0);
-  };
-
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  // プロセス終了時も進行中の refresh と drain を待つ。
+  registerShutdownHandlers(process, () => lifecycle.shutdown(), (code) => process.exit(code),
+    (error) => console.error('[mcp-server] Shutdown failed:', error));
 
   // サーバの起動
   const transport = new StdioServerTransport();

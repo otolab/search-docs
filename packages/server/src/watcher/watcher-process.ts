@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as path from 'path';
 import * as os from 'os';
 import type {
@@ -13,7 +13,9 @@ import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
 import { FileDiscovery } from '../discovery/file-discovery.js';
 import { FileWatcher, type FileChangeEvent } from '../discovery/file-watcher.js';
 import { IndexWorker } from '../worker/index.js';
+import { DocumentQueue } from '../worker/document-queue.js';
 import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
+import { reconcileStartup } from './startup-reconciliation.js';
 
 /**
  * WatcherProcess
@@ -26,6 +28,7 @@ import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
  * FileWatcherを起動する（masterのみがwatching状態になる）。
  */
 export class WatcherProcess {
+  private documentQueue = new DocumentQueue();
   private splitter: MarkdownSplitter;
   private discovery: FileDiscovery;
   private watcher?: FileWatcher;
@@ -37,9 +40,30 @@ export class WatcherProcess {
   private writerState: 'sleeping' | 'claiming' | 'watching' = 'sleeping';
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private masterCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private stopping = false;
+  private stopPromise: Promise<void> | null = null;
+  private coordination: Promise<void> | null = null;
+  private heartbeatUpdates = new Set<Promise<void>>();
+  private claimAttempted = false;
+  private ownershipGeneration = 0;
+  private stopConnectionWait!: () => void;
+  private readonly connectionStop = new Promise<void>(resolve => { this.stopConnectionWait = resolve; });
+  private deletionFailure: Error | null = null;
+  private eventHandlers = new Set<Promise<void>>();
+  private reconciliationWarnings: string[] = [];
+  private omittedWarnings = 0;
+  private heartbeatTail: Promise<void> = Promise.resolve();
+  private heartbeatQueued = false;
+  private heartbeatDirty = false;
+  private warningTimer: ReturnType<typeof setTimeout> | null = null;
+  private warningDirty = false;
 
   // 定数
   private static readonly HEARTBEAT_INTERVAL_MS = 20_000;       // watching時の更新間隔
+  private static readonly STATUS_TIMEOUT_MS = 60_000;
+  private static readonly MAX_WARNINGS = 25;
+  private static readonly MAX_WARNING_LENGTH = 512;
+  private static readonly WARNING_INTERVAL_MS = 250;
   private static readonly MASTER_TIMEOUT_MS = 120_000;           // 2分でmaster期限切れ
   private static readonly MASTER_CHECK_INTERVAL_MS = 45_000;     // sleeping時の確認間隔
   private static readonly CLAIM_JITTER_MAX_MS = 5_000;           // claim前のランダム待ち
@@ -50,7 +74,7 @@ export class WatcherProcess {
     private storage: FileStorage,
     private dbEngine: DBEngine,
   ) {
-    this.writerId = `${os.hostname()}-${process.pid}-${Date.now()}`;
+    this.writerId = `${os.hostname()}-${process.pid}-${randomUUID()}`;
     this.splitter = new MarkdownSplitter(config.indexing);
     this.discovery = new FileDiscovery({
       rootDir: config.project.root,
@@ -64,18 +88,27 @@ export class WatcherProcess {
         watcherConfig: config.watcher,
       });
       this.watcher.on('change', (event: FileChangeEvent) => {
-        this.handleFileChange(event).catch((error) => {
+        const handling = this.handleFileChange(event).catch((error) => {
           console.error('File change handling error:', error);
+          if (event.type === 'unlink') {
+            this.deletionFailure = error instanceof Error ? error : new Error(String(error));
+          }
         });
+        this.eventHandlers.add(handling);
+        void handling.finally(() => this.eventHandlers.delete(handling));
       });
       this.watcher.on('error', (error: Error) => {
         console.error('File watcher error:', error);
+        if (!this.stopping && this.writerState === 'watching') {
+          this.reportWarning(`ファイル監視に失敗しました: ${error.message}`);
+        }
       });
     }
 
     if (config.worker.enabled) {
       this.indexWorker = new IndexWorker({
         dbEngine: this.dbEngine,
+        documentQueue: this.documentQueue,
         storage: this.storage,
         splitter: this.splitter,
         interval: config.worker.interval,
@@ -90,37 +123,36 @@ export class WatcherProcess {
   start(): void {
     console.log(`[WatcherProcess] Writer ID: ${this.writerId}`);
 
-    // DB接続をバックグラウンドで開始
-    this.dbEngine.connect().catch((error) => {
-      console.error('[WatcherProcess] DB connection failed:', error);
-    });
+    const connection = this.dbEngine.connect();
+    void connection.then(() => {
+      if (this.stopping) this.dbEngine.disconnect();
+    }, () => {});
 
-    // DB接続完了後に調停プロセスを開始
-    this.dbEngine.waitForConnection().then(async () => {
+    this.runCoordination(async () => {
+      await Promise.race([
+        connection.then(() => this.dbEngine.waitForConnection()),
+        this.connectionStop,
+      ]);
+      if (this.stopping) return;
       console.log('[WatcherProcess] DB connected, starting writer coordination');
       this.writerState = 'sleeping';
       await this.checkAndClaimMaster();
-      this.startMasterCheck();
-    }).catch((error) => {
-      console.error('[WatcherProcess] Failed to start writer coordination:', error);
+      if (!this.stopping) this.startMasterCheck();
     });
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (!this.stopPromise) this.stopPromise = this.stopInternal();
+    return this.stopPromise;
+  }
+
+  private async stopInternal(): Promise<void> {
     console.log('[WatcherProcess] Stopping...');
 
-    this.stopHeartbeat();
+    this.stopping = true;
+    this.stopConnectionWait();
     this.stopMasterCheck();
-
-    // Release mastership if we're the master
-    if (this.writerState === 'watching') {
-      try {
-        await this.dbEngine.releaseWriter({ writerId: this.writerId });
-        console.log('[WatcherProcess] Released writer mastership');
-      } catch (error) {
-        console.error('[WatcherProcess] Failed to release mastership:', error);
-      }
-    }
+    await this.coordination;
 
     if (this.indexWorker) {
       this.indexWorker.stop();
@@ -128,7 +160,32 @@ export class WatcherProcess {
     if (this.watcher?.isRunning()) {
       await this.watcher.stop();
     }
+    await this.startupSyncWorker.waitForSync();
+    await this.indexWorker?.waitForProcessing();
+    await this.documentQueue.drain();
+    await Promise.all(this.eventHandlers);
+    this.stopHeartbeat();
+    await Promise.all(this.heartbeatUpdates);
+
+    let releaseFailure: unknown;
+    // Release mastership if we're the master
+    if (this.writerState === 'watching' || this.claimAttempted) {
+      try {
+        const result = await this.dbEngine.releaseWriter({ writerId: this.writerId });
+        if (result.success) console.log('[WatcherProcess] Released writer mastership');
+        else console.log('[WatcherProcess] Writer mastership already belongs to another writer');
+      } catch (error) {
+        console.error('[WatcherProcess] Failed to release mastership:', error);
+        releaseFailure = error;
+      }
+    }
+
     this.dbEngine.disconnect();
+    if (this.deletionFailure && releaseFailure) {
+      throw new AggregateError([this.deletionFailure, releaseFailure], 'Deletion and writer release failed during shutdown');
+    }
+    if (this.deletionFailure) throw this.deletionFailure;
+    if (releaseFailure) throw new Error(`Writer release failed during shutdown; takeover may be delayed until heartbeat expiry: ${releaseFailure instanceof Error ? releaseFailure.message : 'unknown error'}`);
   }
 
   /**
@@ -156,7 +213,9 @@ export class WatcherProcess {
    */
   private async checkAndClaimMaster(): Promise<void> {
     try {
+      if (this.stopping) return;
       const response = await this.dbEngine.getWriterHeartbeat();
+      if (this.stopping) return;
 
       if (!response.exists) {
         console.log('[WatcherProcess] No master found, attempting to claim');
@@ -198,8 +257,10 @@ export class WatcherProcess {
     const jitter = Math.random() * WatcherProcess.CLAIM_JITTER_MAX_MS;
     console.log(`[WatcherProcess] Waiting ${jitter.toFixed(0)}ms jitter before claim`);
     await this.sleep(jitter);
+    if (this.stopping) return;
 
     this.writerState = 'claiming';
+    this.claimAttempted = true;
     await this.dbEngine.claimWriter({
       writerId: this.writerId,
       host: os.hostname(),
@@ -208,9 +269,11 @@ export class WatcherProcess {
     console.log(`[WatcherProcess] Claimed, waiting ${WatcherProcess.CLAIM_READBACK_DELAY_MS}ms for readback`);
 
     await this.sleep(WatcherProcess.CLAIM_READBACK_DELAY_MS);
+    if (this.stopping) return;
 
     // Readback
     const readback = await this.dbEngine.getWriterHeartbeat();
+    if (this.stopping) return;
 
     if (!readback.exists || readback.heartbeat!.writerId !== this.writerId) {
       const winner = readback.heartbeat?.writerId ?? 'unknown';
@@ -227,18 +290,29 @@ export class WatcherProcess {
    * Watching状態に遷移（FileWatcher/IndexWorker/StartupSync起動）
    */
   private async transitionToWatching(): Promise<void> {
-    if (this.writerState === 'watching') return;
+    if (this.stopping || this.writerState === 'watching') return;
 
     console.log('[WatcherProcess] → WATCHING');
-    this.writerState = 'watching';
 
-    // Heartbeat を watching に更新
+    const syncingMessage = '起動時照合を実行中です';
+    this.reconciliationWarnings = [syncingMessage];
+    this.omittedWarnings = 0;
+    // Publish the initial status atomically with the heartbeat.
+    await this.heartbeatTail;
+    if (this.stopping) return;
     await this.dbEngine.updateHeartbeat({
       writerId: this.writerId,
       host: os.hostname(),
       pid: process.pid,
       state: 'watching',
+      warnings: this.reconciliationWarnings,
     });
+    if (this.stopping) return;
+
+    // 前の writer が処理中に終了したリクエストを再実行できるようにする。
+    await this.dbEngine.updateManyIndexRequests({ status: 'processing' }, { status: 'pending' });
+    if (this.stopping) return;
+    this.writerState = 'watching';
 
     // パフォーマンスログ設定
     console.log('[WatcherProcess] ENABLE_PERFORMANCE_LOG:', process.env.ENABLE_PERFORMANCE_LOG);
@@ -249,24 +323,85 @@ export class WatcherProcess {
       console.log(`[WatcherProcess] Performance logging enabled at ${logPath}`);
     }
 
-    // StartupSync
-    if (this.startupSyncWorker) {
-      this.startupSyncWorker.startSync(() => this.rebuildIndex({ force: false }));
-    }
-
-    // IndexWorker
-    if (this.indexWorker) {
-      this.indexWorker.start();
-    }
-
-    // FileWatcher
-    if (this.watcher && !this.watcher.isRunning()) {
-      await this.watcher.start();
-      console.log('[WatcherProcess] FileWatcher started');
-    }
-
-    // Heartbeat定期更新を開始
+    // Subscribe before checking absence so later recreation is delivered to the queue.
     this.startHeartbeat();
+    if (this.watcher && !this.watcher.isRunning()) {
+      try {
+        await this.watcher.start();
+        console.log('[WatcherProcess] FileWatcher started');
+      } catch (error) {
+        const message = `監視を開始できないため起動時照合を保留します: ${error instanceof Error ? error.message : '不明なエラー'}`;
+        this.reportWarning(message);
+        console.warn(message);
+      }
+    }
+    if (this.stopping || this.writerState !== 'watching') return;
+    const generation = this.ownershipGeneration;
+    this.startupSyncWorker.startSync(async () => {
+      if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
+      if (this.watcher) {
+        await reconcileStartup({
+          root: this.config.project.root, storage: this.storage, db: this.dbEngine,
+          discovery: this.discovery, queue: this.documentQueue,
+          covered: (filePath) => this.watcher?.covers(filePath) ?? false,
+          active: () => !this.stopping && this.writerState === 'watching' && generation === this.ownershipGeneration,
+          report: (message) => {
+            if (!this.stopping && this.writerState === 'watching' && generation === this.ownershipGeneration) this.reportWarning(message);
+          },
+        });
+      } else {
+        const message = '監視が無効のため起動時の削除照合を保留しました';
+        this.reportWarning(message);
+        console.warn(message);
+      }
+      if (this.stopping || this.writerState !== 'watching' || generation !== this.ownershipGeneration) return { success: false, documentsProcessed: 0, sectionsCreated: 0 };
+      this.reconciliationWarnings = this.reconciliationWarnings.filter(message => message !== syncingMessage);
+      this.clearWarningTimer();
+      this.publishHeartbeat();
+      this.indexWorker?.start();
+      return this.rebuildIndex({ force: false });
+    });
+  }
+
+  private reportWarning(message: string): void {
+    if (this.reconciliationWarnings.length < WatcherProcess.MAX_WARNINGS + (this.reconciliationWarnings.includes('起動時照合を実行中です') ? 1 : 0)) {
+      this.reconciliationWarnings.push(message.length > WatcherProcess.MAX_WARNING_LENGTH
+        ? `${message.slice(0, WatcherProcess.MAX_WARNING_LENGTH)}…（全文は writer のログを確認）`
+        : message);
+    } else {
+      this.omittedWarnings++;
+    }
+    if (!this.warningTimer) {
+      this.publishHeartbeat();
+      this.warningTimer = setTimeout(() => {
+        this.warningTimer = null;
+        if (this.warningDirty) {
+          this.warningDirty = false;
+          this.publishHeartbeat();
+        }
+      }, WatcherProcess.WARNING_INTERVAL_MS);
+    } else {
+      this.warningDirty = true;
+    }
+    console.warn(message);
+  }
+
+  private visibleWarnings(): string[] {
+    const warnings = [...this.reconciliationWarnings];
+    if (this.omittedWarnings > 0) warnings.push(`ほか ${this.omittedWarnings} 件の警告があります。対象と理由は writer のログを確認してください。`);
+    return warnings;
+  }
+
+  async getVisibleWarnings(): Promise<string[]> {
+    if (this.writerState === 'watching') return this.visibleWarnings();
+    try {
+      const result = await this.dbEngine.getWriterHeartbeat();
+      const heartbeat = result.heartbeat;
+      if (!result.exists || !heartbeat || heartbeat.state !== 'watching' || heartbeat.ageSeconds > WatcherProcess.STATUS_TIMEOUT_MS / 1000 || !heartbeat.warnings) return ['writer の照合・監視状態を確認できません'];
+      return heartbeat.warnings;
+    } catch {
+      return ['writer の照合・監視状態を確認できません'];
+    }
   }
 
   /**
@@ -277,17 +412,17 @@ export class WatcherProcess {
 
     console.log('[WatcherProcess] → SLEEPING');
     this.writerState = 'sleeping';
+    this.ownershipGeneration++;
 
     this.stopHeartbeat();
-
-    if (this.watcher?.isRunning()) {
-      await this.watcher.stop();
-      console.log('[WatcherProcess] FileWatcher stopped');
-    }
 
     if (this.indexWorker) {
       this.indexWorker.stop();
       console.log('[WatcherProcess] IndexWorker stopped');
+    }
+    if (this.watcher?.isRunning()) {
+      await this.watcher.stop(false);
+      console.log('[WatcherProcess] FileWatcher stopped');
     }
   }
 
@@ -298,19 +433,35 @@ export class WatcherProcess {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      void (async () => {
+      this.publishHeartbeat();
+    }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
+  }
+
+  private publishHeartbeat(): void {
+    this.heartbeatDirty = true;
+    if (this.heartbeatQueued) return;
+    this.heartbeatQueued = true;
+    const generation = this.ownershipGeneration;
+    const update = this.heartbeatTail.then(async () => {
+      do {
+        this.heartbeatDirty = false;
+        if (this.writerState !== 'watching' || generation !== this.ownershipGeneration) return;
         try {
           await this.dbEngine.updateHeartbeat({
-            writerId: this.writerId,
-            host: os.hostname(),
-            pid: process.pid,
-            state: 'watching',
+            writerId: this.writerId, host: os.hostname(), pid: process.pid,
+            state: 'watching', warnings: this.visibleWarnings(),
           });
         } catch (error) {
           await this.handleHeartbeatUpdateFailure(error);
         }
-      })();
-    }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
+      } while (this.heartbeatDirty);
+    }).finally(() => {
+      this.heartbeatQueued = false;
+      if (this.heartbeatDirty && this.writerState === 'watching') this.publishHeartbeat();
+    });
+    this.heartbeatTail = update;
+    this.heartbeatUpdates.add(update);
+    void update.finally(() => this.heartbeatUpdates.delete(update));
   }
 
   /**
@@ -339,10 +490,17 @@ export class WatcherProcess {
   }
 
   private stopHeartbeat(): void {
+    this.clearWarningTimer();
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  private clearWarningTimer(): void {
+    if (this.warningTimer) clearTimeout(this.warningTimer);
+    this.warningTimer = null;
+    this.warningDirty = false;
   }
 
   /**
@@ -352,7 +510,7 @@ export class WatcherProcess {
     if (this.masterCheckTimer) return;
 
     this.masterCheckTimer = setInterval(() => {
-      void this.checkAndClaimMaster();
+      this.runCoordination(() => this.checkAndClaimMaster());
     }, WatcherProcess.MASTER_CHECK_INTERVAL_MS);
   }
 
@@ -363,15 +521,27 @@ export class WatcherProcess {
     }
   }
 
+  private runCoordination(operation: () => Promise<void>): void {
+    if (this.stopping || this.coordination) return;
+    const pending = operation().catch(error => {
+      console.error('[WatcherProcess] Writer coordination failed:', error);
+    }).finally(() => {
+      if (this.coordination === pending) this.coordination = null;
+    });
+    this.coordination = pending;
+  }
+
   getStatus(): {
     writerState: 'sleeping' | 'claiming' | 'watching';
     writerId: string;
     indexWorker: { running: boolean; processing: boolean } | null;
+    reconciliationWarnings: string[];
   } {
     return {
       writerState: this.writerState,
       writerId: this.writerId,
       indexWorker: this.indexWorker?.getStatus() ?? null,
+      reconciliationWarnings: this.reconciliationWarnings,
     };
   }
 
@@ -382,6 +552,12 @@ export class WatcherProcess {
   // ---- 以下、既存の書き込み系メソッド（変更なし） ----
 
   private async handleFileChange(event: FileChangeEvent): Promise<void> {
+    const generation = this.ownershipGeneration;
+    return this.documentQueue.run(event.path, () => this.handleLockedFileChange(event, generation));
+  }
+
+  private async handleLockedFileChange(event: FileChangeEvent, generation: number): Promise<void> {
+    if (generation !== this.ownershipGeneration) return;
     console.log(`File ${event.type}: ${event.path}`);
 
     switch (event.type) {
@@ -389,6 +565,7 @@ export class WatcherProcess {
       case 'change': {
         const absolutePath = path.join(this.config.project.root, event.path);
         const stat = await fs.stat(absolutePath);
+        if (generation !== this.ownershipGeneration) return;
         if (stat.size > this.config.files.maxFileSize) {
           console.warn(
             `Skipping oversized file ${event.path} (${stat.size} bytes > ${this.config.files.maxFileSize} bytes)`
@@ -397,9 +574,11 @@ export class WatcherProcess {
         }
 
         const content = await fs.readFile(absolutePath, 'utf-8');
+        if (generation !== this.ownershipGeneration) return;
         const hash = createHash('sha256').update(content).digest('hex');
 
         const existingDoc = await this.storage.get(event.path);
+        if (generation !== this.ownershipGeneration) return;
         const document: Document = {
           path: event.path,
           content,
@@ -411,6 +590,7 @@ export class WatcherProcess {
         };
 
         await this.storage.save(event.path, document);
+        if (generation !== this.ownershipGeneration) return;
         await this.dbEngine.createIndexRequest({
           documentPath: event.path,
           documentHash: hash,
@@ -421,24 +601,35 @@ export class WatcherProcess {
 
       case 'unlink':
         await this.dbEngine.deleteSectionsByPath(event.path);
+        if (generation !== this.ownershipGeneration) return;
         await this.storage.delete(event.path);
         break;
     }
   }
 
   private async indexDocument(filePath: string, force = false): Promise<{ success: boolean; sectionsCreated: number }> {
+    const generation = this.ownershipGeneration;
+    return this.documentQueue.run(filePath, () => this.indexLockedDocument(filePath, force, generation));
+  }
+
+  private async indexLockedDocument(filePath: string, force: boolean, generation: number): Promise<{ success: boolean; sectionsCreated: number }> {
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     const absolutePath = path.join(this.config.project.root, filePath);
     const stat = await fs.stat(absolutePath);
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     if (stat.size > this.config.files.maxFileSize) {
       return { success: false, sectionsCreated: 0 };
     }
 
     const content = await fs.readFile(absolutePath, 'utf-8');
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     const hash = createHash('sha256').update(content).digest('hex');
 
     const existingDoc = await this.storage.get(filePath);
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     if (existingDoc && existingDoc.metadata.fileHash === hash && !force) {
       const { sections: existingSections } = await this.dbEngine.getSectionsByPath(filePath);
+      if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
       if (existingSections.length > 0) {
         return { success: true, sectionsCreated: 0 };
       }
@@ -455,6 +646,7 @@ export class WatcherProcess {
     };
 
     await this.storage.save(filePath, document);
+    if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
     await this.dbEngine.createIndexRequest({
       documentPath: filePath,
       documentHash: hash,
@@ -465,6 +657,7 @@ export class WatcherProcess {
 
   private async rebuildIndex(request: { paths?: string[]; force?: boolean } = {}): Promise<RebuildIndexResponse> {
     const { paths, force = false } = request;
+    const generation = this.ownershipGeneration;
 
     let filesToIndex: string[];
     if (paths && paths.length > 0) {
@@ -477,6 +670,7 @@ export class WatcherProcess {
     let sectionsCreated = 0;
 
     for (const fp of filesToIndex) {
+      if (generation !== this.ownershipGeneration) break;
       try {
         const result = await this.indexDocument(fp, force);
         documentsProcessed++;

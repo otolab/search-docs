@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FileWatcher, type FileChangeEvent } from '../file-watcher.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -41,6 +41,54 @@ describe('FileWatcher', () => {
       await wait(100);
     }
   };
+
+  it('flushes a deletion received during debounce on normal stop', { timeout: 10000 }, async () => {
+    const file = path.join(tmpDir, 'pending.md');
+    await fs.writeFile(file, '# Before');
+    watcher = new FileWatcher({
+      rootDir: tmpDir,
+      filesConfig: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 1024 },
+      watcherConfig: { enabled: true, debounceMs: 5000, awaitWriteFinishMs: 50 },
+    });
+    const events: FileChangeEvent[] = [];
+    watcher.on('change', event => events.push(event));
+    await watcher.start();
+    await wait(300);
+    await fs.unlink(file);
+    const pending = watcher as unknown as { debounceTimers: Map<string, { type: string }> };
+    await vi.waitFor(() => expect([...pending.debounceTimers.values()].some(event => event.type === 'unlink')).toBe(true));
+    expect(events).toHaveLength(0);
+    await watcher.stop();
+    expect(events.some(event => event.type === 'unlink' && event.path === 'pending.md')).toBe(true);
+  });
+
+  it('cancels debounce timers before waiting for unsubscribe after ownership loss', async () => {
+    vi.useFakeTimers();
+    try {
+      watcher = new FileWatcher({
+        rootDir: tmpDir,
+        filesConfig: { sources: ['**/*.md'], exclude: [], ignoreGitignore: false, maxFileSize: 1024 },
+        watcherConfig: { enabled: true, debounceMs: 100, awaitWriteFinishMs: 50 },
+      });
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const internal = watcher as unknown as {
+        subscriptions: Array<{ unsubscribe: () => Promise<void> }>;
+        handleFileEvent: (type: 'unlink', filePath: string) => void;
+      };
+      internal.subscriptions = [{ unsubscribe: () => gate }];
+      const events: FileChangeEvent[] = [];
+      watcher.on('change', event => events.push(event));
+      internal.handleFileEvent('unlink', path.join(tmpDir, 'a.md'));
+      const stopping = watcher.stop(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(events).toHaveLength(0);
+      release();
+      await stopping;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it.each([true, false])(
     '初期同期と監視の追加・変更で .gitignore 設定を揃える (ignoreGitignore=%s)',
