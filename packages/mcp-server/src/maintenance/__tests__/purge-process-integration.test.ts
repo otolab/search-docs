@@ -55,7 +55,7 @@ process.stdin.once('data', async () => { await release(); process.exit(0); });`;
       const exited = once(child, 'exit');
       child.stdin!.write('release\n');
       await exited;
-      current = await start();
+      // 競合時も lifecycle がサービスを再開するため、二重起動しない。
       const retryEngine = engine!;
       const workerPid = (retryEngine as unknown as { worker: { pid?: number } }).worker.pid;
       expect(workerPid).toBeDefined();

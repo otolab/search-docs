@@ -83,6 +83,14 @@ describe('未公開の同期索引化', () => {
     });
     expect(excluded.sources.map(source => source.path)).toEqual(['first.md']);
   });
+  it('brace 展開後の外部指定と判定不能な glob、空の探索結果を拒否する', async () => {
+    const config = await fixture();
+    for (const pattern of ['{../outside.md,first.md}', '{first.md,../outside.md}', '@(../outside.md|first.md)', 'missing/*.md']) {
+      await expect(prepareSynchronousSources({ ...config, files: { ...config.files, sources: [pattern] } })).rejects.toThrow();
+    }
+    const prepared = await prepareSynchronousSources({ ...config, files: { ...config.files, sources: ['{first,second}.md'] } });
+    expect(prepared.sources.map(source => source.path)).toEqual(['first.md', 'second.md']);
+  });
   it('プロジェクト内のリンクを経由した外部文書を拒否する', async () => {
     const config = await fixture();
     const external = await mkdtemp(path.join(tmpdir(), 'external-source-'));
@@ -109,7 +117,7 @@ describe('未公開の同期索引化', () => {
   }, 60000);
   it('DB の停止に失敗した場合は成功しない', async () => {
     const config = await fixture();
-    const prepared = await prepareSynchronousSources({ ...config, files: { ...config.files, sources: ['missing/*.md'] } });
+    const prepared = { ...await prepareSynchronousSources(config), sources: [] };
     const engine = {
       connect: vi.fn(async () => {}),
       disconnect: vi.fn(async () => { throw new Error('stop failed'); }),

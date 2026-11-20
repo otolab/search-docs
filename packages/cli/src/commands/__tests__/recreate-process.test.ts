@@ -11,6 +11,7 @@ import { DEFAULT_CONFIG } from '@search-docs/types';
 describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プロセス', () => {
   it('確認なしと不明ファイルを拒否し、実 DB の再構築後に purge できる', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'recreate-cli-'));
+    const outside = `${root}-outside.md`;
     let failEmbedding = false;
     const embedding = createServer((req, res) => {
       if (req.url === '/health') { res.writeHead(200).end(JSON.stringify({ vectorDimension: 256, model: 'test' })); return; }
@@ -30,8 +31,21 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
     try {
       await mkdir(path.join(root, '.search-docs/index'), { recursive: true });
       await writeFile(path.join(root, 'source.md'), '# Title\n\nDocument');
-      await writeFile(path.join(root, '.search-docs.json'), JSON.stringify({ ...DEFAULT_CONFIG, project: { name: 'test', root }, files: { ...DEFAULT_CONFIG.files, sources: ['*.md'], respectGitignore: false }, indexing: { ...DEFAULT_CONFIG.indexing, embeddingUrl: url } }));
+      await writeFile(outside, '# Outside');
+      const config = { ...DEFAULT_CONFIG, project: { name: 'test', root }, files: { ...DEFAULT_CONFIG.files, sources: ['*.md'], respectGitignore: false }, indexing: { ...DEFAULT_CONFIG.indexing, embeddingUrl: url } };
+      const configPath = path.join(root, '.search-docs.json');
+      await writeFile(configPath, JSON.stringify(config));
       await expect(run('index', 'recreate')).rejects.toThrow();
+      const manifest = path.join(root, '.search-docs/index/sections.lance/_versions/1.manifest');
+      await mkdir(path.dirname(manifest), { recursive: true });
+      await writeFile(manifest, 'old index');
+      for (const source of [`{../${path.basename(outside)},source.md}`, 'missing/*.md']) {
+        await writeFile(configPath, JSON.stringify({ ...config, files: { ...config.files, sources: [source] } }));
+        await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
+        expect(await readFile(manifest, 'utf8')).toBe('old index');
+      }
+      await rm(path.join(root, '.search-docs/index/sections.lance'), { recursive: true });
+      await writeFile(configPath, JSON.stringify(config));
       const unknown = path.join(root, '.search-docs/index/unknown.txt');
       await writeFile(unknown, 'original');
       await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
@@ -60,6 +74,7 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
       await release();
     } finally {
       await new Promise<void>((resolve, reject) => embedding.close(error => error ? reject(error) : resolve()));
+      await rm(outside, { force: true });
       await rm(root, { recursive: true, force: true });
     }
   }, 60000);

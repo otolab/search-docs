@@ -721,8 +721,8 @@ export class DBEngine extends EventEmitter {
    * データベースとの接続を切断
    */
   disconnect(): Promise<void> {
-    if (this.disconnectPromise) return this.disconnectPromise;
     this.stopGeneration++;
+    if (this.disconnectPromise) return this.disconnectPromise;
     this.stopMemoryMonitoring();
     this.stopPerformanceLogging();
     const worker = this.worker;
@@ -761,7 +761,7 @@ export class DBEngine extends EventEmitter {
     console.log(`[DBEngine] Memory monitoring started: limit=${this.pythonMaxMemoryMB}MB, interval=${this.memoryCheckIntervalMs}ms`);
 
     this.memoryCheckInterval = setInterval(() => {
-      void this.checkMemoryUsage();
+      void this.checkMemoryUsage().catch(error => console.error('[DBEngine] Memory monitoring failed:', error));
     }, this.memoryCheckIntervalMs);
   }
 
@@ -805,12 +805,14 @@ export class DBEngine extends EventEmitter {
     console.log('[DBEngine] Restarting Python worker due to memory limit...');
 
     // 既存の接続を切断
+    const generation = this.stopGeneration + 1;
     await this.disconnect();
 
     // 少し待ってから再接続
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 再接続
+    if (generation !== this.stopGeneration) return;
     await this.connect();
 
     console.log('[DBEngine] Python worker restarted successfully');

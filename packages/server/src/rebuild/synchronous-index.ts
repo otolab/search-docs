@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { UnconfirmedProcessStopError, type DBEngine } from '@search-docs/db-engine';
 import type { FilesConfig, IndexingConfig } from '@search-docs/types';
 import type { FileStorage } from '@search-docs/storage';
+import { braceExpand } from 'minimatch';
 import { FileDiscovery } from '../discovery/file-discovery.js';
 import { MarkdownSplitter } from '../splitter/markdown-splitter.js';
 
@@ -21,9 +22,15 @@ export async function prepareSynchronousSources(options: {
 }): Promise<PreparedSources> {
   const root = await realpath(options.root);
   const configuredRoot = path.resolve(options.root);
-  const files = { ...options.files, sources: options.files.sources.map(pattern => {
-    const negative = pattern.startsWith('!');
-    const value = negative ? pattern.slice(1) : pattern;
+  const files = { ...options.files, sources: options.files.sources.flatMap(original => {
+    const negative = original.startsWith('!');
+    const raw = negative ? original.slice(1) : original;
+    // extglob やエスケープを含むパスは展開後の境界を確実に判定できない。
+    if (/[\\()]/.test(raw)) throw new Error(`安全性を確認できない glob です: ${original}。削除せず設定を確認してください。`);
+    const expanded = braceExpand(raw);
+    if (expanded.some(value => /[{}]/.test(value))) throw new Error(`安全性を確認できない glob です: ${original}。削除せず設定を確認してください。`);
+    return expanded.map(value => {
+    const pattern = `${negative ? '!' : ''}${value}`;
     if (path.isAbsolute(value) && inside(configuredRoot, value)) {
       return `${negative ? '!' : ''}${path.relative(configuredRoot, value).split(path.sep).join('/')}`;
     }
@@ -31,6 +38,7 @@ export async function prepareSynchronousSources(options: {
       throw new Error(`プロジェクト外の文書は再構築できません: ${pattern}。削除前の確認で検出した場合は削除しません。全利用プロセスを停止し、設定と削除対象を確認してから手動復旧してください。確認できなければ管理者に相談してください。`);
     }
     return pattern;
+    });
   }), exclude: options.files.exclude.map(pattern =>
     path.isAbsolute(pattern) && inside(configuredRoot, pattern)
       ? path.relative(configuredRoot, pattern).split(path.sep).join('/')
@@ -38,6 +46,7 @@ export async function prepareSynchronousSources(options: {
   ) };
   const discovery = new FileDiscovery({ rootDir: root, config: files });
   const found = await discovery.findFiles();
+  if (found.length === 0) throw new Error('索引化対象が見つかりません。削除せず sources と除外設定を確認してください。');
   const sources: Source[] = [];
   const keys = new Map<string, string>();
   for (const file of [...new Set(found)].sort()) {

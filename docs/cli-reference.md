@@ -379,6 +379,8 @@ depthは文書の分割階層を表します：
 
 `index recreate` は既存インデックスを削除し、設定された文書から同期的に作り直します。`index purge` は削除のみを行います。両方とも確認オプションが必要です。
 
+再構築は外部文書、境界を判定できない extglob・エスケープ、および探索結果が空の設定を削除前に拒否します。
+
 ```bash
 search-docs index recreate --confirm-isolated
 search-docs index purge --confirm-isolated

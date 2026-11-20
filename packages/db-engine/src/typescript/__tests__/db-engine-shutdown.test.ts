@@ -41,6 +41,35 @@ describe.skipIf(process.platform === 'win32')('DBEngine.disconnect', () => {
     }
   });
 
+  it.each(['停止処理中', '再起動待機中'])('実 DB ワーカーの%sに停止すると、登録解放後に再接続しない', async stage => {
+    const root = await mkdtemp(path.join(tmpdir(), 'db-restart-stop-'));
+    const lock = new MaintenanceLock(path.join(root, '.search-docs-maintenance'));
+    const release = await lock.acquireShared();
+    const engine = new DBEngine({ dbPath: path.join(root, 'index') });
+    const internal = engine as unknown as { restartWorker(): Promise<void>; worker: unknown; workerGroups: Set<unknown> };
+    try {
+      await engine.connect({ skipInitModel: true });
+      const restarting = internal.restartWorker();
+      if (stage === '再起動待機中') {
+        while (engine.getConnectionState().state !== 'disconnected') {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      }
+      await engine.disconnect();
+      await release();
+      const exclusive = await lock.acquireExclusive();
+      try {
+        await restarting;
+        expect(internal.worker).toBeNull();
+        expect(internal.workerGroups.size).toBe(0);
+        expect(engine.getConnectionState().state).toBe('disconnected');
+      } finally { await exclusive.release(); }
+    } finally {
+      await engine.disconnect();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30000);
+
   it('停止が失敗した場合、登録を解放する後続処理を実行しない', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'db-disconnect-'));
     const lock = new MaintenanceLock(path.join(root, 'control'));
