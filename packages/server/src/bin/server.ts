@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { resolveEmbeddingApiKey } from '../embedding/providers.js';
+import { prepareEmbeddingOptions } from '../embedding/providers.js';
 
 /**
  * SearchDocs HTTP JSON-RPCサーバ エントリポイント
@@ -201,10 +201,9 @@ export async function main(): Promise<void> {
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
       embeddingUrl,
       embeddingDimension: config.indexing.vectorDimension,
-      embeddingOptions: config.indexing.embedding ? { ...config.indexing.embedding, apiKey: resolveEmbeddingApiKey(config.indexing.embedding) } : undefined,
+      embeddingOptions: prepareEmbeddingOptions(config.indexing.embedding),
       embeddingProvider: config.indexing.embedding?.provider,
       embeddingModel: config.indexing.embedding && 'model' in config.indexing.embedding ? config.indexing.embedding.model : undefined,
-      embeddingApiKey: resolveEmbeddingApiKey(config.indexing.embedding),
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,

@@ -64,3 +64,9 @@ jobs:
 
       - name: Heartbeat integration test
         run: pnpm --filter @search-docs/server test:heartbeat-integration
+
+      - name: OpenAI-compatible Python tests
+        run: PYTHONPATH=packages/db-engine/src/python uv run --project packages/db-engine python -m pytest packages/db-engine/src/python/__tests__/test_openai_embedding.py -q
+
+      - name: OpenAI-compatible integration test
+        run: pnpm --filter @search-docs/server exec vitest run --config vitest.config.embedding-integration.ts

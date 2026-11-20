@@ -368,11 +368,25 @@ function resolveEmbeddingConfig(config: SearchDocsConfig['indexing']['embedding'
     const raw = config as typeof config & { providerOptions?: Record<string, unknown> };
     return { ...raw.providerOptions, ...raw } as typeof config;
   }
-  const embedding = provider === 'builtin'
-    ? { provider, url: process.env.EMBEDDING_BASE_URL }
-    : provider === 'ollama-compat'
-      ? { provider, url: process.env.EMBEDDING_BASE_URL, model: process.env.EMBEDDING_MODEL }
-      : { provider, baseUrl: process.env.EMBEDDING_BASE_URL, model: process.env.EMBEDDING_MODEL, apiKey: process.env.EMBEDDING_API_KEY };
+  let envOptions: Record<string, unknown> = {};
+  if (process.env.EMBEDDING_OPTIONS) {
+    try {
+      const parsed: unknown = JSON.parse(process.env.EMBEDDING_OPTIONS);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      envOptions = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error('EMBEDDING_OPTIONS must be a JSON object');
+    }
+  }
+  const existing = config?.provider === provider ? config : undefined;
+  const raw = existing as (typeof existing & { providerOptions?: Record<string, unknown> });
+  const url = process.env.EMBEDDING_BASE_URL;
+  const embedding = {
+    ...raw?.providerOptions, ...existing, ...envOptions, provider,
+    ...(url ? { url, baseUrl: url } : {}),
+    ...(process.env.EMBEDDING_MODEL ? { model: process.env.EMBEDDING_MODEL } : {}),
+    ...(process.env.EMBEDDING_API_KEY ? { apiKey: process.env.EMBEDDING_API_KEY } : {}),
+  };
   validateConfig({ indexing: { embedding } });
   return embedding as SearchDocsConfig['indexing']['embedding'];
 }

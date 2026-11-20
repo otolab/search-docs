@@ -1,5 +1,17 @@
 import type { SearchDocsConfig } from '@search-docs/types';
 
+const embeddingRequiredOptions: Record<string, string[]> = {
+  builtin: [], 'ollama-compat': ['url'], 'openai-compatible': ['baseUrl', 'model'],
+};
+
+const embeddingValidators: Record<string, (options: Record<string, unknown>) => void> = {};
+
+export function registerEmbeddingConfig(provider: string, requiredOptions: string[], validate?: (options: Record<string, unknown>) => void): void {
+  embeddingRequiredOptions[provider] = requiredOptions;
+  if (validate) embeddingValidators[provider] = validate;
+}
+
+
 /**
  * 設定オブジェクトをバリデーション
  */
@@ -182,9 +194,7 @@ function validateIndexingConfig(indexing: unknown): void {
       throw new Error('config.indexing.embedding.providerOptions must be an object');
     }
     const embedding = { ...(rawEmbedding.providerOptions as Record<string, unknown> | undefined), ...rawEmbedding };
-    const required: Record<string, string[]> = {
-      builtin: [], 'ollama-compat': ['url'], 'openai-compatible': ['baseUrl', 'model'],
-    };
+    const required = embeddingRequiredOptions;
     if (typeof embedding.provider !== 'string' || !Object.prototype.hasOwnProperty.call(required, embedding.provider)) {
       throw new Error('config.indexing.embedding.provider is unknown');
     }
@@ -193,12 +203,13 @@ function validateIndexingConfig(indexing: unknown): void {
         throw new Error(`config.indexing.embedding.${key} must be a non-empty string`);
       }
     }
-    for (const key of ['url', 'baseUrl', 'model', 'apiKey']) {
+    const knownProvider = ['builtin', 'ollama-compat', 'openai-compatible'].includes(embedding.provider);
+    for (const key of knownProvider ? ['url', 'baseUrl', 'model', 'apiKey'] : []) {
       if (embedding[key] !== undefined && typeof embedding[key] !== 'string') {
         throw new Error(`config.indexing.embedding.${key} must be a string`);
       }
     }
-    for (const key of ['url', 'baseUrl']) {
+    for (const key of knownProvider ? ['url', 'baseUrl'] : []) {
       if (typeof embedding[key] === 'string') {
         let url: URL;
         try { url = new URL(embedding[key]); } catch { throw new Error(`config.indexing.embedding.${key} must be a valid HTTP URL`); }
@@ -207,7 +218,8 @@ function validateIndexingConfig(indexing: unknown): void {
         }
       }
     }
-    if (embedding.runtime !== undefined && embedding.runtime !== 'onnx' && embedding.runtime !== 'torch') {
+    embeddingValidators[embedding.provider]?.(embedding);
+    if (embedding.provider === 'builtin' && embedding.runtime !== undefined && embedding.runtime !== 'onnx' && embedding.runtime !== 'torch') {
       throw new Error('config.indexing.embedding.runtime must be onnx or torch');
     }
   }

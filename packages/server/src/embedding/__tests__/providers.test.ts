@@ -57,3 +57,28 @@ it('validates explicit settings and preserves provider configuration while loadi
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it('accepts a provider-specific environment option and authentication through registered adapters', async () => {
+  const { ConfigLoader, registerEmbeddingConfig } = await import('@search-docs/config');
+  const { registerEmbeddingProvider, prepareEmbeddingOptions } = await import('../providers.js');
+  registerEmbeddingConfig('test-provider', ['region', 'credentialEnv']);
+  let received: Record<string, unknown> | undefined;
+  registerEmbeddingProvider('test-provider', {
+    prepare: (config) => {
+      const options = config as unknown as { region: string; credentialEnv: string };
+      return { region: options.region, token: process.env[options.credentialEnv] };
+    },
+    url: () => 'https://test.example',
+    probe: async (config) => { received = config as unknown as Record<string, unknown>; },
+  });
+  vi.stubEnv('EMBEDDING_PROVIDER', 'test-provider');
+  vi.stubEnv('EMBEDDING_OPTIONS', JSON.stringify({ region: 'asia', credentialEnv: 'TEST_CUSTOM_TOKEN' }));
+  vi.stubEnv('TEST_CUSTOM_TOKEN', 'private-value');
+  const config = ConfigLoader.getDefaultConfig().indexing.embedding!;
+  const options = prepareEmbeddingOptions(config);
+  expect(options).toEqual({ region: 'asia', token: 'private-value' });
+  const server = new EmbeddingServerProcess({ embedding: config, dimension: 3 });
+  expect(await server.start()).toBe('https://test.example');
+  expect(server.isExternal()).toBe(true);
+  expect(received).toMatchObject({ region: 'asia', credentialEnv: 'TEST_CUSTOM_TOKEN' });
+});

@@ -861,7 +861,7 @@ class SearchDocsWorker:
                     raise
         rows = self.db.open_table(name).to_arrow().to_pylist()
         if len(rows) != 1 or rows[0] != identity:
-            raise RuntimeError('Embedding model or dimension differs from the index; stop all servers and rebuild the index')
+            raise RuntimeError('Embedding provider, model, endpoint or dimension differs from the index; stop all servers and rebuild the index')
         if SECTIONS_TABLE in self.db.table_names():
             schema = self.db.open_table(SECTIONS_TABLE).schema
             if schema.field('vector').type.list_size != self.vector_dimension:

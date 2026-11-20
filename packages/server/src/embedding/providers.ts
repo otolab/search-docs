@@ -2,7 +2,8 @@ import type { EmbeddingConfig } from '@search-docs/types';
 
 type ExternalConfig = Exclude<EmbeddingConfig, { provider: 'builtin' }>;
 
-type Provider = {
+export type EmbeddingProvider = {
+  prepare(config: ExternalConfig): Record<string, unknown>;
   url(config: ExternalConfig): string;
   probe(config: ExternalConfig, dimension: number, timeoutMs: number): Promise<void>;
 };
@@ -16,8 +17,9 @@ function secret(value: string | undefined): string | undefined {
   return resolved;
 }
 
-const providers: Record<ExternalConfig['provider'], Provider> = {
+const providers: Record<string, EmbeddingProvider> = {
   'ollama-compat': {
+    prepare: (config) => ({ ...config, model: (config as Extract<ExternalConfig, { provider: 'ollama-compat' }>).model || process.env.EMBEDDING_MODEL }),
     url: (config) => (config as Extract<ExternalConfig, { provider: 'ollama-compat' }>).url,
     async probe(config, dimension, timeoutMs) {
       const item = config as Extract<ExternalConfig, { provider: 'ollama-compat' }>;
@@ -27,6 +29,7 @@ const providers: Record<ExternalConfig['provider'], Provider> = {
     },
   },
   'openai-compatible': {
+    prepare: (config) => ({ ...config, apiKey: secret((config as Extract<ExternalConfig, { provider: 'openai-compatible' }>).apiKey) }),
     url: (config) => (config as Extract<ExternalConfig, { provider: 'openai-compatible' }>).baseUrl,
     async probe(config, dimension, timeoutMs) {
       const item = config as Extract<ExternalConfig, { provider: 'openai-compatible' }>;
@@ -34,6 +37,10 @@ const providers: Record<ExternalConfig['provider'], Provider> = {
     },
   },
 };
+
+export function registerEmbeddingProvider(id: string, provider: EmbeddingProvider): void {
+  providers[id] = provider;
+}
 
 async function probe(url: string, body: object, dimension: number, openai: boolean, apiKey: string | undefined, timeoutMs: number): Promise<void> {
   let response: Response;
@@ -64,6 +71,8 @@ export async function startExternalEmbedding(config: ExternalConfig, dimension: 
   return provider.url(config);
 }
 
-export function resolveEmbeddingApiKey(config: EmbeddingConfig | undefined): string | undefined {
-  return config?.provider === 'openai-compatible' ? secret(config.apiKey) : undefined;
+export function prepareEmbeddingOptions(config: EmbeddingConfig | undefined): Record<string, unknown> | undefined {
+  if (!config) return undefined;
+  if (config.provider === 'builtin') return { ...config };
+  return providers[config.provider].prepare(config);
 }

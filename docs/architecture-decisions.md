@@ -2197,4 +2197,4 @@ def _maybe_optimize(self, table, table_name: str) -> None:
 
 ## Embedding provider の追加手順
 
-provider ID と設定の検証を `packages/types` / `packages/config` に追加し、TypeScript の `packages/server/src/embedding/providers.ts` に接続先と readiness probe を登録する。`providerOptions` に格納した設定は読み込み時に展開され、worker へ環境変数で渡される。Python の `packages/db-engine/src/python/embedding.py` に通信・応答検証・初期化を実装し、同じ ID を `EMBEDDING_PROVIDERS` に登録する。初期化時は実際のベクトルの個数・有限値・次元を検証し、索引に provider とモデルを記録する。秘密情報は引数やログに含めない。HTTP mock による正常・異常応答、起動時のプロセス管理、index / search、既存索引との不一致を検証し、利用者向け設定と CLI の説明を更新する。
+provider ID と設定の検証を `packages/types` / `packages/config` に追加し、TypeScript の `packages/server/src/embedding/providers.ts` に接続先、固有の認証・設定の解決と readiness probe を登録する。環境変数の固有項目は `EMBEDDING_OPTIONS` の JSON で渡せる。`providerOptions` に格納した設定は読み込み時に展開され、worker へ環境変数で渡される。Python の `packages/db-engine/src/python/embedding.py` に通信・応答検証・初期化を実装し、同じ ID を `EMBEDDING_PROVIDERS` に登録する。初期化時は実際のベクトルの個数・有限値・次元を検証し、索引に provider とモデルを記録し、外部接続先を用いる場合は秘密情報を含まない接続先の fingerprint も照合する。秘密情報は引数やログに含めない。HTTP mock による正常・異常応答、起動時のプロセス管理、index / search、既存索引との不一致を検証し、利用者向け設定と CLI の説明を更新する。

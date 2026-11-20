@@ -5,6 +5,8 @@ search-docs用にsebas-chanのRuriEmbeddingを利用
 """
 
 import sys
+import hashlib
+from urllib.parse import urlsplit, urlunsplit
 import json
 import urllib.request
 import urllib.error
@@ -340,10 +342,21 @@ def initialize_openai_provider(worker):
     model_name = options.get('model') or os.environ.get('SEARCH_DOCS_EMBEDDING_MODEL', '')
     if not model_name:
         raise RuntimeError('OpenAI-compatible provider requires a model')
+    parsed = urlsplit(worker.embedding_url)
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError('Embedding URL must not contain credentials, query or fragment')
+    host = (parsed.hostname or '').lower()
+    port = parsed.port
+    if ':' in host:
+        host = f'[{host}]'
+    if port and not ((parsed.scheme == 'https' and port == 443) or (parsed.scheme == 'http' and port == 80)):
+        host = f'{host}:{port}'
+    endpoint = urlunsplit((parsed.scheme.lower(), host, parsed.path.rstrip('/'), '', ''))
+    digest = 'endpoint-sha256:' + hashlib.sha256(endpoint.encode('utf-8')).hexdigest()
     model = OpenAICompatibleEmbeddingModel(worker.embedding_url, worker.vector_dimension, model_name,
                                             options.get('apiKey') or os.environ.get('SEARCH_DOCS_EMBEDDING_API_KEY', ''))
     model.encode('search-docs readiness probe', worker.vector_dimension)
-    worker._check_embedding_identity('openai-compatible', model_name, '')
+    worker._check_embedding_identity('openai-compatible', model_name, digest)
     if not worker.read_only:
         worker.init_tables()
     worker.embedding_model = model

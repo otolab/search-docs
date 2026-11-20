@@ -256,6 +256,13 @@ export class DBEngine extends EventEmitter {
 
   constructor(options: DBEngineOptions = {}) {
     super();
+    if (options.embeddingProvider === 'openai-compatible' && options.embeddingUrl) {
+      let url: URL;
+      try { url = new URL(options.embeddingUrl); } catch { throw new Error('Embedding URL must be a valid HTTP URL'); }
+      if (url.username || url.password || url.search || url.hash || !['http:', 'https:'].includes(url.protocol)) {
+        throw new Error('Embedding URL must be HTTP without credentials, query or fragment');
+      }
+    }
     this.options = {
       embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:24281',
       embeddingDimension: options.embeddingDimension,

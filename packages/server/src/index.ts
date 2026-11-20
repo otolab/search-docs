@@ -14,4 +14,4 @@ export { WatcherProcess } from './watcher/watcher-process.js';
 export { EmbeddingServerProcess, type EmbeddingServerOptions } from './embedding/index.js';
 export { setupLogRedirect } from './utils/log-redirect.js';
 
-export { resolveEmbeddingApiKey, startExternalEmbedding } from './embedding/providers.js';
+export { prepareEmbeddingOptions, startExternalEmbedding, registerEmbeddingProvider, type EmbeddingProvider } from './embedding/providers.js';
