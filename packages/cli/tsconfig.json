@@ -11,6 +11,8 @@
     { "path": "../config" },
     { "path": "../client" },
     { "path": "../db-engine" },
+    { "path": "../server" },
+    { "path": "../storage" },
     { "path": "../common" }
   ]
 }

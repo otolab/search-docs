@@ -6,7 +6,7 @@ import * as path from 'path';
 import { ConfigLoader, type ConfigDeprecation } from '@search-docs/config';
 import type { SearchDocsConfig, SearchDocsService } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
-import { DBEngine } from '@search-docs/db-engine';
+import { DBEngine, acquireStandardStorageRegistration } from '@search-docs/db-engine';
 import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess } from '@search-docs/server';
 
 /**
@@ -40,6 +40,7 @@ export interface ServiceInstances {
   watcherProcess: WatcherProcess;
   dbEngine: DBEngine;
   embeddingServer: EmbeddingServerProcess;
+  releaseStorageRegistration?: (() => Promise<void>) | null;
 }
 
 /**
@@ -99,6 +100,15 @@ export async function createService(
   projectRoot: string,
   version: string
 ): Promise<ServiceInstances> {
+  const releaseStorageRegistration = await acquireStandardStorageRegistration({
+    projectRoot,
+    indexPath: config.storage.indexPath,
+    documentsPath: config.storage.documentsPath,
+  });
+  // DB または文書を使い始める前の失敗なら登録を安全に解放できる。
+  let storageStarted = false;
+  let service: SearchDocsServer | undefined;
+  let watcherProcess: WatcherProcess | undefined;
   // 1. EmbeddingServerProcess検出・起動
   const embeddingServer = new EmbeddingServerProcess({
     embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
@@ -107,35 +117,52 @@ export async function createService(
     modelPath: process.env.SEARCH_DOCS_DOCKER_MODEL_PATH,
     dimension: config.indexing.vectorDimension,
   });
-  const embeddingUrl = await embeddingServer.start();
+  try {
+    const embeddingUrl = await embeddingServer.start();
 
-  // 2. FileStorage初期化
-  const storage = new FileStorage({
-    basePath: path.resolve(projectRoot, config.storage.documentsPath),
-  });
+    // 2. FileStorage初期化
+    const storage = new FileStorage({
+      basePath: path.resolve(projectRoot, config.storage.documentsPath),
+    });
 
-  // 3. DBEngine初期化
-  const dbEngine = new DBEngine({
-    dbPath: path.resolve(projectRoot, config.storage.indexPath),
-    embeddingUrl,
-    maxBatchTokens: config.worker.maxBatchTokens,
-    pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
-    memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
-    readOnly: false,
-  });
+    // 3. DBEngine初期化
+    const dbEngine = new DBEngine({
+      dbPath: path.resolve(projectRoot, config.storage.indexPath),
+      embeddingUrl,
+      maxBatchTokens: config.worker.maxBatchTokens,
+      pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
+      memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
+      readOnly: false,
+    });
 
-  // 4. SearchDocsServer初期化
-  const service = new SearchDocsServer(config, storage, dbEngine, version);
+    // 4. SearchDocsServer初期化
+    service = new SearchDocsServer(config, storage, dbEngine, version);
 
-  // 5. WatcherProcess初期化・接続
-  const watcherProcess = new WatcherProcess(config, storage, dbEngine);
-  service.setWatcherProcess(watcherProcess);
+    // 5. WatcherProcess初期化・接続
+    watcherProcess = new WatcherProcess(config, storage, dbEngine);
+    service.setWatcherProcess(watcherProcess);
 
-  // 6. 起動
-  service.start();
-  watcherProcess.start();
+    // 6. 起動
+    storageStarted = true;
+    service.start();
+    watcherProcess.start();
 
-  return { service, watcherProcess, dbEngine, embeddingServer };
+    return { service, watcherProcess, dbEngine, embeddingServer, releaseStorageRegistration };
+  } catch (error) {
+    let stopped = !storageStarted;
+    if (storageStarted) {
+      try {
+        if (watcherProcess) await watcherProcess.stop();
+        if (service) await service.stop();
+        stopped = true;
+      } catch (stopError) {
+        console.error('Failed to stop service after startup failure:', stopError);
+      }
+    }
+    embeddingServer.shutdown();
+    if (stopped) await releaseStorageRegistration?.();
+    throw error;
+  }
 }
 
 /**
@@ -144,12 +171,18 @@ export async function createService(
  * @param instances - サービスインスタンス群
  */
 export async function stopService(instances: ServiceInstances): Promise<void> {
+  let stopped = false;
   try {
     await instances.watcherProcess.stop();
+    stopped = true;
   } finally {
-    instances.service.stop();
-    instances.dbEngine.disconnect();
-    instances.embeddingServer.shutdown();
+    try {
+      await instances.service.stop();
+      await instances.dbEngine.disconnect();
+      if (stopped) await instances.releaseStorageRegistration?.();
+    } finally {
+      instances.embeddingServer.shutdown();
+    }
   }
 }
 

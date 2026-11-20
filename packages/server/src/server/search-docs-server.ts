@@ -54,8 +54,8 @@ export class SearchDocsServer implements SearchDocsService {
   /**
    * サーバ停止
    */
-  stop(): void {
-    this.dbEngine.disconnect();
+  async stop(): Promise<void> {
+    await this.dbEngine.disconnect();
   }
 
   /**

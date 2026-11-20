@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import { ConfigLoader } from '@search-docs/config';
-import { DBEngine, type RepairTablesResponse } from '@search-docs/db-engine';
+import { DBEngine, acquireStandardStorageRegistration, type RepairTablesResponse } from '@search-docs/db-engine';
 
 export interface MaintenanceRepairOptions {
   config?: string;
@@ -64,18 +64,23 @@ export async function executeMaintenanceRepair(
     console.log('テーブルの修復を開始します...');
     console.log('');
 
+    const release = await acquireStandardStorageRegistration({
+      projectRoot,
+      indexPath: config.storage.indexPath,
+      documentsPath: config.storage.documentsPath,
+    });
     const dbEngine = new DBEngine({
       dbPath,
       readOnly: false,
     });
 
-    await dbEngine.connect({ skipInitModel: true });
-
     try {
+      await dbEngine.connect({ skipInitModel: true });
       const result = await dbEngine.repairTables();
       formatRepairResult(result);
     } finally {
-      dbEngine.disconnect();
+      await dbEngine.disconnect();
+      await release?.();
     }
   } catch (error) {
     console.error('Error:', (error as Error).message);

@@ -8,7 +8,7 @@ import * as path from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { FileStorage } from '@search-docs/storage';
-import { DBEngine } from '@search-docs/db-engine';
+import { DBEngine, acquireStandardStorageRegistration } from '@search-docs/db-engine';
 import { ConfigLoader } from '@search-docs/config';
 import type { PidFileContent } from '@search-docs/types';
 import { SearchDocsServer, JsonRpcServer, WatcherProcess, EmbeddingServerProcess } from '../index.js';
@@ -29,6 +29,7 @@ export async function main(): Promise<void> {
   let cleanupPromise: Promise<void> | null = null;
   let shutdownRequested = false;
   let startupComplete = false;
+  let releaseStorageRegistration: (() => Promise<void>) | null = null;
 
   const ensureStartupNotInterrupted = () => {
     if (shutdownRequested) {
@@ -56,6 +57,9 @@ export async function main(): Promise<void> {
       if (jsonRpcServer) await attempt(() => jsonRpcServer!.stop());
       if (embeddingServer) await attempt(() => embeddingServer!.stop());
 
+      if (errors.length === 0 && releaseStorageRegistration) {
+        await attempt(() => releaseStorageRegistration!());
+      }
       if (errors.length > 0) {
         throw new AggregateError(errors, 'One or more server resources failed to stop cleanly');
       }
@@ -85,6 +89,11 @@ export async function main(): Promise<void> {
   try {
     // 設定読み込みとプロジェクトルート決定
     const { config, configPath, projectRoot } = await ConfigLoader.resolve();
+    releaseStorageRegistration = await acquireStandardStorageRegistration({
+      projectRoot,
+      indexPath: config.storage.indexPath,
+      documentsPath: config.storage.documentsPath,
+    });
     ensureStartupNotInterrupted();
     projectRootForCleanup = projectRoot;
 

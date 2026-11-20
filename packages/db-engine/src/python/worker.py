@@ -905,9 +905,21 @@ class SearchDocsWorker:
             # トークン数でバッチを分割し、大きすぎるセクションはスキップ
             batches, skipped_indices = self._create_token_aware_batches(texts_to_encode, indices_to_encode)
 
+            if skipped_indices and params.get("rejectSkipped"):
+                raise ValueError(f"Embedding skipped for {len(skipped_indices)} oversized section(s)")
+
             # バッチ処理でベクトル化
             for batch_texts, batch_indices in batches:
                 vectors = self.embedding_model.encode(batch_texts, self.vector_dimension)
+                if params.get("rejectSkipped") and len(vectors) != len(batch_indices):
+                    raise ValueError("Embedding server returned an unexpected number of vectors")
+                if params.get("rejectSkipped") and any(
+                    len(vector) != self.vector_dimension or
+                    not np.all(np.isfinite(vector)) or
+                    not np.any(vector)
+                    for vector in vectors
+                ):
+                    raise ValueError("Embedding server returned an invalid or zero vector")
                 for idx, vector in zip(batch_indices, vectors):
                     sections[idx]["vector"] = vector
 

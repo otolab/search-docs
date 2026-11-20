@@ -13,3 +13,6 @@ export { TokenCounter } from './splitter/token-counter.js';
 export { WatcherProcess } from './watcher/watcher-process.js';
 export { EmbeddingServerProcess, type EmbeddingServerOptions } from './embedding/index.js';
 export { setupLogRedirect } from './utils/log-redirect.js';
+export { prepareSynchronousSources, indexSynchronousSources } from './rebuild/synchronous-index.js';
+export { assertPurgeSourcesOutsideIndex, clearIndexContents } from './rebuild/purge-safety.js';
+export { FileStorage } from '@search-docs/storage';

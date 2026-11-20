@@ -5,7 +5,7 @@ export function registerDiagnoseDuplicatesTool(context: ToolRegistrationContext)
   return context.server.registerTool('diagnose_duplicates', {
     description: '索引の固定時点を読み取り、同じ文書の完全に一致するセクション木の重複候補を検出します。修復は行いません。',
     inputSchema: {},
-  }, async () => {
+  }, async () => (context.runDbRequest ?? (operation => operation()))(async () => {
     if (context.systemState.state !== 'RUNNING') {
       throw new Error(getStateErrorMessage(context.systemState.state, '重複候補の検査'));
     }
@@ -33,5 +33,5 @@ export function registerDiagnoseDuplicatesTool(context: ToolRegistrationContext)
     }
     lines.push('索引の変更や修復は行っていません。');
     return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
-  });
+  }));
 }

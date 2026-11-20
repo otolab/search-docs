@@ -4,6 +4,16 @@ import type { Section, SearchOptions, SearchResult } from '@search-docs/types';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
+import { stopProcessTree } from './process-tree.js';
+import { acquireStandardStorageRegistration } from './maintenance-lock.js';
+
+/** DB 子プロセスの停止を確認できず、保守の排他を維持する必要がある。 */
+export class UnconfirmedProcessStopError extends Error {
+  constructor(cause: unknown) {
+    super('DB 子プロセスの停止を確認できません。保守ロックを保持します', { cause });
+    this.name = 'UnconfirmedProcessStopError';
+  }
+}
 
 /**
  * パッケージルートディレクトリを取得
@@ -215,8 +225,10 @@ interface PerformanceLog {
 
 export class DBEngine extends EventEmitter {
   private worker: ChildProcess | null = null;
+  private workerGroups = new Set<ChildProcess>();
+  private disconnectPromise: Promise<void> | null = null;
+  private stopGeneration = 0;
   private diagnosticRunning = false;
-  private diagnosticTerminate: (() => void) | null = null;
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
@@ -271,6 +283,7 @@ export class DBEngine extends EventEmitter {
    */
   async connect(options?: { skipInitModel?: boolean }): Promise<void> {
     console.log('[DBEngine.connect] Starting connection...');
+    if (this.disconnectPromise) throw new Error('DBEngine の停止中は接続を開始できません');
 
     if (this.worker && this.isReady) {
       // 既に接続済みかつ準備完了の場合は何もしない（冪等性）
@@ -356,6 +369,7 @@ export class DBEngine extends EventEmitter {
     console.log('  absoluteDbPath:', absoluteDbPath);
 
     this.worker = spawn(pythonCmd, pythonArgs, {
+      detached: process.platform !== 'win32',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -363,6 +377,7 @@ export class DBEngine extends EventEmitter {
         TOKENIZERS_PARALLELISM: 'false', // HuggingFace tokenizers メモリリーク対策
       },
     });
+    this.workerGroups.add(this.worker);
 
     this.worker.stdout?.on('data', (data: Buffer) => {
       // バッファに追加（UTF-8を明示的に指定）
@@ -445,6 +460,7 @@ export class DBEngine extends EventEmitter {
       this.emit('error', error);
     });
 
+    const workerProcess = this.worker;
     this.worker.on('exit', (code, signal) => {
       console.log(`Python worker exited with code ${code}, signal ${signal}`);
       if (stderrBuffer) {
@@ -458,7 +474,7 @@ export class DBEngine extends EventEmitter {
           : `Python worker exited with code ${code}`;
         workerError = new Error(errorMsg);
       }
-      this.worker = null;
+      if (this.worker === workerProcess) this.worker = null;
     });
 
     // ワーカーの起動を待つ（実際にpingが通るまで）
@@ -609,6 +625,11 @@ export class DBEngine extends EventEmitter {
         clearTimeout(timeout);
         originalResolve(value);
       };
+      const originalReject = this.pendingRequests.get(id)!.reject;
+      this.pendingRequests.get(id)!.reject = (error) => {
+        clearTimeout(timeout);
+        originalReject(error);
+      };
     });
   }
 
@@ -699,24 +720,27 @@ export class DBEngine extends EventEmitter {
   /**
    * データベースとの接続を切断
    */
-  disconnect(): void {
-    this.diagnosticTerminate?.();
-    // メモリ監視を停止
+  disconnect(): Promise<void> {
+    if (this.disconnectPromise) return this.disconnectPromise;
+    this.stopGeneration++;
     this.stopMemoryMonitoring();
-
-    // パフォーマンスログを停止
     this.stopPerformanceLogging();
-
-    if (this.worker) {
-      this.worker.kill();
-      this.worker = null;
-      this.isReady = false;
-      this.buffer = ''; // バッファをクリア
-    }
-
-    // 接続状態をリセット
-    this.connectionState = 'disconnected';
-    this.connectionError = null;
+    const worker = this.worker;
+    const groups = [...this.workerGroups];
+    this.isReady = false;
+    this.buffer = '';
+    const stopping = (async () => {
+      for (const group of groups) {
+        await stopProcessTree(group);
+        this.workerGroups.delete(group);
+      }
+      if (this.worker === worker) this.worker = null;
+      this.connectionState = 'disconnected';
+      this.connectionError = null;
+    })();
+    this.disconnectPromise = stopping;
+    void stopping.then(() => { this.disconnectPromise = null; }, () => {});
+    return stopping;
   }
 
   /**
@@ -781,7 +805,7 @@ export class DBEngine extends EventEmitter {
     console.log('[DBEngine] Restarting Python worker due to memory limit...');
 
     // 既存の接続を切断
-    this.disconnect();
+    await this.disconnect();
 
     // 少し待ってから再接続
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -847,9 +871,9 @@ export class DBEngine extends EventEmitter {
   /**
    * 複数のセクションを一括追加
    */
-  async addSections(sections: Array<Omit<Section, 'vector'>>): Promise<{ count: number }> {
+  async addSections(sections: Array<Omit<Section, 'vector'>>, options?: { rejectSkipped?: boolean }): Promise<{ count: number }> {
     const pythonSections = sections.map((s) => this.convertSectionToPythonFormat(s));
-    const result = await this.sendRequest('addSections', { sections: pythonSections });
+    const result = await this.sendRequest('addSections', { sections: pythonSections, ...options });
     return result as { count: number };
   }
 
@@ -902,9 +926,20 @@ export class DBEngine extends EventEmitter {
     version: number; complete: boolean; rowsRead: number; bytesRead: number;
     candidates: Array<{ path: string; rootIds: string[]; rootCount: number }>; ambiguous: number; omitted: number;
   }> {
+    if (this.disconnectPromise) throw new Error('DBEngine の停止中は診断を開始できません');
     if (this.diagnosticRunning) throw new Error('重複候補の検査は既に実行中です。');
     this.diagnosticRunning = true;
-    {
+    const generation = this.stopGeneration;
+    let diagnosticChild: ChildProcess | undefined;
+    let release: (() => Promise<void>) | null = null;
+    try {
+      const absoluteIndex = path.resolve(this.options.dbPath);
+      release = await acquireStandardStorageRegistration({
+        projectRoot: path.dirname(absoluteIndex),
+        indexPath: absoluteIndex,
+        documentsPath: path.join(path.dirname(absoluteIndex), 'documents'),
+      });
+      if (generation !== this.stopGeneration) throw new Error('診断開始中に停止が要求されました');
       const root = getPackageRoot();
       const script = path.join(root, 'src/python/duplicate_diagnostics.py');
       const docker = process.env.IS_DOCKER === 'true';
@@ -913,6 +948,8 @@ export class DBEngine extends EventEmitter {
         : ['--project', root, 'run', 'python', script, path.resolve(this.options.dbPath)];
       const result = await new Promise<string>((resolve, reject) => {
         const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+        diagnosticChild = child;
+        this.workerGroups.add(child);
         let output = '';
         let errors = '';
         let settled = false;
@@ -936,7 +973,6 @@ export class DBEngine extends EventEmitter {
             child.kill('SIGKILL');
           }
         };
-        this.diagnosticTerminate = terminate;
         const timer = setTimeout(() => {
           terminate();
           finish(new Error('重複候補の検査が時間制限を超えました。'));
@@ -953,12 +989,10 @@ export class DBEngine extends EventEmitter {
         child.stderr.on('data', (chunk: string) => { errors = (errors + chunk).slice(-4096); });
         child.on('error', error => {
           this.diagnosticRunning = false;
-          this.diagnosticTerminate = null;
           finish(error);
         });
         child.on('close', code => {
           this.diagnosticRunning = false;
-          this.diagnosticTerminate = null;
           if (code === 0) finish();
           else finish(new Error(`重複候補の検査が終了しました (${code}): ${errors}`));
         });
@@ -967,6 +1001,13 @@ export class DBEngine extends EventEmitter {
         version: number; complete: boolean; rowsRead: number; bytesRead: number;
         candidates: Array<{ path: string; rootIds: string[]; rootCount: number }>; ambiguous: number; omitted: number;
       };
+    } finally {
+      this.diagnosticRunning = false;
+      if (diagnosticChild) {
+        await stopProcessTree(diagnosticChild);
+        this.workerGroups.delete(diagnosticChild);
+      }
+      await release?.();
     }
   }
 
@@ -1078,6 +1119,11 @@ export class DBEngine extends EventEmitter {
       this.pendingRequests.get(id)!.resolve = (value) => {
         clearTimeout(timeout);
         originalResolve(value);
+      };
+      const originalReject = this.pendingRequests.get(id)!.reject;
+      this.pendingRequests.get(id)!.reject = (error) => {
+        clearTimeout(timeout);
+        originalReject(error);
       };
     });
   }
@@ -1324,3 +1370,5 @@ export class DBEngine extends EventEmitter {
 }
 
 export default DBEngine;
+
+export { MaintenanceLock, acquireStandardStorageRegistration } from './maintenance-lock.js';

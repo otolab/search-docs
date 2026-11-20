@@ -178,11 +178,21 @@ indexCmd
   });
 
 indexCmd
+  .command('recreate')
+  .description('全インデックスを削除し、文書から同期的に再作成')
+  .option('--confirm-isolated', '専用領域・全アクセス停止・処理中のパスと対象文書の不変更を確認')
+  .action(async (options: { confirmIsolated?: boolean }) => {
+    const { executeIndexRecreate } = await import('./commands/index/recreate.js');
+    await executeIndexRecreate({ ...options, config: globalConfigPath });
+  });
+
+indexCmd
   .command('purge')
   .description('インデックスファイルを削除')
-  .action(async () => {
+  .option('--confirm-isolated', '専用領域・全アクセス停止・処理中のパス不変更を確認')
+  .action(async (options: { confirmIsolated?: boolean }) => {
     const { executeIndexPurge } = await import('./commands/index/purge.js');
-    await executeIndexPurge({ config: globalConfigPath });
+    await executeIndexPurge({ ...options, config: globalConfigPath });
   });
 
 indexCmd

@@ -13,6 +13,8 @@ import { createService } from '../../state.js';
 import { refreshServiceState } from '../../refresh-service-state.js';
 import { ServiceLifecycle, registerShutdownHandlers } from '../../service-lifecycle.js';
 import { registerInitTool } from '../init.js';
+import { RequestGate } from '../../maintenance/request-gate.js';
+import { MaintenanceNotStartedError } from '../../maintenance/exclusive-purge.js';
 
 function gate() {
   let release!: () => void;
@@ -24,6 +26,17 @@ function instances(stop: () => Promise<void>): ServiceInstances {
 }
 
 describe('MCP lifecycle', () => {
+  it('削除前の排他取得に失敗した場合はサービスを再開する', async () => {
+    let current: ServiceInstances | null = instances(async () => {});
+    const requestGate = new RequestGate();
+    const refresh = vi.fn(async () => { current = instances(async () => {}); });
+    const lifecycle = new ServiceLifecycle(refresh, () => current, value => { current = value; });
+    await expect(lifecycle.maintenance(requestGate, () => {}, async () => {
+      throw new MaintenanceNotStartedError(new Error('使用中'));
+    })).rejects.toThrow(/使用中/);
+    expect(refresh).toHaveBeenCalledOnce();
+    await expect(requestGate.run(async () => 'ok')).resolves.toBe('ok');
+  });
   it.each(['stop', 'create'])('waits for refresh %s and drains the created service on SIGTERM', async (phase) => {
     const blocked = gate();
     const entered = gate();
@@ -104,4 +117,64 @@ describe('MCP lifecycle', () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
+  it('waits for accepted requests and shutdown before maintenance, then restarts and accepts requests', async () => {
+    const held = gate();
+    const requestGate = new RequestGate();
+    const calls: string[] = [];
+    const active = requestGate.run(async () => { await held.promise; calls.push('request'); });
+    const stop = vi.fn(async () => { calls.push('stop'); });
+    let current: ServiceInstances | null = instances(stop);
+    const lifecycle = new ServiceLifecycle(async () => { calls.push('restart'); current = instances(async () => {}); }, () => current, value => { current = value; });
+    const operation = lifecycle.maintenance(requestGate, () => { calls.push('unavailable'); }, async () => { calls.push('exclusive operation'); });
+    await vi.waitFor(() => expect(requestGate.run(async () => {})).rejects.toThrow(/保守中/));
+    expect(stop).not.toHaveBeenCalled();
+    held.release();
+    await active;
+    await operation;
+    expect(calls).toEqual(['request', 'unavailable', 'stop', 'exclusive operation', 'restart']);
+    await expect(requestGate.run(async () => 'ok')).resolves.toBe('ok');
+  });
+
+  it.each(['stop', 'operation', 'restart'])('%s failure keeps requests blocked and prevents refresh', async phase => {
+    const requestGate = new RequestGate();
+    const stop = vi.fn(async () => { if (phase === 'stop') throw new Error('stop failed'); });
+    let current: ServiceInstances | null = instances(stop);
+    const refresh = vi.fn(async () => { if (phase === 'restart') throw new Error('restart failed'); });
+    const lifecycle = new ServiceLifecycle(refresh, () => current, value => { current = value; });
+    const operation = vi.fn(async () => { if (phase === 'operation') throw new Error('operation failed'); });
+    await expect(lifecycle.maintenance(requestGate, () => {}, operation)).rejects.toThrow('failed');
+    if (phase === 'stop') expect(operation).not.toHaveBeenCalled();
+    await expect(requestGate.run(async () => {})).rejects.toThrow(/保守中/);
+    await expect(lifecycle.refresh()).rejects.toThrow(/未完了/);
+  });
+
+  it('shutdown during maintenance does not restart the service', async () => {
+    const requestGate = new RequestGate();
+    const entered = gate();
+    const held = gate();
+    let current: ServiceInstances | null = instances(async () => {});
+    const restart = vi.fn(async () => {});
+    const lifecycle = new ServiceLifecycle(restart, () => current, value => { current = value; });
+    const operation = lifecycle.maintenance(requestGate, () => {}, async () => { entered.release(); await held.promise; });
+    await entered.promise;
+    const shutdown = lifecycle.shutdown();
+    held.release();
+    await Promise.all([operation, shutdown]);
+    expect(restart).not.toHaveBeenCalled();
+    await expect(requestGate.run(async () => {})).rejects.toThrow(/保守中/);
+  });
+  it('shutdown while draining prevents the destructive operation from starting', async () => {
+    const requestGate = new RequestGate();
+    const held = gate();
+    const active = requestGate.run(() => held.promise);
+    let current: ServiceInstances | null = instances(async () => {});
+    const lifecycle = new ServiceLifecycle(async () => {}, () => current, value => { current = value; });
+    const remove = vi.fn(async () => {});
+    const operation = lifecycle.maintenance(requestGate, () => {}, remove);
+    await vi.waitFor(() => expect(requestGate.run(async () => {})).rejects.toThrow(/保守中/));
+    const shutdown = lifecycle.shutdown();
+    held.release();
+    await Promise.all([active, operation, shutdown]);
+    expect(remove).not.toHaveBeenCalled();
+  });
 });
