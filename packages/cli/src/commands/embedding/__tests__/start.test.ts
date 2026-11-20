@@ -143,6 +143,11 @@ afterEach(() => {
 });
 
 describe('embedding lifecycle', () => {
+  it('installs the torch extra only when the torch runtime is selected', async () => {
+    await startEmbeddingServer({ port, runtime: 'torch' });
+    expect(childMocks.spawn.mock.calls[0][1]).toEqual(expect.arrayContaining(['--extra', 'torch', '--runtime=torch']));
+  });
+
   it('reaps descendants after a foreground launcher exits', async () => {
     const startPromise = startEmbeddingServer({
       port,
@@ -161,6 +166,7 @@ describe('embedding lifecycle', () => {
   it('passes an explicit readiness timeout to the readiness wait', async () => {
     await startEmbeddingServer({ port, dimension: 3, readyTimeout: '45000' });
 
+    expect(childMocks.spawn.mock.calls[0][1]).not.toContain('--extra');
     expect(embeddingMocks.waitForEmbeddingReady).toHaveBeenCalledWith(
       '127.0.0.1',
       port,

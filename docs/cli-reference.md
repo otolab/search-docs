@@ -551,11 +551,13 @@ search-docs embedding start --runtime torch
 search-docs embedding start --ready-timeout 900000
 ```
 
+`torch` を選択すると、uv が PyTorch と sentence-transformers を追加で用意します。初回は依存パッケージとモデルの取得に時間とディスク容量が必要です。既定の `onnx` ではこれらを追加しません。
+
 #### 動作
 
 1. 既存サーバがないことを確認
 2. ポートの空き状況を確認
-3. `uv --project <db-engine> run python embedding_server.py` で起動
+3. `uv --project <db-engine> run python embedding_server.py` で起動（torch の場合は `--extra torch` を指定）
 4. `/ready` エンドポイントでReadiness待ち（既定10分。`--ready-timeout` または `SEARCH_DOCS_EMBEDDING_READY_TIMEOUT_MS` で変更。旧サーバは `/health` にフォールバック）
 5. PIDファイル（`~/.search-docs/embedding.pid`）を保存
 

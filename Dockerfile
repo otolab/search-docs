@@ -10,15 +10,22 @@
 FROM python:3.12-slim-bookworm AS python-deps
 
 ARG RUNTIME_TYPE=cpu
+ARG INCLUDE_TORCH=false
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
+ENV HF_HOME=/app/.cache/huggingface
 
 # pyproject.toml から依存関係をインストール（二重管理を排除）
 COPY packages/db-engine/pyproject.toml ./pyproject.toml
-RUN if [ "$RUNTIME_TYPE" = "gpu" ]; then \
-      uv pip install --system ".[gpu]"; \
+RUN extras=""; \
+    if [ "$RUNTIME_TYPE" = "gpu" ]; then extras="gpu"; fi; \
+    if [ "$INCLUDE_TORCH" = "true" ]; then \
+      if [ -n "$extras" ]; then extras="${extras},torch"; else extras="torch"; fi; \
+    fi; \
+    if [ -n "$extras" ]; then \
+      uv pip install --system ".[${extras}]"; \
     else \
       uv pip install --system .; \
     fi
@@ -28,6 +35,9 @@ RUN python -c "from huggingface_hub import snapshot_download; \
     snapshot_download('sirasagi62/ruri-v3-30m-ONNX', \
     local_dir='/app/.cache/models/ruri-v3-30m-onnx', \
     allow_patterns=['onnx/model.onnx', '*.json', '*.txt', '*.model'])"
+RUN if [ "$INCLUDE_TORCH" = "true" ]; then \
+      python -c "from huggingface_hub import snapshot_download; snapshot_download('cl-nagoya/ruri-v3-30m', allow_patterns=['*.json', '*.txt', '*.model', '*.safetensors'])"; \
+    fi
 
 # ============================================================
 # Stage 2: Node.jsビルド + pnpm deploy
@@ -104,6 +114,7 @@ ENV PYTHONUNBUFFERED=1
 ENV TOKENIZERS_PARALLELISM=false
 ENV NODE_ENV=production
 ENV IS_DOCKER=true
+ENV HF_HOME=/app/.cache/huggingface
 
 # Docker設定固定: イメージ内蔵モデルに強制
 ENV SEARCH_DOCS_DOCKER_EMBEDDING_MODEL=ruri-v3-30m-onnx
