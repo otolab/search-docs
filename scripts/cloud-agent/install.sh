@@ -34,6 +34,11 @@ if [[ -f pnpm-lock.yaml ]]; then
   pnpm install --frozen-lockfile
 fi
 
+if [[ "${EMBEDDING_PROVIDER:-builtin}" != "builtin" ]]; then
+  echo "External embedding provider selected; skipping Ruri ONNX prefetch."
+  exit 0
+fi
+
 HF_PREFETCH_DIR="scripts/hf-prefetch"
 echo "Installing huggingface_hub (uv project: ${HF_PREFETCH_DIR})..."
 uv sync --directory "${HF_PREFETCH_DIR}"

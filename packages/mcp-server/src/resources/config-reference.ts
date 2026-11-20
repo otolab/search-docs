@@ -60,8 +60,9 @@ export const CONFIG_REFERENCE_CONTENT = `# 設定リファレンス
 - \`minTokensForSplit\`: 分割する最小トークン数（デフォルト: 100）
 - \`maxDepth\`: 最大分割深度 0-3（デフォルト: 3）
 - \`vectorDimension\`: ベクトル次元数（デフォルト: 256）
-- \`embeddingModel\`: 埋め込みモデル名
-- \`embeddingUrl\`: 外部Embeddingサーバの指定（省略時は自動検出・起動）
+- \`embeddingModel\`: 情報表示用のモデル名
+- \`embedding\`: 明示的な provider 設定。\`openai-compatible\` は \`baseUrl\`、\`model\`、環境変数参照の \`apiKey\` を指定し、\`vectorDimension\` と API 応答の次元を一致させる
+- \`embeddingUrl\`: 外部Embeddingサーバを優先して試すURL（失敗時は自動検出）。厳格に指定するには環境変数 \`EMBEDDING_URL\` を使用
 
 ## search
 

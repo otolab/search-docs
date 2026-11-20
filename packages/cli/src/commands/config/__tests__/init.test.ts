@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { initConfig } from '../init.js';
+import { ConfigLoader } from '@search-docs/config';
 
 describe('config init', () => {
   let testDir: string;
@@ -41,6 +42,22 @@ describe('config init', () => {
     expect(config.server.host).toBe('127.0.0.1');
     expect(config.server.port).toBeGreaterThanOrEqual(49152);
     expect(config.server.port).toBeLessThanOrEqual(65535);
+    expect(config.indexing).not.toHaveProperty('embeddingUrl');
+    expect((await ConfigLoader.load(configPath)).indexing.embeddingUrl).toBeUndefined();
+  });
+
+  it('既存設定の embeddingUrl をそのまま読み込む', async () => {
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, JSON.stringify({ indexing: { embeddingUrl: 'http://localhost:24281' } }));
+    expect((await ConfigLoader.load(configPath)).indexing.embeddingUrl).toBe('http://localhost:24281');
+  });
+
+  it('Ollama の正の整数次元を読み込み、不正な値を拒否する', async () => {
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, JSON.stringify({ indexing: { vectorDimension: 1024 } }));
+    expect((await ConfigLoader.load(configPath)).indexing.vectorDimension).toBe(1024);
+    await fs.writeFile(configPath, JSON.stringify({ indexing: { vectorDimension: 0 } }));
+    await expect(ConfigLoader.load(configPath)).rejects.toThrow('positive integer');
   });
 
   it('ポート番号を指定できる', async () => {

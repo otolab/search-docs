@@ -12,7 +12,7 @@ function inside(parent: string, candidate: string): boolean {
  * 利用者による専用領域の確認と、非協調プロセスの停止が別途必要。
  */
 export async function assertKnownIndexLayout(indexPath: string): Promise<void> {
-  const tables = new Set(['sections.lance', 'index_requests.lance', 'writer_heartbeat.lance']);
+  const tables = new Set(['sections.lance', 'index_requests.lance', 'writer_heartbeat.lance', 'embedding_identity.lance']);
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const allowed = (parts: string[], directory: boolean): boolean => {
     if (parts.length === 1) return directory && tables.has(parts[0]);

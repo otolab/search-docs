@@ -13,13 +13,21 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
     const root = await mkdtemp(path.join(tmpdir(), 'recreate-cli-'));
     const outside = `${root}-outside.md`;
     let failEmbedding = false;
+    let openaiRequests = 0;
     const embedding = createServer((req, res) => {
       if (req.url === '/health') { res.writeHead(200).end(JSON.stringify({ vectorDimension: 256, model: 'test' })); return; }
       const chunks: Buffer[] = [];
       req.on('data', chunk => chunks.push(chunk));
       req.on('end', () => {
         const body = JSON.parse(Buffer.concat(chunks).toString()) as { input: string[]; dimensions: number };
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ embeddings: body.input.map(() => Array.from({ length: body.dimensions }, (_, i) => !failEmbedding && i === 0 ? 1 : 0)) }));
+        const embeddings = body.input.map(() => Array.from({ length: body.dimensions }, (_, i) => !failEmbedding && i === 0 ? 1 : 0));
+        if (req.url === '/v1/embeddings') {
+          if (req.headers.authorization !== 'Bearer test-key') { res.writeHead(401).end(); return; }
+          openaiRequests++;
+          res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ data: embeddings.map((vector, index) => ({ index, embedding: vector })) }));
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ embeddings }));
       });
     });
     await new Promise<void>((resolve, reject) => { embedding.once('error', reject); embedding.listen(0, '127.0.0.1', resolve); });
@@ -72,6 +80,16 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
       await run('index', 'recreate', '--confirm-isolated');
       const release = await lock.acquireShared();
       await release();
+      const provider = { provider: 'openai-compatible', baseUrl: `${url}/v1`, model: 'test-model', apiKey: 'test-key' };
+      const previousIndex = await readdir(path.join(root, '.search-docs/index'));
+      await writeFile(configPath, JSON.stringify({ ...config, indexing: { ...config.indexing, embedding: { ...provider, baseUrl: 'http://127.0.0.1:1/v1' } } }));
+      await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
+      expect(await readdir(path.join(root, '.search-docs/index'))).toEqual(previousIndex);
+      await writeFile(configPath, JSON.stringify({ ...config, indexing: { ...config.indexing, embedding: provider } }));
+      await run('index', 'recreate', '--confirm-isolated');
+      expect(openaiRequests).toBeGreaterThan(1);
+      const externalEngine = new DBEngine({ dbPath: path.join(root, '.search-docs/index'), embeddingUrl: provider.baseUrl, embeddingDimension: config.indexing.vectorDimension, embeddingProvider: provider.provider, embeddingModel: provider.model, embeddingOptions: provider });
+      try { await externalEngine.connect(); expect((await externalEngine.getSectionsByPath('source.md')).sections.length).toBeGreaterThan(0); } finally { await externalEngine.disconnect(); }
     } finally {
       await new Promise<void>((resolve, reject) => embedding.close(error => error ? reject(error) : resolve()));
       await rm(outside, { force: true });

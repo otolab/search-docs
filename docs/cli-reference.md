@@ -659,6 +659,8 @@ search-docs embedding stop --port 24281 --force
 
 ### embedding status
 
+明示的な外部 provider を設定している場合は、その provider の API に推論リクエストを送り、返却次元を確認します。ローカル PID の診断・修復は行いません。詳細は [外部 embedding provider](user-guide.md#外部-embedding-provider) を参照してください。
+
 Embeddingサーバの状態を確認します。
 
 ```bash

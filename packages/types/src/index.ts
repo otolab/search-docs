@@ -15,6 +15,7 @@ export type {
   ProjectConfig,
   FilesConfig,
   IndexingConfig,
+  EmbeddingConfig,
   SearchConfig,
   ServerConfig,
   StorageConfig,

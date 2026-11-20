@@ -83,7 +83,7 @@ export class ConfigLoader {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // ファイルが存在しない場合はデフォルト設定を返す
-        return DEFAULT_CONFIG;
+        return this.mergeWithDefaults({});
       }
       throw error;
     }
@@ -172,7 +172,7 @@ export class ConfigLoader {
    * デフォルト設定を取得
    */
   static getDefaultConfig(): SearchDocsConfig {
-    return DEFAULT_CONFIG;
+    return this.mergeWithDefaults({});
   }
 
   /**
@@ -324,6 +324,7 @@ export class ConfigLoader {
           config.indexing?.embeddingModel ?? DEFAULT_CONFIG.indexing.embeddingModel,
         embeddingUrl:
           config.indexing?.embeddingUrl ?? DEFAULT_CONFIG.indexing.embeddingUrl,
+        embedding: resolveEmbeddingConfig(config.indexing?.embedding),
       },
       search: {
         defaultLimit: config.search?.defaultLimit ?? DEFAULT_CONFIG.search.defaultLimit,
@@ -358,4 +359,34 @@ export class ConfigLoader {
       },
     };
   }
+}
+
+function resolveEmbeddingConfig(config: SearchDocsConfig['indexing']['embedding']): SearchDocsConfig['indexing']['embedding'] {
+  const provider = process.env.EMBEDDING_PROVIDER;
+  if (!provider) {
+    if (!config) return undefined;
+    const raw = config as typeof config & { providerOptions?: Record<string, unknown> };
+    return { ...raw.providerOptions, ...raw } as typeof config;
+  }
+  let envOptions: Record<string, unknown> = {};
+  if (process.env.EMBEDDING_OPTIONS) {
+    try {
+      const parsed: unknown = JSON.parse(process.env.EMBEDDING_OPTIONS);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      envOptions = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error('EMBEDDING_OPTIONS must be a JSON object');
+    }
+  }
+  const existing = config?.provider === provider ? config : undefined;
+  const raw = existing as (typeof existing & { providerOptions?: Record<string, unknown> });
+  const url = process.env.EMBEDDING_BASE_URL;
+  const embedding = {
+    ...raw?.providerOptions, ...existing, ...envOptions, provider,
+    ...(url ? { url, baseUrl: url } : {}),
+    ...(process.env.EMBEDDING_MODEL ? { model: process.env.EMBEDDING_MODEL } : {}),
+    ...(process.env.EMBEDDING_API_KEY ? { apiKey: process.env.EMBEDDING_API_KEY } : {}),
+  };
+  validateConfig({ indexing: { embedding } });
+  return embedding as SearchDocsConfig['indexing']['embedding'];
 }

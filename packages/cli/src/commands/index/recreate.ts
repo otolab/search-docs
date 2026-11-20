@@ -2,7 +2,7 @@ import { realpath } from 'node:fs/promises';
 import * as path from 'node:path';
 import { ConfigLoader } from '@search-docs/config';
 import { DBEngine } from '@search-docs/db-engine';
-import { FileStorage, assertPurgeSourcesOutsideIndex, clearIndexContents, indexSynchronousSources, prepareSynchronousSources } from '@search-docs/server';
+import { FileStorage, assertPurgeSourcesOutsideIndex, clearIndexContents, indexSynchronousSources, prepareSynchronousSources, prepareEmbeddingOptions, startExternalEmbedding } from '@search-docs/server';
 import { runRebuildTransaction } from '../../utils/rebuild-transaction.js';
 
 export async function executeIndexRecreate(options: { config?: string; confirmIsolated?: boolean }): Promise<void> {
@@ -22,11 +22,23 @@ export async function executeIndexRecreate(options: { config?: string; confirmIs
             throw new Error(`元文書が文書コピーの保存領域にあります: ${source.path}。削除せず、管理者に相談してください。`);
           }
         }
-        return prepared;
+        const embedding = config.indexing.embedding;
+        const embeddingOptions = prepareEmbeddingOptions(embedding);
+        const embeddingUrl = embedding && embedding.provider !== 'builtin'
+          ? await startExternalEmbedding(embedding, config.indexing.vectorDimension)
+          : (embedding?.url ?? process.env.EMBEDDING_URL ?? config.indexing.embeddingUrl);
+        return { prepared, embeddingUrl, embeddingOptions };
       },
       clear: async layout => { await clearIndexContents(layout.indexPath); },
-      rebuild: async (prepared, layout) => {
-        const engine = new DBEngine({ dbPath: layout.indexPath, embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl, maxBatchTokens: config.worker.maxBatchTokens });
+      rebuild: async ({ prepared, embeddingUrl, embeddingOptions }, layout) => {
+        const embedding = config.indexing.embedding;
+        const engine = new DBEngine({
+          dbPath: layout.indexPath, embeddingUrl, embeddingOptions,
+          embeddingDimension: config.indexing.vectorDimension,
+          embeddingProvider: embedding?.provider,
+          embeddingModel: embedding && 'model' in embedding ? embedding.model : undefined,
+          maxBatchTokens: config.worker.maxBatchTokens,
+        });
         await indexSynchronousSources({ prepared, engine, storage: new FileStorage({ basePath: layout.documentsPath }), indexing: config.indexing });
       },
     });

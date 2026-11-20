@@ -46,7 +46,7 @@ sys.stderr.write(f"[DBEngine] TOKENIZERS_PARALLELISM={tokenizers_parallelism}\n"
 pa.set_memory_pool(pa.system_memory_pool())
 
 # 埋め込みモデルをインポート
-from embedding import create_embedding_model
+from embedding import create_embedding_model, EMBEDDING_PROVIDERS
 # スキーマ定義をインポート
 from schemas import (
     get_sections_schema,
@@ -764,14 +764,30 @@ class SearchDocsWorker:
         return {"status": "ok"}
 
     def init_model(self) -> Dict[str, Any]:
-        """Embedding Serverに接続してモデル情報を取得し、テーブルを初期化"""
+        """設定された provider の初期化処理を選択する。"""
+        provider = os.environ.get('SEARCH_DOCS_EMBEDDING_PROVIDER', '')
+        if provider not in EMBEDDING_PROVIDERS:
+            raise RuntimeError(f'Unknown embedding provider: {provider}')
+        return EMBEDDING_PROVIDERS[provider](self)
+
+    def _init_legacy_model(self) -> Dict[str, Any]:
         import urllib.request as _urllib_request
         import urllib.error as _urllib_error
 
+        self.embedding_model = None
         # /health を試す（自前サーバ）
         health_url = f"{self.embedding_url.rstrip('/')}/health"
         model_name = 'unknown'
+        model_digest = ''
+        provider = 'builtin'
+        configured_dimension = next(
+            (int(arg.split('=', 1)[1]) for arg in sys.argv[1:]
+             if arg.startswith('--embedding-dimension=')), 256
+        )
+        self.vector_dimension = configured_dimension
         try:
+            if os.environ.get('SEARCH_DOCS_EMBEDDING_PROVIDER') == 'ollama-compat':
+                raise _urllib_error.HTTPError(health_url, 404, 'explicit Ollama', None, None)
             req = _urllib_request.Request(health_url, method='GET')
             with _urllib_request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -784,21 +800,72 @@ class SearchDocsWorker:
                 f"[InitModel] Connected to embedding server at {self.embedding_url}\n"
                 f"  Model: {model_name}, Dimension: {self.vector_dimension}\n"
             )
-        except (_urllib_error.URLError, OSError):
-            # 外部 Ollama の場合は /health がない → 設定値を使う
-            sys.stderr.write(
-                f"[InitModel] /health not available at {self.embedding_url}, "
-                f"using configured dimension: {self.vector_dimension}\n"
-            )
+        except _urllib_error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+            provider = 'ollama'
+            requested_model = os.environ.get('SEARCH_DOCS_EMBEDDING_MODEL') or os.environ.get('EMBEDDING_MODEL')
+            if not requested_model:
+                raise RuntimeError('Ollama requires an explicit EMBEDDING_MODEL')
+            with _urllib_request.urlopen(f"{self.embedding_url.rstrip('/')}/api/tags", timeout=5) as response:
+                models = json.loads(response.read().decode('utf-8')).get('models', [])
+            requested_tag = requested_model if ':' in requested_model else f'{requested_model}:latest'
+            matches = [item for item in models if item.get('name') in (requested_model, requested_tag)]
+            if len(matches) != 1 or not matches[0].get('digest'):
+                raise RuntimeError(f'Ollama model {requested_model!r} is unavailable or has no digest')
+            model_name = matches[0]['name']
+            model_digest = matches[0]['digest']
         sys.stderr.flush()
 
-        self.embedding_model = create_embedding_model(
+        embedding_model = create_embedding_model(
             self.embedding_url, self.vector_dimension, model=model_name
         )
+        if provider == 'ollama':
+            embedding_model.model_digest = model_digest
+            vector = embedding_model.encode('search-docs readiness probe', self.vector_dimension)
+            if (len(vector) != self.vector_dimension or
+                    not all(np.isfinite(value) for value in vector)):
+                raise RuntimeError(f'Invalid embedding for {model_name}: expected {self.vector_dimension} finite values')
+        self._check_embedding_identity(provider, model_name, model_digest)
         if not self.read_only:
             self.init_tables()
+        self.embedding_model = embedding_model
 
         return {"success": True, "model_name": model_name, "dimension": self.vector_dimension}
+
+    def _check_embedding_identity(self, provider: str, model: str, digest: str) -> None:
+        """モデル変更による異なるベクトル空間の混在を防ぐ。"""
+        name = 'embedding_identity'
+        tables = self.db.table_names()
+        identity = {
+            'provider': provider, 'model': model, 'digest': digest,
+            'dimension': self.vector_dimension,
+        }
+        if name not in tables:
+            if SECTIONS_TABLE in tables:
+                schema = self.db.open_table(SECTIONS_TABLE).schema
+                existing_dimension = schema.field('vector').type.list_size
+                if existing_dimension != self.vector_dimension:
+                    raise RuntimeError('Existing index dimension differs; stop all servers and rebuild the index')
+                if provider != 'builtin' or model != 'ruri-v3-30m-onnx':
+                    raise RuntimeError('Existing index has no embedding identity; stop all servers and rebuild the index')
+            if self.read_only:
+                if provider != 'builtin' or model != 'ruri-v3-30m-onnx':
+                    raise RuntimeError('Index has no embedding identity; stop all servers and rebuild the index')
+                return
+            try:
+                self.db.create_table(name, data=[identity])
+            except ValueError:
+                # 別プロセスが同時に作成した場合も、必ず内容を照合する。
+                if name not in self.db.table_names():
+                    raise
+        rows = self.db.open_table(name).to_arrow().to_pylist()
+        if len(rows) != 1 or rows[0] != identity:
+            raise RuntimeError('Embedding provider, model, endpoint or dimension differs from the index; stop all servers and rebuild the index')
+        if SECTIONS_TABLE in self.db.table_names():
+            schema = self.db.open_table(SECTIONS_TABLE).schema
+            if schema.field('vector').type.list_size != self.vector_dimension:
+                raise RuntimeError('Existing index dimension differs; stop all servers and rebuild the index')
 
     def _create_token_aware_batches(
         self,

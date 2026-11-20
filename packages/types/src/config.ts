@@ -42,6 +42,11 @@ export interface FilesConfig {
   maxFileSize: number;
 }
 
+export type EmbeddingConfig =
+  | { provider: 'builtin'; url?: string; runtime?: 'onnx' | 'torch' }
+  | { provider: 'ollama-compat'; url: string; model?: string }
+  | { provider: 'openai-compatible'; baseUrl: string; model: string; apiKey?: string };
+
 export interface IndexingConfig {
   /** セクションあたりの最大トークン数 */
   maxTokensPerSection: number;
@@ -53,8 +58,9 @@ export interface IndexingConfig {
   vectorDimension: number;
   /** 埋め込みモデル（情報表示用、実際のモデルはembedding serverが管理） */
   embeddingModel: string;
-  /** Embedding ServerのURL（デフォルト: http://127.0.0.1:24281） */
+  /** Embedding Serverの候補URL（省略時は自動検出） */
   embeddingUrl?: string;
+  embedding?: EmbeddingConfig;
 }
 
 export interface SearchConfig {
@@ -131,7 +137,6 @@ export const DEFAULT_CONFIG: SearchDocsConfig = {
     maxDepth: 3,
     vectorDimension: 256,
     embeddingModel: 'ruri-v3-30m-onnx',
-    embeddingUrl: 'http://127.0.0.1:24281',
   },
   search: {
     defaultLimit: 10,

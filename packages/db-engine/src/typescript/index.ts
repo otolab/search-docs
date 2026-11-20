@@ -56,6 +56,11 @@ export interface DBEngineOptions {
    * @default 'http://localhost:24281'
    */
   embeddingUrl?: string;
+  embeddingDimension?: number;
+  embeddingOptions?: Record<string, unknown>;
+  embeddingProvider?: string;
+  embeddingModel?: string;
+  embeddingApiKey?: string;
 
   /**
    * データベースパス
@@ -233,7 +238,7 @@ export class DBEngine extends EventEmitter {
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'> & Pick<DBEngineOptions, 'readOnly'>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'> & Pick<DBEngineOptions, 'readOnly' | 'embeddingDimension' | 'embeddingProvider' | 'embeddingModel' | 'embeddingApiKey' | 'embeddingOptions'>;
   private performanceCsvPath: string | null = null;
   private performanceCsvStream: fs.WriteStream | null = null;
   private memoryCheckInterval: NodeJS.Timeout | null = null;
@@ -249,6 +254,7 @@ export class DBEngine extends EventEmitter {
   private connectedPromise: Promise<void>;
   private resolveConnected!: () => void;
   private rejectConnected!: (error: Error) => void;
+  private connectionAttempted = false;
 
   /**
    * 接続状態を取得
@@ -262,8 +268,20 @@ export class DBEngine extends EventEmitter {
 
   constructor(options: DBEngineOptions = {}) {
     super();
+    if (options.embeddingProvider === 'openai-compatible' && options.embeddingUrl) {
+      let url: URL;
+      try { url = new URL(options.embeddingUrl); } catch { throw new Error('Embedding URL must be a valid HTTP URL'); }
+      if (url.username || url.password || url.search || url.hash || !['http:', 'https:'].includes(url.protocol)) {
+        throw new Error('Embedding URL must be HTTP without credentials, query or fragment');
+      }
+    }
     this.options = {
       embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:24281',
+      embeddingDimension: options.embeddingDimension,
+      embeddingOptions: options.embeddingOptions,
+      embeddingProvider: options.embeddingProvider,
+      embeddingModel: options.embeddingModel,
+      embeddingApiKey: options.embeddingApiKey,
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
       readOnly: options.readOnly,
@@ -276,6 +294,7 @@ export class DBEngine extends EventEmitter {
       this.resolveConnected = resolve;
       this.rejectConnected = reject;
     });
+    void this.connectedPromise.catch(() => {});
   }
 
   /**
@@ -285,7 +304,7 @@ export class DBEngine extends EventEmitter {
     console.log('[DBEngine.connect] Starting connection...');
     if (this.disconnectPromise) throw new Error('DBEngine の停止中は接続を開始できません');
 
-    if (this.worker && this.isReady) {
+    if (this.worker && this.connectionState === 'ready') {
       // 既に接続済みかつ準備完了の場合は何もしない（冪等性）
       console.log('DBEngine: Already connected and ready, skipping reconnection');
       this.connectionState = 'ready';
@@ -293,14 +312,19 @@ export class DBEngine extends EventEmitter {
       return;
     }
 
-    if (this.worker && !this.isReady) {
-      // ワーカーは存在するが準備未完了の場合は待機
-      console.log('DBEngine: Worker exists but not ready, waiting for ready state...');
-      this.connectionState = 'connecting';
-      await this.waitForReady(null, () => false);
-      // waitForReady内でresolveConnected()が呼ばれる
-      return;
+    if (this.worker) {
+      // pingだけでなくモデル初期化の成否まで、すべての呼び出し元で共有する。
+      return this.connectedPromise;
     }
+
+    if (this.connectionAttempted) {
+      this.connectedPromise = new Promise((resolve, reject) => {
+        this.resolveConnected = resolve;
+        this.rejectConnected = reject;
+      });
+      void this.connectedPromise.catch(() => {});
+    }
+    this.connectionAttempted = true;
 
     // 接続開始
     this.connectionState = 'connecting';
@@ -343,6 +367,9 @@ export class DBEngine extends EventEmitter {
     if (this.options.embeddingUrl) {
       pythonArgs.push(`--embedding-url=${this.options.embeddingUrl}`);
     }
+    if (this.options.embeddingDimension) {
+      pythonArgs.push(`--embedding-dimension=${this.options.embeddingDimension}`);
+    }
 
     // maxBatchTokensオプションを追加
     if (this.options.maxBatchTokens !== undefined) {
@@ -373,11 +400,16 @@ export class DBEngine extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
+        SEARCH_DOCS_EMBEDDING_OPTIONS: JSON.stringify(this.options.embeddingOptions ?? {}),
+        SEARCH_DOCS_EMBEDDING_PROVIDER: this.options.embeddingProvider ?? '',
+        SEARCH_DOCS_EMBEDDING_MODEL: this.options.embeddingModel ?? '',
+        SEARCH_DOCS_EMBEDDING_API_KEY: this.options.embeddingApiKey ?? '',
         PYTHONUNBUFFERED: '1', // Pythonの出力をバッファリングしない
         TOKENIZERS_PARALLELISM: 'false', // HuggingFace tokenizers メモリリーク対策
       },
     });
     this.workerGroups.add(this.worker);
+    const currentWorker = this.worker;
 
     this.worker.stdout?.on('data', (data: Buffer) => {
       // バッファに追加（UTF-8を明示的に指定）
@@ -460,13 +492,11 @@ export class DBEngine extends EventEmitter {
       this.emit('error', error);
     });
 
-    const workerProcess = this.worker;
     this.worker.on('exit', (code, signal) => {
       console.log(`Python worker exited with code ${code}, signal ${signal}`);
       if (stderrBuffer) {
         console.error('Accumulated stderr output:', stderrBuffer);
       }
-      this.isReady = false;
       workerExited = true;
       if (code !== 0 && !workerError) {
         const errorMsg = stderrBuffer
@@ -474,7 +504,10 @@ export class DBEngine extends EventEmitter {
           : `Python worker exited with code ${code}`;
         workerError = new Error(errorMsg);
       }
-      if (this.worker === workerProcess) this.worker = null;
+      if (this.worker === currentWorker) {
+        this.isReady = false;
+        this.worker = null;
+      }
     });
 
     // ワーカーの起動を待つ（実際にpingが通るまで）
@@ -1094,7 +1127,8 @@ export class DBEngine extends EventEmitter {
    * JSON-RPCリクエストを送信
    */
   private async sendRequest(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
-    if (!this.worker || !this.isReady) {
+    if (!this.worker || !this.isReady ||
+        (this.connectionState !== 'ready' && method !== 'initModel')) {
       throw new Error('Not connected to database');
     }
 

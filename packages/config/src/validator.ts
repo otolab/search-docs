@@ -1,5 +1,17 @@
 import type { SearchDocsConfig } from '@search-docs/types';
 
+const embeddingRequiredOptions: Record<string, string[]> = {
+  builtin: [], 'ollama-compat': ['url'], 'openai-compatible': ['baseUrl', 'model'],
+};
+
+const embeddingValidators: Record<string, (options: Record<string, unknown>) => void> = {};
+
+export function registerEmbeddingConfig(provider: string, requiredOptions: string[], validate?: (options: Record<string, unknown>) => void): void {
+  embeddingRequiredOptions[provider] = requiredOptions;
+  if (validate) embeddingValidators[provider] = validate;
+}
+
+
 /**
  * 設定オブジェクトをバリデーション
  */
@@ -168,8 +180,47 @@ function validateIndexingConfig(indexing: unknown): void {
 
   if (idx.vectorDimension !== undefined) {
     const dim = idx.vectorDimension;
-    if (dim !== 256 && dim !== 768) {
-      throw new Error('config.indexing.vectorDimension must be 256 or 768');
+    if (!Number.isSafeInteger(dim) || dim <= 0) {
+      throw new Error('config.indexing.vectorDimension must be a positive integer');
+    }
+  }
+
+  if (idx.embedding !== undefined) {
+    if (!idx.embedding || typeof idx.embedding !== 'object' || Array.isArray(idx.embedding)) {
+      throw new Error('config.indexing.embedding must be an object');
+    }
+    const rawEmbedding = idx.embedding as Record<string, unknown>;
+    if (rawEmbedding.providerOptions !== undefined && (!rawEmbedding.providerOptions || typeof rawEmbedding.providerOptions !== 'object' || Array.isArray(rawEmbedding.providerOptions))) {
+      throw new Error('config.indexing.embedding.providerOptions must be an object');
+    }
+    const embedding = { ...(rawEmbedding.providerOptions as Record<string, unknown> | undefined), ...rawEmbedding };
+    const required = embeddingRequiredOptions;
+    if (typeof embedding.provider !== 'string' || !Object.prototype.hasOwnProperty.call(required, embedding.provider)) {
+      throw new Error('config.indexing.embedding.provider is unknown');
+    }
+    for (const key of required[embedding.provider]) {
+      if (typeof embedding[key] !== 'string' || !embedding[key].trim()) {
+        throw new Error(`config.indexing.embedding.${key} must be a non-empty string`);
+      }
+    }
+    const knownProvider = ['builtin', 'ollama-compat', 'openai-compatible'].includes(embedding.provider);
+    for (const key of knownProvider ? ['url', 'baseUrl', 'model', 'apiKey'] : []) {
+      if (embedding[key] !== undefined && typeof embedding[key] !== 'string') {
+        throw new Error(`config.indexing.embedding.${key} must be a string`);
+      }
+    }
+    for (const key of knownProvider ? ['url', 'baseUrl'] : []) {
+      if (typeof embedding[key] === 'string') {
+        let url: URL;
+        try { url = new URL(embedding[key]); } catch { throw new Error(`config.indexing.embedding.${key} must be a valid HTTP URL`); }
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+          throw new Error(`config.indexing.embedding.${key} must be an HTTP URL without credentials, query or fragment`);
+        }
+      }
+    }
+    embeddingValidators[embedding.provider]?.(embedding);
+    if (embedding.provider === 'builtin' && embedding.runtime !== undefined && embedding.runtime !== 'onnx' && embedding.runtime !== 'torch') {
+      throw new Error('config.indexing.embedding.runtime must be onnx or torch');
     }
   }
 
