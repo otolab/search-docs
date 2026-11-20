@@ -14,8 +14,12 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
     const outside = `${root}-outside.md`;
     let failEmbedding = false;
     let openaiRequests = 0;
+    let ollamaDigest = false;
+    let serverDimension = 256;
+    let serverReady = true;
     const embedding = createServer((req, res) => {
-      if (req.url === '/health') { res.writeHead(200).end(JSON.stringify({ vectorDimension: 256, model: 'test' })); return; }
+      if (req.url === '/health' || req.url === '/ready') { res.writeHead(200).end(JSON.stringify({ status: 'ok', ready: serverReady, vectorDimension: serverDimension, model: 'test' })); return; }
+      if (req.url === '/api/tags') { res.writeHead(200).end(JSON.stringify({ models: [{ name: 'test-model:latest', ...(ollamaDigest ? { digest: 'test-digest' } : {}) }] })); return; }
       const chunks: Buffer[] = [];
       req.on('data', chunk => chunks.push(chunk));
       req.on('end', () => {
@@ -82,6 +86,22 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
       await release();
       const provider = { provider: 'openai-compatible', baseUrl: `${url}/v1`, model: 'test-model', apiKey: 'test-key' };
       const previousIndex = await readdir(path.join(root, '.search-docs/index'));
+      const versions = path.join(root, '.search-docs/index/sections.lance/_versions');
+      const priorManifest = path.join(versions, (await readdir(versions))[0]);
+      const priorManifestBytes = await readFile(priorManifest);
+      await writeFile(configPath, JSON.stringify({ ...config, indexing: { ...config.indexing, embedding: { provider: 'builtin', url: 'http://127.0.0.1:1' } } }));
+      await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
+      expect(await readdir(path.join(root, '.search-docs/index'))).toEqual(previousIndex);
+      expect(await readFile(priorManifest)).toEqual(priorManifestBytes);
+      serverDimension = 128;
+      await writeFile(configPath, JSON.stringify({ ...config, indexing: { ...config.indexing, embedding: { provider: 'builtin', url } } }));
+      await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
+      expect(await readFile(priorManifest)).toEqual(priorManifestBytes);
+      serverDimension = 256;
+      serverReady = false;
+      await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
+      expect(await readFile(priorManifest)).toEqual(priorManifestBytes);
+      serverReady = true;
       await writeFile(configPath, JSON.stringify({ ...config, indexing: { ...config.indexing, embedding: { ...provider, baseUrl: 'http://127.0.0.1:1/v1' } } }));
       await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
       expect(await readdir(path.join(root, '.search-docs/index'))).toEqual(previousIndex);
@@ -90,6 +110,18 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
       expect(openaiRequests).toBeGreaterThan(1);
       const externalEngine = new DBEngine({ dbPath: path.join(root, '.search-docs/index'), embeddingUrl: provider.baseUrl, embeddingDimension: config.indexing.vectorDimension, embeddingProvider: provider.provider, embeddingModel: provider.model, embeddingOptions: provider });
       try { await externalEngine.connect(); expect((await externalEngine.getSectionsByPath('source.md')).sections.length).toBeGreaterThan(0); } finally { await externalEngine.disconnect(); }
+      const ollama = { provider: 'ollama-compat', url, model: 'test-model' };
+      await writeFile(configPath, JSON.stringify({ ...config, indexing: { ...config.indexing, embedding: ollama } }));
+      const openaiIndex = await readdir(path.join(root, '.search-docs/index'));
+      const openaiManifest = path.join(versions, (await readdir(versions))[0]);
+      const openaiManifestBytes = await readFile(openaiManifest);
+      await expect(run('index', 'recreate', '--confirm-isolated')).rejects.toThrow();
+      expect(await readdir(path.join(root, '.search-docs/index'))).toEqual(openaiIndex);
+      expect(await readFile(openaiManifest)).toEqual(openaiManifestBytes);
+      ollamaDigest = true;
+      await run('index', 'recreate', '--confirm-isolated');
+      const ollamaEngine = new DBEngine({ dbPath: path.join(root, '.search-docs/index'), embeddingUrl: url, embeddingDimension: config.indexing.vectorDimension, embeddingProvider: ollama.provider, embeddingModel: ollama.model, embeddingOptions: ollama });
+      try { await ollamaEngine.connect(); expect((await ollamaEngine.getSectionsByPath('source.md')).sections.length).toBeGreaterThan(0); } finally { await ollamaEngine.disconnect(); }
     } finally {
       await new Promise<void>((resolve, reject) => embedding.close(error => error ? reject(error) : resolve()));
       await rm(outside, { force: true });
