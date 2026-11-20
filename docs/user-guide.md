@@ -422,7 +422,7 @@ search-docs server stop
 }
 ```
 
-`provider` 以外の項目は `providerOptions` オブジェクト内にまとめることもできます。`apiKey` は環境変数または Cloud Secrets から供給してください。省略すると `EMBEDDING_API_KEY` を使用します。`baseUrl` は `/v1` までを含み、プログラムが `/embeddings` を追加します。URL に認証情報・クエリ・フラグメントは指定できません。`ollama-compat` の場合は `url` と `model`（または `EMBEDDING_MODEL`）を指定します。`builtin` は従来のサーバ検出・起動を使用します。
+`provider` 以外の項目は `providerOptions` オブジェクト内にまとめることもできます。`apiKey` は環境変数または Cloud Secrets から供給してください。省略すると `EMBEDDING_API_KEY` を使用します。`baseUrl` は `/v1` までを含み、プログラムが `/embeddings` を追加します。URL に認証情報・クエリ・フラグメントは指定できません。OpenAI 互換 provider では認証情報の転送を防ぐため、HTTP リダイレクトを追跡せずエラーとして扱います。`ollama-compat` の場合は `url` と `model`（または `EMBEDDING_MODEL`）を指定します。`builtin` は従来のサーバ検出・起動を使用します。
 
 `EMBEDDING_PROVIDER` を設定するとファイルの provider 設定より優先され、`EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_API_KEY` で外部 provider を設定できます。プロバイダ固有の項目は JSON オブジェクトの `EMBEDDING_OPTIONS` に指定できます。従来の `EMBEDDING_URL` は明示 provider を指定しない場合に厳格な接続先となり、従来の `indexing.embeddingUrl` は失敗時に自動検出へ進みます。
 

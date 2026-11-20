@@ -278,6 +278,13 @@ class RemoteEmbeddingModel(EmbeddingModel):
 
 
 
+
+class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward embedding requests or credentials to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 class OpenAICompatibleEmbeddingModel(RemoteEmbeddingModel):
     """OpenAI-compatible embeddings endpoint."""
 
@@ -297,7 +304,7 @@ class OpenAICompatibleEmbeddingModel(RemoteEmbeddingModel):
             data=json.dumps({'model': self.model_name, 'input': texts, 'dimensions': target_dim}).encode(),
             headers=headers, method='POST')
         try:
-            with urllib.request.urlopen(request, timeout=60) as response:
+            with urllib.request.build_opener(RejectRedirectHandler()).open(request, timeout=60) as response:
                 data = json.loads(response.read().decode('utf-8'))['data']
                 if not isinstance(data, list) or len(data) != len(texts):
                     raise ValueError('incorrect number of vectors')

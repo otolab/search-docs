@@ -67,3 +67,40 @@ it('indexes and searches with OpenAI-compatible embeddings and rejects a model c
   expect(results.every((result) => result.status === 'rejected')).toBe(true);
   expect(engine.getConnectionState().error?.message).toContain('differs from the index');
 }, 30000);
+
+it('rejects a redirect during Python worker initialization without forwarding the key', async () => {
+  const targetRequests: string[] = [];
+  const target = createServer((request, response) => { targetRequests.push(request.headers.authorization ?? ''); response.end(); });
+  await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+  const targetAddress = target.address();
+  if (!targetAddress || typeof targetAddress === 'string') throw new Error('No target address');
+  let count = 0;
+  server = createServer((request, response) => {
+    expect(request.headers.authorization).toBe('Bearer secret-test-key');
+    count++;
+    if (count === 1) {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ data: [{ index: 0, embedding: [0.1, 0.2, 0.3] }] }));
+    } else {
+      response.writeHead(302, { location: `http://127.0.0.1:${targetAddress.port}/stolen` });
+      response.end('secret-test-key');
+    }
+  });
+  await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('No server address');
+  dbPath = await mkdtemp(join(tmpdir(), 'search-docs-redirect-'));
+  const embedding = { provider: 'openai-compatible' as const, baseUrl: `http://127.0.0.1:${address.port}/v1`, model: 'example', apiKey: 'secret-test-key' };
+  try {
+    const process = new EmbeddingServerProcess({ embedding, dimension: 3 });
+    const embeddingUrl = await process.start();
+    engine = new DBEngine({ dbPath, embeddingUrl, embeddingDimension: 3, embeddingProvider: embedding.provider, embeddingOptions: prepareEmbeddingOptions(embedding) });
+    const results = await Promise.allSettled([engine.connect(), engine.waitForConnection()]);
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    expect(engine.getConnectionState().error?.message).toContain('HTTP 302');
+    expect(engine.getConnectionState().error?.message).not.toContain('secret-test-key');
+    expect(targetRequests).toEqual([]);
+  } finally {
+    await new Promise<void>((resolve) => target.close(() => resolve()));
+  }
+}, 30000);

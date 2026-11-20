@@ -45,7 +45,7 @@ export function registerEmbeddingProvider(id: string, provider: EmbeddingProvide
 async function probe(url: string, body: object, dimension: number, openai: boolean, apiKey: string | undefined, timeoutMs: number): Promise<void> {
   let response: Response;
   try {
-    response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+    response = await fetch(url, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     throw new Error('Embedding provider is unavailable');
   }

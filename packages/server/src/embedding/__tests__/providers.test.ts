@@ -12,7 +12,7 @@ describe('external embedding providers', () => {
     const server = new EmbeddingServerProcess({ embedding: { provider: 'openai-compatible', baseUrl: 'https://example.test/v1', model: 'test', apiKey: '${env:TEST_API_KEY}' }, dimension: 3 });
     expect(await server.start()).toBe('https://example.test/v1');
     expect(server.isExternal()).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith('https://example.test/v1/embeddings', expect.objectContaining({ headers: expect.objectContaining({ authorization: 'Bearer secret-test-value' }) }));
+    expect(fetchMock).toHaveBeenCalledWith('https://example.test/v1/embeddings', expect.objectContaining({ redirect: 'manual', headers: expect.objectContaining({ authorization: 'Bearer secret-test-value' }) }));
     await server.stop();
   });
 
@@ -81,4 +81,32 @@ it('accepts a provider-specific environment option and authentication through re
   expect(await server.start()).toBe('https://test.example');
   expect(server.isExternal()).toBe(true);
   expect(received).toMatchObject({ region: 'asia', credentialEnv: 'TEST_CUSTOM_TOKEN' });
+});
+
+it.each([301, 302, 303, 307, 308])('does not follow HTTP %i redirects or send credentials to another origin', async (status) => {
+  const { createServer } = await import('node:http');
+  const received: string[] = [];
+  const sourceCredentials: (string | undefined)[] = [];
+  const target = createServer((req, res) => { received.push(req.headers.authorization ?? ''); res.end(); });
+  await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+  const targetAddress = target.address();
+  if (!targetAddress || typeof targetAddress === 'string') throw new Error('No target address');
+  const source = createServer((req, res) => {
+    sourceCredentials.push(req.headers.authorization);
+    res.writeHead(status, { location: `http://127.0.0.1:${targetAddress.port}/stolen` });
+    res.end('secret-test-key');
+  });
+  await new Promise<void>((resolve) => source.listen(0, '127.0.0.1', resolve));
+  const sourceAddress = source.address();
+  if (!sourceAddress || typeof sourceAddress === 'string') throw new Error('No source address');
+  try {
+    const result = await startExternalEmbedding({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${sourceAddress.port}/v1`, model: 'test', apiKey: 'secret-test-key' }, 3).catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toContain(`HTTP ${status}`);
+    expect((result as Error).message).not.toContain('secret-test-key');
+    expect(sourceCredentials).toEqual(['Bearer secret-test-key']);
+    expect(received).toEqual([]);
+  } finally {
+    await Promise.all([new Promise<void>((resolve) => source.close(() => resolve())), new Promise<void>((resolve) => target.close(() => resolve()))]);
+  }
 });
