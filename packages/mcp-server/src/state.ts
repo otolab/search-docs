@@ -102,6 +102,7 @@ export async function createService(
   // 1. EmbeddingServerProcess検出・起動
   const embeddingServer = new EmbeddingServerProcess({
     embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
+    requireEmbeddingUrl: Boolean(process.env.EMBEDDING_URL),
     port: 24281,
     runtime: 'onnx',
     modelPath: process.env.SEARCH_DOCS_DOCKER_MODEL_PATH,
@@ -118,6 +119,7 @@ export async function createService(
   const dbEngine = new DBEngine({
     dbPath: path.resolve(projectRoot, config.storage.indexPath),
     embeddingUrl,
+    embeddingDimension: config.indexing.vectorDimension,
     maxBatchTokens: config.worker.maxBatchTokens,
     pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
     memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,

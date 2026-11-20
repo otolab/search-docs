@@ -96,8 +96,9 @@ export async function main(): Promise<void> {
     console.log(`Loading config from: ${configPath || 'default config'}`);
 
     // Docker環境での設定上書き（モデル・次元数）
-    const dockerEmbeddingModel = process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
-    const dockerVectorDimension = process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
+    const useExternalEmbedding = Boolean(process.env.EMBEDDING_URL || config.indexing.embeddingUrl);
+    const dockerEmbeddingModel = useExternalEmbedding ? undefined : process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
+    const dockerVectorDimension = useExternalEmbedding ? undefined : process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
     if (dockerEmbeddingModel) {
       if (config.indexing.embeddingModel !== dockerEmbeddingModel) {
         console.warn(
@@ -121,6 +122,7 @@ export async function main(): Promise<void> {
     // Embeddingサーバの検出・起動
     const localEmbeddingServer = new EmbeddingServerProcess({
       embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
+      requireEmbeddingUrl: Boolean(process.env.EMBEDDING_URL),
       port: 24281,
       runtime: 'onnx',
       modelPath: process.env.SEARCH_DOCS_DOCKER_MODEL_PATH,
@@ -196,6 +198,7 @@ export async function main(): Promise<void> {
     const dbEngine = new DBEngine({
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
       embeddingUrl,
+      embeddingDimension: config.indexing.vectorDimension,
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,

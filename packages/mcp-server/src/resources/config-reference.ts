@@ -60,8 +60,8 @@ export const CONFIG_REFERENCE_CONTENT = `# 設定リファレンス
 - \`minTokensForSplit\`: 分割する最小トークン数（デフォルト: 100）
 - \`maxDepth\`: 最大分割深度 0-3（デフォルト: 3）
 - \`vectorDimension\`: ベクトル次元数（デフォルト: 256）
-- \`embeddingModel\`: 埋め込みモデル名
-- \`embeddingUrl\`: 外部Embeddingサーバの指定（省略時は自動検出・起動）
+- \`embeddingModel\`: 情報表示用のモデル名
+- \`embeddingUrl\`: 外部Embeddingサーバを優先して試すURL（失敗時は自動検出）。厳格に指定するには環境変数 \`EMBEDDING_URL\` を使用
 
 ## search
 

@@ -168,8 +168,8 @@ function validateIndexingConfig(indexing: unknown): void {
 
   if (idx.vectorDimension !== undefined) {
     const dim = idx.vectorDimension;
-    if (dim !== 256 && dim !== 768) {
-      throw new Error('config.indexing.vectorDimension must be 256 or 768');
+    if (!Number.isSafeInteger(dim) || dim <= 0) {
+      throw new Error('config.indexing.vectorDimension must be a positive integer');
     }
   }
 
