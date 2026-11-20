@@ -18,7 +18,7 @@ otolab/search-docs-mcp:<version>
      └─ HTTP で待ち受け、複数MCPサーバから共有利用
 ```
 
-**ユーザーが意識するのは「Embeddingサーバコンテナを起動するかどうか」だけ**。MCPサーバ側は自動検出で勝手に切り替わります。ファイル監視（WatcherProcess）は各サーバに内蔵されており、Heartbeat調停で1つだけがmasterとして動作します。
+Embeddingサーバは自動検出できます。特定のサーバだけを使いたい場合は `EMBEDDING_URL` で明示してください。ファイル監視（WatcherProcess）は各サーバに内蔵されており、Heartbeat調停で1つだけがmasterとして動作します。
 
 ## 利用形態
 
@@ -98,7 +98,8 @@ docker run --rm -i \
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `EMBEDDING_URL` | 明示的なEmbeddingサーバURL | - |
+| `EMBEDDING_URL` | 優先して使うEmbeddingサーバURL。接続できなければ起動を中止 | - |
+| `EMBEDDING_MODEL` | Ollamaで使用するモデル名。Ollama利用時は必須 | - |
 | `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `24281` |
 
 **注**: 以前の `SEARCH_DOCS_DOCKER_EMBEDDING_URL` 環境変数は廃止されました。`EmbeddingServerProcess`が自動検出するため不要です。
@@ -107,14 +108,16 @@ docker run --rm -i \
 
 MCPサーバ起動時に、`EmbeddingServerProcess`（TypeScript管理）が以下の順序でEmbeddingサーバを探します：
 
-1. `EMBEDDING_URL` 環境変数（明示指定、最優先）
-2. `http://search-docs-embedding:24281/health`（Docker network内）
-3. `http://host.docker.internal:24281/health`（ホスト側サービス）
-4. すべて失敗（タイムアウト 1s）→ ローカルspawn起動
+1. `EMBEDDING_URL` 環境変数。失敗した場合は他を試さず停止
+2. 設定ファイルの `indexing.embeddingUrl`。従来との互換性のため、失敗時は次へ進む
+3. URLが未指定の場合、`http://127.0.0.1:24281`（同一環境の共有サーバ）
+4. `http://search-docs-embedding:24281`（Docker network内）
+5. `http://host.docker.internal:24281`（ホスト側サービス）
+6. 見つからなければ内蔵サーバを起動
 
 **注意**: Docker内から `localhost` はコンテナ自身を指します。ホスト側のサービスには `host.docker.internal`（macOS/Windows）を使います。Linux では `--add-host=host.docker.internal:host-gateway` が必要です。
 
-**検出エンドポイント**: `GET /health`を使用します。成功時は`GET /health`ポーリングでreadiness待ちします。
+**検出エンドポイント**: 内蔵サーバは `/health` と `/ready`、Ollama は `/api/tags` を確認します。Ollama ではさらに指定モデルで試験的にベクトルを生成し、次元を確認します。
 
 **管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`
 
@@ -138,20 +141,42 @@ Stage 3: runtime        ─ 実行環境（Node + Python + 成果物 + モデル
 
 ### 設定の固定ルール（Docker実行時）
 
-`embeddingModel` と `vectorDimension` はイメージに焼き込んだモデルと整合性が必須です。Docker実行時はイメージ内蔵値で強制し、`.search-docs.json` の指定は無視します。
+内蔵モデルの次元は `/health` から取得します。Ollama の場合は設定ファイルの `indexing.vectorDimension` を使います。`indexing.embeddingModel` は Ollama のモデル選択には使いません。
 
 | 設定項目 | Docker実行時 | 理由 |
 |---------|:-----------:|------|
-| `indexing.embeddingModel` | **イメージ内蔵値で強制** | イメージ内のモデルと一致必須 |
-| `indexing.vectorDimension` | **イメージ内蔵値で強制** | モデルの出力次元と一致必須 |
-| `indexing.embeddingUrl` | **自動検出** | EmbeddingServerProcessが検出・設定 |
+| `indexing.embeddingModel` | 情報表示用 | モデルはサーバ側で選択 |
+| `indexing.vectorDimension` | Ollamaへの出力次元指定 | 指定可能な次元はモデルに依存 |
+| `indexing.embeddingUrl` | 環境変数の次に試す | 失敗時は自動検出に進む |
 | `indexing.maxTokensPerSection` | ユーザー設定を尊重 | 分割粒度、互換性に影響しない |
 | `indexing.maxDepth` | ユーザー設定を尊重 | 同上 |
 | `files.*` | ユーザー設定を尊重 | プロジェクト固有 |
 | `search.*` | ユーザー設定を尊重 | プロジェクト固有 |
 | `worker.*` | ユーザー設定を尊重 | チューニング項目 |
 
-`.search-docs.json` に別モデルが書かれていた場合は警告ログを出力します。
+### OllamaをDocker MCPから使う
+
+ホストでOllamaを起動し、対応するEmbeddingモデルを用意します。例の `qwen3-embedding:0.6b` は多言語モデルの候補であり、日本語検索の品質とこの構成での動作は未検証です。モデルが指定された次元を返せない場合は起動に失敗します。
+
+```bash
+ollama pull qwen3-embedding:0.6b
+docker run --rm -i \
+  -v "${PWD}:/workspace:ro" \
+  -v "${PWD}/.search-docs:/workspace/.search-docs" \
+  -e EMBEDDING_URL=http://host.docker.internal:11434 \
+  -e EMBEDDING_MODEL=qwen3-embedding:0.6b \
+  otolab/search-docs-mcp:latest
+```
+
+ホスト側のOllamaがコンテナから到達可能なアドレスで待ち受ける必要があります。Linuxでは上記コマンドに `--add-host=host.docker.internal:host-gateway` を追加します。`EMBEDDING_MODEL` には `/api/tags` に存在するモデルを指定してください。Ollama v0.21.0ではruri-v3のModernBERTに対応していないため、従来のruri-v3は当面内蔵ONNXサーバで利用してください。
+
+既存の `indexing.embeddingUrl` を厳格な接続に移行するには、同じURLを `EMBEDDING_URL` に設定します。環境変数は設定ファイルより優先され、接続できない場合に他のサーバへ切り替わりません。設定ファイルだけを残した場合は従来どおり fallback します。
+
+### モデル変更とインデックスの再作成
+
+インデックスはモデル、Ollamaのモデルdigest、次元を記録します。異なるモデルや次元で開こうとすると停止します。識別情報のない既存インデックスは、従来の内蔵ONNXモデルでは利用を継続できますが、Ollamaへの切替時は再作成が必要です。既存データを自動削除することはありません。
+
+切り替える場合は、同じプロジェクトを使う全サーバを停止し、設定された `storage.indexPath`（既定は `.search-docs/index`）をバックアップとして別の場所に移動してください。その後、新しいモデル設定でサーバを起動し、索引を再作成します。HTTPサーバを使う場合は `search-docs index rebuild --force` で再作成できます。元に戻す場合も全サーバを停止してからバックアップを戻してください。異なるバージョンのサーバを同じインデックスに同時接続しないでください。
 
 ## 既知の問題と修正内容
 

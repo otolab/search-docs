@@ -168,3 +168,64 @@ describe('EmbeddingServerProcess readiness timeout', () => {
     await expect(server.start()).rejects.toThrow('Failed to start local process: spawn ENOENT');
   });
 });
+
+describe('explicit external embedding server', () => {
+  it('reuses a local server when no URL is configured', async () => {
+    const server = new EmbeddingServerProcess({});
+    const methods = server as unknown as { externalServerReady: (url: string) => Promise<boolean> };
+    const check = vi.spyOn(methods, 'externalServerReady').mockResolvedValue(true);
+    await expect(server.start()).resolves.toBe('http://127.0.0.1:24281');
+    expect(check).toHaveBeenCalledWith('http://127.0.0.1:24281');
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no configured URL', undefined],
+    ['unavailable legacy configured URL', 'http://127.0.0.1:1'],
+  ])('starts the local server with %s', async (_label, embeddingUrl) => {
+    const server = new EmbeddingServerProcess({ embeddingUrl });
+    const methods = server as unknown as {
+      externalServerReady: (url: string) => Promise<boolean>;
+      startLocal: (port: number) => Promise<void>;
+      url: string;
+    };
+    vi.spyOn(methods, 'externalServerReady').mockResolvedValue(false);
+    vi.spyOn(methods, 'startLocal').mockImplementation(async () => {
+      methods.url = 'http://localhost:24281';
+    });
+    await expect(server.start()).resolves.toBe('http://localhost:24281');
+    expect(methods.startLocal).toHaveBeenCalledOnce();
+  });
+
+  it('fails without falling back when the configured URL is unavailable', async () => {
+    const server = new EmbeddingServerProcess({ embeddingUrl: 'http://127.0.0.1:1', requireEmbeddingUrl: true });
+    const methods = server as unknown as { externalServerReady: (url: string) => Promise<boolean> };
+    vi.spyOn(methods, 'externalServerReady').mockResolvedValue(false);
+    await expect(server.start()).rejects.toThrow('unavailable or not ready');
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts an Ollama tags endpoint when health is unavailable', async () => {
+    const { createServer } = await import('node:http');
+    const httpServer = createServer((req, res) => {
+      if (req.url === '/api/tags') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ models: [{ name: 'example:latest' }] }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = httpServer.address();
+      if (!address || typeof address === 'string') throw new Error('No server address');
+      const url = `http://127.0.0.1:${address.port}`;
+      const server = new EmbeddingServerProcess({ embeddingUrl: url });
+      await expect(server.start()).resolves.toBe(url);
+      expect(server.isExternal()).toBe(true);
+    } finally {
+      await new Promise<void>((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+});

@@ -208,6 +208,7 @@ class RemoteEmbeddingModel(EmbeddingModel):
         self.url = url.rstrip('/')
         self._dimension = vector_dimension
         self.model_name = model
+        self.model_digest = None
         self.available = True
         sys.stderr.write(f"RemoteEmbeddingModel initialized: {self.url}\n")
 
@@ -235,6 +236,7 @@ class RemoteEmbeddingModel(EmbeddingModel):
         texts = [text] if is_single else text
 
         try:
+            self._check_model_digest()
             request_data = json.dumps({
                 "model": self.model_name,
                 "input": texts,
@@ -251,11 +253,26 @@ class RemoteEmbeddingModel(EmbeddingModel):
             with urllib.request.urlopen(req, timeout=60) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 vectors = result['embeddings']
+                self._check_model_digest()
+                if (not isinstance(vectors, list) or len(vectors) != len(texts) or
+                        any(not isinstance(vector, list) or len(vector) != target_dim or
+                            any(not isinstance(value, (int, float)) or not np.isfinite(value)
+                                for value in vector) for vector in vectors)):
+                    raise RuntimeError(f'Invalid embedding response: expected {len(texts)} vectors of dimension {target_dim}')
                 return vectors[0] if is_single else vectors
 
         except Exception as e:
             sys.stderr.write(f"RemoteEmbeddingModel encode error: {e}\n")
             raise
+
+    def _check_model_digest(self):
+        if self.model_digest is None:
+            return
+        with urllib.request.urlopen(f"{self.url}/api/tags", timeout=5) as response:
+            models = json.loads(response.read().decode('utf-8')).get('models', [])
+        if not any(item.get('name') == self.model_name and item.get('digest') == self.model_digest
+                   for item in models):
+            raise RuntimeError(f'Ollama model {self.model_name} changed; restart and rebuild the index')
 
 
 def create_embedding_model(embedding_url: str, vector_dimension: int, model: str = "ruri-v3-30m") -> EmbeddingModel:

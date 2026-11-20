@@ -8,6 +8,7 @@ import {
 
 export interface EmbeddingServerOptions {
   embeddingUrl?: string;
+  requireEmbeddingUrl?: boolean;
   port?: number;
   runtime?: 'onnx' | 'torch';
   modelPath?: string;
@@ -42,7 +43,20 @@ export class EmbeddingServerProcess {
         console.log(`[EmbeddingServer] Using external server: ${this.url}`);
         return this.url;
       }
+      if (this.options.requireEmbeddingUrl) {
+        throw new Error(`[EmbeddingServer] Configured URL ${this.options.embeddingUrl} is unavailable or not ready`);
+      }
       console.warn(`[EmbeddingServer] Configured URL ${this.options.embeddingUrl} not responding, trying alternatives...`);
+    }
+
+    // 従来の既定URLはローカルの共有サーバを最初に試していた。
+    if (!this.options.embeddingUrl) {
+      const localUrl = `http://127.0.0.1:${port}`;
+      if (await this.externalServerReady(localUrl)) {
+        this.url = localUrl;
+        this.external = true;
+        return this.url;
+      }
     }
 
     // 2. Docker network (compose service)
@@ -304,10 +318,29 @@ export class EmbeddingServerProcess {
    * /readyを持たない旧サーバはreadinessCheck内で/healthへfallbackする。
    */
   private async externalServerReady(url: string): Promise<boolean> {
-    if (!(await this.healthCheck(url))) return false;
+    if (!(await this.healthCheck(url))) return this.ollamaAvailable(url);
     if (await this.readinessCheck(url)) return true;
     console.warn(`[EmbeddingServer] External server ${url} is live but not ready; it will not be used.`);
     return false;
+  }
+
+  private ollamaAvailable(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const req = http.get(`${url.replace(/\/$/, '')}/api/tags`, { timeout: 2000 }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body) as { models?: unknown };
+            resolve(res.statusCode === 200 && Array.isArray(data.models));
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+    });
   }
 
   private async waitForReady(

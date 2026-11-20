@@ -401,8 +401,10 @@ search-docs server stop
 - `maxTokensPerSection`: セクションの最大トークン数
 - `minTokensForSplit`: 分割する最小トークン数
 - `maxDepth`: 最大分割深度（0-3）
-- `vectorDimension`: ベクトル次元数（256推奨）
-- `embeddingModel`: 埋め込みモデル名
+- `vectorDimension`: ベクトル次元数（既定256）。Ollamaではモデルが対応する次元を指定
+- `embeddingModel`: 情報表示用のモデル名。Ollamaの選択には環境変数 `EMBEDDING_MODEL` を使用
+
+外部サーバの優先順位、Ollamaの利用方法とモデル変更時の再作成については [Docker構成ガイド](docker-deployment.md#ollamaをdocker-mcpから使う) を参照してください。
 
 #### search
 

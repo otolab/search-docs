@@ -189,10 +189,11 @@ bin/server.ts が最初に起動するコンポーネント。Embeddingサーバ
 ```
 
 検出順序:
-1. `options.embeddingUrl`（明示指定 or EMBEDDING_URL環境変数）
-2. `http://search-docs-embedding:24281`（Docker Composeサービス）
-3. `http://host.docker.internal:{port}`（ホスト側サーバ）
-4. ローカル起動（`embedding_server.py` をspawn）
+1. `EMBEDDING_URL`（失敗時は停止）、または設定の `indexing.embeddingUrl`（失敗時は次へ）
+2. URL未指定の場合 `http://127.0.0.1:{port}`（ローカルの共有サーバ）
+3. `http://search-docs-embedding:24281`（Docker Composeサービス）
+4. `http://host.docker.internal:{port}`（ホスト側サーバ）
+5. ローカル起動（`embedding_server.py` をspawn）
 
 ## 起動シーケンス
 
