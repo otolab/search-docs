@@ -107,7 +107,9 @@ export function registerSystemStatusTool(context: ToolRegistrationContext): Regi
               statusText += `  実行中: ${status.worker.running ? 'Yes' : 'No'}\n`;
               statusText += `  キュー: ${status.worker.queue}件\n`;
             } else if (status.database.connectionState === 'error') {
+              statusText = statusText.replace('状態: 稼働中 ✅', '状態: データベース接続エラー ⚠️');
               statusText += `データベースエラー: ${status.database.connectionError || '不明'}\n`;
+              statusText += '設定とEmbeddingサーバを確認し、修正後にMCPサーバを再起動してください。\n';
             } else {
               statusText += 'データベース準備中...\n';
             }
