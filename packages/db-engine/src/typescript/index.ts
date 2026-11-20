@@ -47,6 +47,10 @@ export interface DBEngineOptions {
    */
   embeddingUrl?: string;
   embeddingDimension?: number;
+  embeddingOptions?: Record<string, unknown>;
+  embeddingProvider?: string;
+  embeddingModel?: string;
+  embeddingApiKey?: string;
 
   /**
    * データベースパス
@@ -222,7 +226,7 @@ export class DBEngine extends EventEmitter {
   private pendingRequests = new Map<number, PendingRequest>();
   private isReady = false;
   private buffer = ''; // 受信データのバッファ
-  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'> & Pick<DBEngineOptions, 'readOnly' | 'embeddingDimension'>;
+  private options: Pick<Required<DBEngineOptions>, 'embeddingUrl' | 'dbPath' | 'maxBatchTokens'> & Pick<DBEngineOptions, 'readOnly' | 'embeddingDimension' | 'embeddingProvider' | 'embeddingModel' | 'embeddingApiKey' | 'embeddingOptions'>;
   private performanceCsvPath: string | null = null;
   private performanceCsvStream: fs.WriteStream | null = null;
   private memoryCheckInterval: NodeJS.Timeout | null = null;
@@ -255,6 +259,10 @@ export class DBEngine extends EventEmitter {
     this.options = {
       embeddingUrl: options.embeddingUrl || process.env.EMBEDDING_URL || 'http://localhost:24281',
       embeddingDimension: options.embeddingDimension,
+      embeddingOptions: options.embeddingOptions,
+      embeddingProvider: options.embeddingProvider,
+      embeddingModel: options.embeddingModel,
+      embeddingApiKey: options.embeddingApiKey,
       dbPath: options.dbPath || './.search-docs/index',
       maxBatchTokens: options.maxBatchTokens ?? 4000,
       readOnly: options.readOnly,
@@ -371,6 +379,10 @@ export class DBEngine extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
+        SEARCH_DOCS_EMBEDDING_OPTIONS: JSON.stringify(this.options.embeddingOptions ?? {}),
+        SEARCH_DOCS_EMBEDDING_PROVIDER: this.options.embeddingProvider ?? '',
+        SEARCH_DOCS_EMBEDDING_MODEL: this.options.embeddingModel ?? '',
+        SEARCH_DOCS_EMBEDDING_API_KEY: this.options.embeddingApiKey ?? '',
         PYTHONUNBUFFERED: '1', // Pythonの出力をバッファリングしない
         TOKENIZERS_PARALLELISM: 'false', // HuggingFace tokenizers メモリリーク対策
       },

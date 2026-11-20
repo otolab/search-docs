@@ -173,6 +173,45 @@ function validateIndexingConfig(indexing: unknown): void {
     }
   }
 
+  if (idx.embedding !== undefined) {
+    if (!idx.embedding || typeof idx.embedding !== 'object' || Array.isArray(idx.embedding)) {
+      throw new Error('config.indexing.embedding must be an object');
+    }
+    const rawEmbedding = idx.embedding as Record<string, unknown>;
+    if (rawEmbedding.providerOptions !== undefined && (!rawEmbedding.providerOptions || typeof rawEmbedding.providerOptions !== 'object' || Array.isArray(rawEmbedding.providerOptions))) {
+      throw new Error('config.indexing.embedding.providerOptions must be an object');
+    }
+    const embedding = { ...(rawEmbedding.providerOptions as Record<string, unknown> | undefined), ...rawEmbedding };
+    const required: Record<string, string[]> = {
+      builtin: [], 'ollama-compat': ['url'], 'openai-compatible': ['baseUrl', 'model'],
+    };
+    if (typeof embedding.provider !== 'string' || !Object.prototype.hasOwnProperty.call(required, embedding.provider)) {
+      throw new Error('config.indexing.embedding.provider is unknown');
+    }
+    for (const key of required[embedding.provider]) {
+      if (typeof embedding[key] !== 'string' || !embedding[key].trim()) {
+        throw new Error(`config.indexing.embedding.${key} must be a non-empty string`);
+      }
+    }
+    for (const key of ['url', 'baseUrl', 'model', 'apiKey']) {
+      if (embedding[key] !== undefined && typeof embedding[key] !== 'string') {
+        throw new Error(`config.indexing.embedding.${key} must be a string`);
+      }
+    }
+    for (const key of ['url', 'baseUrl']) {
+      if (typeof embedding[key] === 'string') {
+        let url: URL;
+        try { url = new URL(embedding[key]); } catch { throw new Error(`config.indexing.embedding.${key} must be a valid HTTP URL`); }
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+          throw new Error(`config.indexing.embedding.${key} must be an HTTP URL without credentials, query or fragment`);
+        }
+      }
+    }
+    if (embedding.runtime !== undefined && embedding.runtime !== 'onnx' && embedding.runtime !== 'torch') {
+      throw new Error('config.indexing.embedding.runtime must be onnx or torch');
+    }
+  }
+
   if (idx.embeddingModel !== undefined && typeof idx.embeddingModel !== 'string') {
     throw new Error('config.indexing.embeddingModel must be a string');
   }

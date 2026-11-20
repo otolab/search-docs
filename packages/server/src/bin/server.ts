@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { resolveEmbeddingApiKey } from '../embedding/providers.js';
 
 /**
  * SearchDocs HTTP JSON-RPCサーバ エントリポイント
@@ -96,7 +97,7 @@ export async function main(): Promise<void> {
     console.log(`Loading config from: ${configPath || 'default config'}`);
 
     // Docker環境での設定上書き（モデル・次元数）
-    const useExternalEmbedding = Boolean(process.env.EMBEDDING_URL || config.indexing.embeddingUrl);
+    const useExternalEmbedding = Boolean(process.env.EMBEDDING_URL || config.indexing.embeddingUrl || (config.indexing.embedding && config.indexing.embedding.provider !== 'builtin'));
     const dockerEmbeddingModel = useExternalEmbedding ? undefined : process.env.SEARCH_DOCS_DOCKER_EMBEDDING_MODEL;
     const dockerVectorDimension = useExternalEmbedding ? undefined : process.env.SEARCH_DOCS_DOCKER_VECTOR_DIMENSION;
     if (dockerEmbeddingModel) {
@@ -121,6 +122,7 @@ export async function main(): Promise<void> {
 
     // Embeddingサーバの検出・起動
     const localEmbeddingServer = new EmbeddingServerProcess({
+      embedding: config.indexing.embedding,
       embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
       requireEmbeddingUrl: Boolean(process.env.EMBEDDING_URL),
       port: 24281,
@@ -199,6 +201,10 @@ export async function main(): Promise<void> {
       dbPath: path.resolve(projectRoot, config.storage.indexPath),
       embeddingUrl,
       embeddingDimension: config.indexing.vectorDimension,
+      embeddingOptions: config.indexing.embedding ? { ...config.indexing.embedding, apiKey: resolveEmbeddingApiKey(config.indexing.embedding) } : undefined,
+      embeddingProvider: config.indexing.embedding?.provider,
+      embeddingModel: config.indexing.embedding && 'model' in config.indexing.embedding ? config.indexing.embedding.model : undefined,
+      embeddingApiKey: resolveEmbeddingApiKey(config.indexing.embedding),
       maxBatchTokens: config.worker.maxBatchTokens,
       pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,

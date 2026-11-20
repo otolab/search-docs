@@ -83,7 +83,7 @@ export class ConfigLoader {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // ファイルが存在しない場合はデフォルト設定を返す
-        return DEFAULT_CONFIG;
+        return this.mergeWithDefaults({});
       }
       throw error;
     }
@@ -172,7 +172,7 @@ export class ConfigLoader {
    * デフォルト設定を取得
    */
   static getDefaultConfig(): SearchDocsConfig {
-    return DEFAULT_CONFIG;
+    return this.mergeWithDefaults({});
   }
 
   /**
@@ -324,6 +324,7 @@ export class ConfigLoader {
           config.indexing?.embeddingModel ?? DEFAULT_CONFIG.indexing.embeddingModel,
         embeddingUrl:
           config.indexing?.embeddingUrl ?? DEFAULT_CONFIG.indexing.embeddingUrl,
+        embedding: resolveEmbeddingConfig(config.indexing?.embedding),
       },
       search: {
         defaultLimit: config.search?.defaultLimit ?? DEFAULT_CONFIG.search.defaultLimit,
@@ -358,4 +359,20 @@ export class ConfigLoader {
       },
     };
   }
+}
+
+function resolveEmbeddingConfig(config: SearchDocsConfig['indexing']['embedding']): SearchDocsConfig['indexing']['embedding'] {
+  const provider = process.env.EMBEDDING_PROVIDER;
+  if (!provider) {
+    if (!config) return undefined;
+    const raw = config as typeof config & { providerOptions?: Record<string, unknown> };
+    return { ...raw.providerOptions, ...raw } as typeof config;
+  }
+  const embedding = provider === 'builtin'
+    ? { provider, url: process.env.EMBEDDING_BASE_URL }
+    : provider === 'ollama-compat'
+      ? { provider, url: process.env.EMBEDDING_BASE_URL, model: process.env.EMBEDDING_MODEL }
+      : { provider, baseUrl: process.env.EMBEDDING_BASE_URL, model: process.env.EMBEDDING_MODEL, apiKey: process.env.EMBEDDING_API_KEY };
+  validateConfig({ indexing: { embedding } });
+  return embedding as SearchDocsConfig['indexing']['embedding'];
 }

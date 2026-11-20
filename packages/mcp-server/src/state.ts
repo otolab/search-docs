@@ -7,7 +7,7 @@ import { ConfigLoader, type ConfigDeprecation } from '@search-docs/config';
 import type { SearchDocsConfig, SearchDocsService } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
-import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess } from '@search-docs/server';
+import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess, resolveEmbeddingApiKey } from '@search-docs/server';
 
 /**
  * システム状態の種類
@@ -101,6 +101,7 @@ export async function createService(
 ): Promise<ServiceInstances> {
   // 1. EmbeddingServerProcess検出・起動
   const embeddingServer = new EmbeddingServerProcess({
+    embedding: config.indexing.embedding,
     embeddingUrl: process.env.EMBEDDING_URL || config.indexing.embeddingUrl,
     requireEmbeddingUrl: Boolean(process.env.EMBEDDING_URL),
     port: 24281,
@@ -120,6 +121,10 @@ export async function createService(
     dbPath: path.resolve(projectRoot, config.storage.indexPath),
     embeddingUrl,
     embeddingDimension: config.indexing.vectorDimension,
+    embeddingOptions: config.indexing.embedding ? { ...config.indexing.embedding, apiKey: resolveEmbeddingApiKey(config.indexing.embedding) } : undefined,
+    embeddingProvider: config.indexing.embedding?.provider,
+    embeddingModel: config.indexing.embedding && 'model' in config.indexing.embedding ? config.indexing.embedding.model : undefined,
+    embeddingApiKey: resolveEmbeddingApiKey(config.indexing.embedding),
     maxBatchTokens: config.worker.maxBatchTokens,
     pythonMaxMemoryMB: config.worker.pythonMaxMemoryMB,
     memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,

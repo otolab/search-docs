@@ -46,7 +46,7 @@ sys.stderr.write(f"[DBEngine] TOKENIZERS_PARALLELISM={tokenizers_parallelism}\n"
 pa.set_memory_pool(pa.system_memory_pool())
 
 # 埋め込みモデルをインポート
-from embedding import create_embedding_model
+from embedding import create_embedding_model, EMBEDDING_PROVIDERS
 # スキーマ定義をインポート
 from schemas import (
     get_sections_schema,
@@ -764,7 +764,13 @@ class SearchDocsWorker:
         return {"status": "ok"}
 
     def init_model(self) -> Dict[str, Any]:
-        """Embedding Serverに接続してモデル情報を取得し、テーブルを初期化"""
+        """設定された provider の初期化処理を選択する。"""
+        provider = os.environ.get('SEARCH_DOCS_EMBEDDING_PROVIDER', '')
+        if provider not in EMBEDDING_PROVIDERS:
+            raise RuntimeError(f'Unknown embedding provider: {provider}')
+        return EMBEDDING_PROVIDERS[provider](self)
+
+    def _init_legacy_model(self) -> Dict[str, Any]:
         import urllib.request as _urllib_request
         import urllib.error as _urllib_error
 
@@ -780,6 +786,8 @@ class SearchDocsWorker:
         )
         self.vector_dimension = configured_dimension
         try:
+            if os.environ.get('SEARCH_DOCS_EMBEDDING_PROVIDER') == 'ollama-compat':
+                raise _urllib_error.HTTPError(health_url, 404, 'explicit Ollama', None, None)
             req = _urllib_request.Request(health_url, method='GET')
             with _urllib_request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -796,7 +804,7 @@ class SearchDocsWorker:
             if exc.code != 404:
                 raise
             provider = 'ollama'
-            requested_model = os.environ.get('EMBEDDING_MODEL')
+            requested_model = os.environ.get('SEARCH_DOCS_EMBEDDING_MODEL') or os.environ.get('EMBEDDING_MODEL')
             if not requested_model:
                 raise RuntimeError('Ollama requires an explicit EMBEDDING_MODEL')
             with _urllib_request.urlopen(f"{self.embedding_url.rstrip('/')}/api/tags", timeout=5) as response:

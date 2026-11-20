@@ -1,12 +1,15 @@
 import { spawn, type ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as http from 'http';
+import type { EmbeddingConfig } from '@search-docs/types';
+import { startExternalEmbedding } from './providers.js';
 import {
   EMBEDDING_READY_TIMEOUT_ENV,
   getEmbeddingReadyTimeoutMs,
 } from '@search-docs/common';
 
 export interface EmbeddingServerOptions {
+  embedding?: EmbeddingConfig;
   embeddingUrl?: string;
   requireEmbeddingUrl?: boolean;
   port?: number;
@@ -34,6 +37,16 @@ export class EmbeddingServerProcess {
 
   async start(): Promise<string> {
     const port = this.options.port ?? 24281;
+    if (this.options.embedding && this.options.embedding.provider !== 'builtin') {
+      this.url = await startExternalEmbedding(this.options.embedding, this.options.dimension ?? 256);
+      this.external = true;
+      return this.url;
+    }
+
+    if (this.options.embedding?.provider === 'builtin') {
+      this.options.embeddingUrl = this.options.embedding.url ?? this.options.embeddingUrl;
+      this.options.runtime = this.options.embedding.runtime ?? this.options.runtime;
+    }
 
     // 1. 明示的なURL指定
     if (this.options.embeddingUrl) {
