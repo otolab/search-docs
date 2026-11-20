@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG } from '@search-docs/types';
 
 const capture = vi.hoisted(() => ({ options: vi.fn() }));
 vi.mock('@search-docs/server', () => ({
+  prepareEmbeddingOptions: () => undefined,
   EmbeddingServerProcess: class {
     constructor(options: unknown) { capture.options(options); }
     async start() { return 'http://embedding'; }

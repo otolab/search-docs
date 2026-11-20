@@ -1,3 +1,5 @@
+import { ConfigLoader } from '@search-docs/config';
+import { startExternalEmbedding } from '@search-docs/server';
 /**
  * embedding status コマンド
  */
@@ -148,6 +150,14 @@ export async function showEmbeddingStatus(
 
 export async function executeEmbeddingStatus(options: EmbeddingStatusOptions): Promise<void> {
   try {
+    const { config } = await ConfigLoader.resolve();
+    const embedding = config.indexing.embedding;
+    if (embedding && embedding.provider !== 'builtin') {
+      await startExternalEmbedding(embedding, config.indexing.vectorDimension, parseTimeout(options.timeout));
+      console.log(`Embedding provider ${embedding.provider}: healthy (dimension ${config.indexing.vectorDimension})`);
+      process.exitCode = 0;
+      return;
+    }
     await showEmbeddingStatus(options);
   } catch (error) {
     console.error('Error:', (error as Error).message);

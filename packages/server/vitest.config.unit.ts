@@ -12,6 +12,6 @@ export default defineConfig({
       'src/embedding/__tests__/**/*.test.ts',
       'src/bin/__tests__/**/*.test.ts',
     ],
-    exclude: ['**/node_modules/**', '**/dist/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'src/embedding/__tests__/openai-integration.test.ts'],
   },
 });

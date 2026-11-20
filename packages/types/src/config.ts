@@ -42,6 +42,11 @@ export interface FilesConfig {
   maxFileSize: number;
 }
 
+export type EmbeddingConfig =
+  | { provider: 'builtin'; url?: string; runtime?: 'onnx' | 'torch' }
+  | { provider: 'ollama-compat'; url: string; model?: string }
+  | { provider: 'openai-compatible'; baseUrl: string; model: string; apiKey?: string };
+
 export interface IndexingConfig {
   /** セクションあたりの最大トークン数 */
   maxTokensPerSection: number;
@@ -55,6 +60,7 @@ export interface IndexingConfig {
   embeddingModel: string;
   /** Embedding Serverの候補URL（省略時は自動検出） */
   embeddingUrl?: string;
+  embedding?: EmbeddingConfig;
 }
 
 export interface SearchConfig {

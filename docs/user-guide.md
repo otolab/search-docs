@@ -404,6 +404,30 @@ search-docs server stop
 - `vectorDimension`: ベクトル次元数（既定256）。Ollamaではモデルが対応する次元を指定
 - `embeddingModel`: 情報表示用のモデル名。Ollamaの選択には環境変数 `EMBEDDING_MODEL` を使用
 
+#### 外部 embedding provider
+
+`indexing.embedding` を明示すると、外部 provider に接続できない場合はエラーで停止し、ローカルプロセスを起動しません。OpenAI 互換 API の例です。
+
+```json
+{
+  "indexing": {
+    "vectorDimension": 1536,
+    "embedding": {
+      "provider": "openai-compatible",
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "text-embedding-3-small",
+      "apiKey": "${env:OPENAI_API_KEY}"
+    }
+  }
+}
+```
+
+`provider` 以外の項目は `providerOptions` オブジェクト内にまとめることもできます。`apiKey` は環境変数または Cloud Secrets から供給してください。省略すると `EMBEDDING_API_KEY` を使用します。`baseUrl` は `/v1` までを含み、プログラムが `/embeddings` を追加します。URL に認証情報・クエリ・フラグメントは指定できません。OpenAI 互換 provider では認証情報の転送を防ぐため、HTTP リダイレクトを追跡せずエラーとして扱います。`ollama-compat` の場合は `url` と `model`（または `EMBEDDING_MODEL`）を指定します。`builtin` は従来のサーバ検出・起動を使用します。
+
+`EMBEDDING_PROVIDER` を設定するとファイルの provider 設定より優先され、`EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_API_KEY` で外部 provider を設定できます。プロバイダ固有の項目は JSON オブジェクトの `EMBEDDING_OPTIONS` に指定できます。従来の `EMBEDDING_URL` は明示 provider を指定しない場合に厳格な接続先となり、従来の `indexing.embeddingUrl` は失敗時に自動検出へ進みます。
+
+明示的な外部 provider は `vectorDimension` をリクエストの `dimensions` に渡し、返却ベクトルが同じ次元でなければエラーになります。API とモデルがその次元指定に対応している必要があります。従来の builtin は互換性のため `/health` が返す次元を優先します。provider、モデル、次元、接続先を変更する場合は、稼働中のサーバを停止して索引を再構築してください。OpenAI 互換では接続先のハッシュを索引 identity に記録し、変更を検出すると再構築を要求します。接続先を記録していない旧形式の OpenAI 互換索引も、安全のため再構築が必要です。`search-docs embedding status` は明示的な外部 provider へ推論リクエストを送り、接続と次元を確認します。
+
 外部サーバの優先順位、Ollamaの利用方法とモデル変更時の再作成については [Docker構成ガイド](docker-deployment.md#ollamaをdocker-mcpから使う) を参照してください。
 
 #### search
