@@ -140,7 +140,9 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   const scriptPath = path.join(dbEngineRoot, 'src/python/embedding_server.py');
 
   const args = [
-    '--project', dbEngineRoot, 'run', 'python',
+    '--project', dbEngineRoot, 'run',
+    ...(runtime === 'torch' ? ['--extra', 'torch'] : []),
+    'python',
     scriptPath,
     `--port=${port}`,
     `--runtime=${runtime}`,

@@ -455,6 +455,16 @@ search-docs server stop
 
 `EMBEDDING_PROVIDER` を設定するとファイルの provider 設定より優先され、`EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_API_KEY` で外部 provider を設定できます。プロバイダ固有の項目は JSON オブジェクトの `EMBEDDING_OPTIONS` に指定できます。従来の `EMBEDDING_URL` は明示 provider を指定しない場合に厳格な接続先となり、従来の `indexing.embeddingUrl` は失敗時に自動検出へ進みます。
 
+`indexing.embedding` の `provider: "builtin"` に指定する `runtime` は、共有サーバが見つからずローカルに起動する場合の選択です。既存の共有サーバが見つかった場合は、そのサーバが使われます。torch を指定して接続するには、別の空きポートで torch サーバを起動し、その URL を明示できます。
+
+```bash
+search-docs embedding start --runtime torch --port 24282
+EMBEDDING_URL=http://127.0.0.1:24282 search-docs server start
+```
+
+`EMBEDDING_URL` は接続できなければ起動を中止します。Docker コンテナからホストのサーバへ接続する場合は、`127.0.0.1` の代わりに `host.docker.internal` を使用してください。
+CLI は同時に複数の Embedding サーバを管理できません。すでに CLI 管理下のサーバが稼働している場合は、別ホストやコンテナなどで torch サーバを起動して、その URL を指定してください。
+
 明示的な外部 provider は `vectorDimension` をリクエストの `dimensions` に渡し、返却ベクトルが同じ次元でなければエラーになります。API とモデルがその次元指定に対応している必要があります。従来の builtin は互換性のため `/health` が返す次元を優先します。provider、モデル、次元、接続先を変更する場合は、稼働中のサーバを停止して索引を再構築してください。OpenAI 互換では接続先のハッシュを索引 identity に記録し、変更を検出すると再構築を要求します。接続先を記録していない旧形式の OpenAI 互換索引も、安全のため再構築が必要です。`search-docs embedding status` は明示的な外部 provider へ推論リクエストを送り、接続と次元を確認します。
 
 外部サーバの優先順位、Ollamaの利用方法とモデル変更時の再作成については [Docker構成ガイド](docker-deployment.md#ollamaをdocker-mcpから使う) を参照してください。

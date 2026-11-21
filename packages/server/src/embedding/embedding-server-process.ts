@@ -277,7 +277,11 @@ export class EmbeddingServerProcess {
     if (!isDocker) {
       const serverPackageRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
       const dbEngineRoot = path.resolve(serverPackageRoot, '../db-engine');
-      args.push('--project', dbEngineRoot, 'run', 'python');
+      args.push('--project', dbEngineRoot, 'run');
+      if (this.options.runtime === 'torch') {
+        args.push('--extra', 'torch');
+      }
+      args.push('python');
     }
 
     args.push(scriptPath);

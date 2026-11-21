@@ -62,6 +62,17 @@ docker run --rm -i \
 
 メモリ: 120MB x N → 120MB x 1（共有サーバ）+ 軽量MCP x N
 
+標準イメージには ONNX ランタイムが含まれます。Docker 内で torch ランタイムを使う場合は、リポジトリから追加依存とモデルを含むイメージをビルドしてください。モデルの取得にはビルド時にネットワーク接続が必要です。
+
+```bash
+docker build --build-arg INCLUDE_TORCH=true -t search-docs-mcp:torch .
+docker run --rm -p 127.0.0.1:24281:24281 \
+  -e EMBEDDING_RUNTIME=torch \
+  search-docs-mcp:torch --mode=embedding-server
+```
+
+MCP サーバモードで builtin embedding の `runtime` を `torch` に設定してローカル起動する場合も、このイメージを使用します。既存の共有 Embedding サーバが検出された場合は、そのサーバが優先されます。torch とその依存によりイメージサイズは増加します。
+
 #### オプション2: ホスト側Embeddingサーバ（GPU/CoreML対応）
 
 ホスト側でEmbeddingサーバを直接起動すると、GPU/CoreMLアクセラレーションを利用できます。Docker MCPサーバは `host.docker.internal:24281` 経由で自動検出します。
@@ -101,6 +112,7 @@ docker run --rm -i \
 | `EMBEDDING_URL` | 優先して使うEmbeddingサーバURL。接続できなければ起動を中止 | - |
 | `EMBEDDING_MODEL` | Ollamaで使用するモデル名。Ollama利用時は必須 | - |
 | `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `24281` |
+| `EMBEDDING_RUNTIME` | standalone Embedding サーバのランタイム（`onnx` または `torch`） | `onnx` |
 
 **注**: 以前の `SEARCH_DOCS_DOCKER_EMBEDDING_URL` 環境変数は廃止されました。`EmbeddingServerProcess`が自動検出するため不要です。
 
@@ -114,6 +126,8 @@ MCPサーバ起動時に、`EmbeddingServerProcess`（TypeScript管理）が以�
 4. `http://search-docs-embedding:24281`（Docker network内）
 5. `http://host.docker.internal:24281`（ホスト側サービス）
 6. 見つからなければ内蔵サーバを起動
+
+`indexing.embedding.runtime` は手順 6 でローカル起動する場合に使われます。検出済みの共有サーバを選ぶ際に runtime の一致は確認しません。別ポートで起動した torch サーバを指定する例は [ユーザーガイド](user-guide.md#外部-embedding-provider) を参照してください。
 
 **注意**: Docker内から `localhost` はコンテナ自身を指します。ホスト側のサービスには `host.docker.internal`（macOS/Windows）を使います。Linux では `--add-host=host.docker.internal:host-gateway` が必要です。
 

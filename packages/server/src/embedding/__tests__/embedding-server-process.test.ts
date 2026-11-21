@@ -16,6 +16,35 @@ afterEach(() => {
 });
 
 describe('EmbeddingServerProcess readiness timeout', () => {
+  it('selects the torch extra for a local torch runtime', async () => {
+    const child = new EventEmitter();
+    spawnMock.mockReturnValue(child);
+    const server = new EmbeddingServerProcess({ embedding: { provider: 'builtin', runtime: 'torch' } });
+    const privateMethods = server as unknown as {
+      externalServerReady: (url: string) => Promise<boolean>;
+      resolveScriptPath: (isDocker: boolean) => string;
+      waitForReady: (url: string, timeoutMs: number) => Promise<void>;
+    };
+    vi.spyOn(privateMethods, 'externalServerReady').mockResolvedValue(false);
+    vi.spyOn(privateMethods, 'resolveScriptPath').mockReturnValue('/fake/embedding_server.py');
+    vi.spyOn(privateMethods, 'waitForReady').mockResolvedValue();
+    vi.stubEnv('IS_DOCKER', 'false');
+
+    await server.start();
+
+    expect(spawnMock).toHaveBeenCalledWith('uv', expect.arrayContaining(['--extra', 'torch', '--runtime=torch']), expect.any(Object));
+  });
+
+  it('continues to prefer an available shared server when torch is requested', async () => {
+    const server = new EmbeddingServerProcess({ embedding: { provider: 'builtin', runtime: 'torch' } });
+    const methods = server as unknown as { externalServerReady: (url: string) => Promise<boolean> };
+    vi.spyOn(methods, 'externalServerReady').mockResolvedValue(true);
+
+    expect(await server.start()).toBe('http://127.0.0.1:24281');
+    expect(server.isExternal()).toBe(true);
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
   it('uses the configured timeout when starting a local embedding server', async () => {
     const child = new EventEmitter();
     spawnMock.mockReturnValue(child);
