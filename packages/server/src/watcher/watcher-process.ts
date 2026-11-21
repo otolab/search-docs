@@ -124,9 +124,9 @@ export class WatcherProcess {
     console.log(`[WatcherProcess] Writer ID: ${this.writerId}`);
 
     const connection = this.dbEngine.connect();
-    void connection.then(() => {
-      if (this.stopping) this.dbEngine.disconnect();
-    }, () => {});
+    void connection.then(async () => {
+      if (this.stopping) await this.dbEngine.disconnect();
+    }, () => {}).catch(error => console.error('[WatcherProcess] DB shutdown failed:', error));
 
     this.runCoordination(async () => {
       await Promise.race([
@@ -180,7 +180,7 @@ export class WatcherProcess {
       }
     }
 
-    this.dbEngine.disconnect();
+    await this.dbEngine.disconnect();
     if (this.deletionFailure && releaseFailure) {
       throw new AggregateError([this.deletionFailure, releaseFailure], 'Deletion and writer release failed during shutdown');
     }

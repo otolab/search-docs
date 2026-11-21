@@ -4,7 +4,7 @@
  */
 
 import * as path from 'path';
-import { DBEngine } from '@search-docs/db-engine';
+import { DBEngine, acquireStandardStorageRegistration } from '@search-docs/db-engine';
 import { getStateErrorMessage } from '../state.js';
 import type { ToolRegistrationContext, RegisteredTool } from './types.js';
 import type { RepairTablesResponse } from '@search-docs/db-engine';
@@ -53,7 +53,7 @@ export function registerMaintenanceRepairTool(context: ToolRegistrationContext):
         'LanceDBテーブルの破損を検出し、自動修復します。破損テーブルはdrop→再作成されます。修復後は再インデックス（index rebuild）が必要です。',
       inputSchema: {},
     },
-    async () => {
+    async () => (context.runDbRequest ?? (operation => operation()))(async () => {
       if (systemState.state !== 'RUNNING') {
         throw new Error(getStateErrorMessage(systemState.state, 'テーブル修復'));
       }
@@ -71,6 +71,11 @@ export function registerMaintenanceRepairTool(context: ToolRegistrationContext):
       }
 
       const dbPath = path.resolve(systemState.projectRoot, systemState.config.storage.indexPath);
+      const release = await acquireStandardStorageRegistration({
+        projectRoot: systemState.projectRoot,
+        indexPath: systemState.config.storage.indexPath,
+        documentsPath: systemState.config.storage.documentsPath,
+      });
       const fallbackEngine = new DBEngine({ dbPath, readOnly: false });
       try {
         await fallbackEngine.connect({ skipInitModel: true });
@@ -78,8 +83,9 @@ export function registerMaintenanceRepairTool(context: ToolRegistrationContext):
         const text = formatRepairResult(result);
         return { content: [{ type: 'text' as const, text }] };
       } finally {
-        fallbackEngine.disconnect();
+        await fallbackEngine.disconnect();
+        await release?.();
       }
-    }
+    })
   );
 }

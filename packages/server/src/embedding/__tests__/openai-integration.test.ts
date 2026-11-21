@@ -12,7 +12,7 @@ let server: Server | undefined;
 let engine: DBEngine | undefined;
 let dbPath: string | undefined;
 afterEach(async () => {
-  engine?.disconnect();
+  await engine?.disconnect();
   if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
   if (dbPath) await rm(dbPath, { recursive: true, force: true });
   vi.unstubAllEnvs();
@@ -52,16 +52,16 @@ it('indexes and searches with OpenAI-compatible embeddings and rejects a model c
   await engine.addSections([{ id: 'one', parentId: null, documentPath: 'test.md', heading: '見出し', depth: 1, content: '日本語の文書', tokenCount: 10, order: 0, isDirty: false, documentHash: 'hash', startLine: 1, endLine: 2, sectionNumber: [1], createdAt: new Date(), updatedAt: new Date() }]);
   expect((await engine.search({ query: '文書' })).results[0].documentPath).toBe('test.md');
   expect(requests).toBeGreaterThanOrEqual(3);
-  engine.disconnect();
+  await engine.disconnect();
   engine = new DBEngine(options);
   await engine.connect();
   expect((await engine.search({ query: '文書' })).results[0].documentPath).toBe('test.md');
-  engine.disconnect();
+  await engine.disconnect();
   engine = new DBEngine({ ...options, embeddingUrl: `http://127.0.0.1:${address.port}/other` });
   const mismatch = await Promise.allSettled([engine.connect(), engine.waitForConnection()]);
   expect(mismatch.every((result) => result.status === 'rejected')).toBe(true);
   expect(engine.getConnectionState().error?.message).toContain('differs from the index');
-  engine.disconnect();
+  await engine.disconnect();
   engine = new DBEngine({ ...options, embeddingOptions: { ...options.embeddingOptions, model: 'different' }, embeddingModel: 'different' });
   const results = await Promise.allSettled([engine.connect(), engine.waitForConnection()]);
   expect(results.every((result) => result.status === 'rejected')).toBe(true);

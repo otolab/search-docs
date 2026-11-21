@@ -15,6 +15,7 @@ import { detectSystemState, createService, type SystemState, type ServiceInstanc
 import { ServerManager } from './server-manager.js';
 import { refreshServiceState } from './refresh-service-state.js';
 import { ServiceLifecycle, registerShutdownHandlers } from './service-lifecycle.js';
+import { gateService, RequestGate } from './maintenance/request-gate.js';
 import {
   registerInitTool,
   registerSystemStatusTool,
@@ -157,6 +158,7 @@ async function main() {
 
   // システム状態を判定
   const systemState = await detectSystemState(cwd);
+  const requestGate = new RequestGate();
   let serviceInstances: ServiceInstances | null = null;
 
   debugLog('='.repeat(60));
@@ -170,7 +172,7 @@ async function main() {
     debugLog('Creating in-process service...');
     try {
       serviceInstances = await createService(systemState.config, systemState.projectRoot, VERSION);
-      systemState.service = serviceInstances.service;
+      systemState.service = gateService(serviceInstances.service, requestGate);
       debugLog('✓ In-process service created successfully');
     } catch (error) {
       debugLog(`✗ Service creation failed: ${(error as Error).message}`);
@@ -205,6 +207,7 @@ async function main() {
     cwd, version: VERSION, systemState,
     getInstances: () => serviceInstances,
     setInstances: (instances) => { serviceInstances = instances; },
+    wrapService: (service) => gateService(service, requestGate),
     onRefreshed: () => {
       if (toolHandles) updateToolAvailability(systemState.state, toolHandles);
     },
@@ -222,6 +225,8 @@ async function main() {
     refreshSystemState,
     serverManager,
     getDbEngine: () => serviceInstances?.dbEngine ?? null,
+    runDbRequest: <T>(operation: () => Promise<T>) => requestGate.run(operation),
+    runMaintenance: (operation: () => Promise<void>) => lifecycle.maintenance(requestGate, () => { systemState.service = undefined; }, operation),
   };
 
   // リソース登録

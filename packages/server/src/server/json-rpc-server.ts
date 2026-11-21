@@ -254,7 +254,7 @@ export class JsonRpcServer {
    * サーバ停止
    */
   async stop(): Promise<void> {
-    this.searchDocsServer.stop();
+    await this.searchDocsServer.stop();
 
     if (this.server) {
       return new Promise((resolve, reject) => {

@@ -10,7 +10,8 @@
     ".": "./dist/index.js",
     "./commands/config/init": "./dist/commands/config/init.js",
     "./commands/server/start": "./dist/commands/server/start.js",
-    "./commands/server/stop": "./dist/commands/server/stop.js"
+    "./commands/server/stop": "./dist/commands/server/stop.js",
+    "./utils/rebuild-layout": "./dist/utils/rebuild-layout.js"
   },
   "files": [
     "dist"

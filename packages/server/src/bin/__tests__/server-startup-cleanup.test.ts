@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   deletePidFile: vi.fn(),
   isProcessAlive: vi.fn(),
   setupLogRedirect: vi.fn(),
+  acquireRegistration: vi.fn(),
+  releaseRegistration: vi.fn(),
 }));
 
 vi.mock('@search-docs/config', () => ({
@@ -19,6 +21,7 @@ vi.mock('@search-docs/storage', () => ({
 }));
 vi.mock('@search-docs/db-engine', () => ({
   DBEngine: vi.fn(),
+  acquireStandardStorageRegistration: mocks.acquireRegistration,
 }));
 vi.mock('../../index.js', () => ({
   SearchDocsServer: vi.fn(),
@@ -45,14 +48,17 @@ describe('server startup cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.exitCode = undefined;
-    mocks.embeddingServerConstructor.mockImplementation(() => embeddingServer);
+    mocks.embeddingServerConstructor.mockImplementation(function () { return embeddingServer; });
     embeddingServer.start.mockResolvedValue('http://localhost:24281');
     embeddingServer.stop.mockResolvedValue(undefined);
+    mocks.acquireRegistration.mockResolvedValue(mocks.releaseRegistration);
+    mocks.releaseRegistration.mockResolvedValue(undefined);
     mocks.resolveConfig.mockResolvedValue({
       config: {
         project: { name: 'test-project' },
         indexing: { embeddingUrl: undefined, vectorDimension: 256 },
         server: { host: '127.0.0.1', port: 24280 },
+        storage: { indexPath: '.search-docs/index', documentsPath: '.search-docs/documents' },
       },
       configPath: '/tmp/test-project/.search-docs.json',
       projectRoot: '/tmp/test-project',
@@ -82,9 +88,17 @@ describe('server startup cleanup', () => {
 
     expect(embeddingServer.start).toHaveBeenCalledOnce();
     expect(embeddingServer.stop).toHaveBeenCalledOnce();
+    expect(mocks.releaseRegistration).toHaveBeenCalledOnce();
     expect(mocks.writePidFile).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     expect(process.listenerCount('SIGINT')).toBe(beforeSigintListeners);
     expect(process.listenerCount('SIGTERM')).toBe(beforeSigtermListeners);
+  });
+
+  it('retains registration when startup cleanup fails', async () => {
+    embeddingServer.stop.mockRejectedValue(new Error('stop failed'));
+    await main();
+    expect(mocks.releaseRegistration).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 });

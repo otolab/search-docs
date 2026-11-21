@@ -354,6 +354,8 @@ describe('FileWatcher', () => {
     // サブディレクトリ作成
     const subDir = path.join(tmpDir, 'docs');
     await fs.mkdir(subDir);
+    // Linux のネイティブ watcher が新しいディレクトリの監視を追加する時間を確保する。
+    await wait(500);
 
     const testFile = path.join(subDir, 'test.md');
     await fs.writeFile(testFile, '# Test');

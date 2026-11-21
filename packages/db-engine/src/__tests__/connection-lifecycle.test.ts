@@ -6,6 +6,7 @@ vi.mock('child_process', () => ({
     stdout: new EventEmitter(), stderr: new EventEmitter(), stdin: { write: vi.fn() }, kill: vi.fn(),
   })),
 }));
+vi.mock('../typescript/process-tree.js', () => ({ stopProcessTree: vi.fn(async () => {}) }));
 
 import { DBEngine } from '../typescript/index.js';
 
@@ -23,7 +24,7 @@ describe('DBEngine connection lifecycle', () => {
     engine = new DBEngine();
     vi.spyOn(engine, 'ping').mockResolvedValue({ status: 'ok' });
   });
-  afterEach(() => { engine.disconnect(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+  afterEach(async () => { await engine.disconnect(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
   it('waits for model initialization for concurrent calls and reconnects after disconnect', async () => {
     const init = deferred<{ success: boolean; model_name: string; dimension: number }>();
@@ -40,7 +41,7 @@ describe('DBEngine connection lifecycle', () => {
     init.resolve({ success: true, model_name: 'test', dimension: 3 });
     await Promise.all([first, second, engine.waitForConnection()]);
     expect(engine.getConnectionState().state).toBe('ready');
-    engine.disconnect();
+    await engine.disconnect();
     await engine.connect();
     await engine.waitForConnection();
     expect(initialize).toHaveBeenCalledTimes(2);
@@ -59,7 +60,7 @@ describe('DBEngine connection lifecycle', () => {
     expect((await outcomes).map((result) => result.status)).toEqual(['rejected', 'rejected', 'rejected']);
     expect(engine.getConnectionState().state).toBe('error');
     await expect(engine.getStats()).rejects.toThrow('Not connected');
-    engine.disconnect();
+    await engine.disconnect();
     initialize.mockResolvedValue({ success: true, model_name: 'test', dimension: 3 });
     await engine.connect();
     await expect(engine.waitForConnection()).resolves.toBeUndefined();

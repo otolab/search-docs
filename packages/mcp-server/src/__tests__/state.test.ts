@@ -3,14 +3,87 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { detectSystemState, getStateErrorMessage, stopService } from '../state.js';
+import { createService, detectSystemState, getStateErrorMessage, stopService } from '../state.js';
 import type { SystemState, ServiceInstances } from '../state.js';
 import { ConfigLoader } from '@search-docs/config';
+import { MaintenanceLock, acquireStandardStorageRegistration } from '@search-docs/db-engine';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { DEFAULT_CONFIG } from '@search-docs/types';
+import { EmbeddingServerProcess } from '@search-docs/server';
 
 // モック
 vi.mock('@search-docs/config');
 
 describe('stopService', () => {
+  it.skipIf(process.platform === 'win32')('起動前に共有登録を取得し、DB 利用前の起動失敗後に解放する', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'mcp-registration-'));
+    const lock = new MaintenanceLock(path.join(root, '.search-docs', '.search-docs-maintenance'));
+    const start = vi.spyOn(EmbeddingServerProcess.prototype, 'start').mockImplementation(async () => {
+      await expect(lock.acquireExclusive()).rejects.toThrow(/使用中/);
+      throw new Error('startup failed');
+    });
+    const shutdown = vi.spyOn(EmbeddingServerProcess.prototype, 'shutdown').mockImplementation(() => {});
+    try {
+      await expect(createService(DEFAULT_CONFIG, root, 'test')).rejects.toThrow('startup failed');
+      const exclusive = await lock.acquireExclusive();
+      await exclusive.release();
+    } finally {
+      start.mockRestore();
+      shutdown.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('停止完了まで共有登録を保持する', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'mcp-registration-'));
+    try {
+      const releaseStorageRegistration = await acquireStandardStorageRegistration({
+        projectRoot: root, indexPath: '.search-docs/index', documentsPath: '.search-docs/documents',
+      });
+      const lock = new MaintenanceLock(path.join(root, '.search-docs', '.search-docs-maintenance'));
+      let finish!: () => void;
+      const gate = new Promise<void>(resolve => { finish = resolve; });
+      const instances = {
+        watcherProcess: { stop: vi.fn(() => gate) },
+        service: { stop: vi.fn() },
+        dbEngine: { disconnect: vi.fn() },
+        embeddingServer: { shutdown: vi.fn() },
+        releaseStorageRegistration,
+      };
+      const stopping = stopService(instances as unknown as ServiceInstances);
+      await expect(lock.acquireExclusive()).rejects.toThrow(/使用中/);
+      finish();
+      await stopping;
+      const exclusive = await lock.acquireExclusive();
+      await exclusive.release();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('停止失敗時は共有登録を残す', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'mcp-registration-'));
+    try {
+      const releaseStorageRegistration = await acquireStandardStorageRegistration({
+        projectRoot: root, indexPath: '.search-docs/index', documentsPath: '.search-docs/documents',
+      });
+      const lock = new MaintenanceLock(path.join(root, '.search-docs', '.search-docs-maintenance'));
+      const instances = {
+        watcherProcess: { stop: vi.fn().mockRejectedValue(new Error('stop failed')) },
+        service: { stop: vi.fn() },
+        dbEngine: { disconnect: vi.fn() },
+        embeddingServer: { shutdown: vi.fn() },
+        releaseStorageRegistration,
+      };
+      await expect(stopService(instances as unknown as ServiceInstances)).rejects.toThrow('stop failed');
+      await expect(lock.acquireExclusive()).rejects.toThrow(/使用中/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('waits for writer drain before stopping dependencies', async () => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });

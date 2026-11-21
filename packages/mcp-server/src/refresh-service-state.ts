@@ -1,4 +1,5 @@
 import { createService, detectSystemState, stopService, type ServiceInstances, type SystemStateInfo } from './state.js';
+import type { SearchDocsService } from '@search-docs/types';
 
 /** Stop the old service, reconstruct it, then report any shutdown failure to the caller. */
 export async function refreshServiceState(options: {
@@ -9,6 +10,7 @@ export async function refreshServiceState(options: {
   setInstances: (instances: ServiceInstances | null) => void;
   onRefreshed: () => void;
   debugLog: (message: string) => void;
+  wrapService?: (service: SearchDocsService) => SearchDocsService;
 }): Promise<void> {
   const { cwd, version, systemState, getInstances, setInstances, onRefreshed, debugLog } = options;
   let stopError: Error | undefined;
@@ -28,7 +30,7 @@ export async function refreshServiceState(options: {
     try {
       const instances = await createService(systemState.config, systemState.projectRoot, version);
       setInstances(instances);
-      systemState.service = instances.service;
+      systemState.service = options.wrapService?.(instances.service) ?? instances.service;
       debugLog('Service recreated after refresh');
     } catch (error) {
       if (stopError) throw new AggregateError([stopError, error], `Service shutdown and recreation failed: ${stopError instanceof Error ? stopError.message : 'unknown error'}; ${error instanceof Error ? error.message : 'unknown error'}`);

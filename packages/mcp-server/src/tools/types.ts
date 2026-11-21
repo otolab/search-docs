@@ -27,4 +27,7 @@ export interface ToolRegistrationContext {
   serverManager: ServerManager;
   /** DBEngineインスタンスの取得（メンテナンス操作用） */
   getDbEngine?: () => DBEngine | null;
+  /** DB への直接操作を通常サービス要求と同じ保守ゲートで排出する。 */
+  runDbRequest?: <T>(operation: () => Promise<T>) => Promise<T>;
+  runMaintenance?: (operation: () => Promise<void>) => Promise<void>;
 }

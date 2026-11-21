@@ -3,8 +3,8 @@
  */
 
 import { promises as fs } from 'node:fs';
-import { join, dirname, normalize, relative, isAbsolute, sep } from 'node:path';
-import { createHash } from 'node:crypto';
+import { join, dirname, normalize, relative, isAbsolute, resolve, sep } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Document, DocumentStorage } from '@search-docs/types';
 
 export interface FileStorageOptions {
@@ -49,6 +49,66 @@ export class FileStorage implements DocumentStorage {
     const tmpPath = filePath + '.tmp';
     await fs.writeFile(tmpPath, JSON.stringify(docWithHash, null, 2), 'utf-8');
     await fs.rename(tmpPath, filePath);
+  }
+
+  /**
+   * 再構築専用。呼び出し元は保存領域の排他を持ち、非協調利用者と
+   * パス・マウントの変更を停止する。通常の save の互換性は変更しない。
+   */
+  async saveForRebuild(documentPath: string, document: Document): Promise<void> {
+    if (isAbsolute(documentPath) || documentPath.split(/[\\/]/).some(part => part === '..' || part === '')) {
+      throw new Error(`不正な文書パスです: ${documentPath}`);
+    }
+    const root = resolve(this.basePath);
+    const target = resolve(root, `${documentPath}.json`);
+    const rel = relative(root, target);
+    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error('文書保存先が管理領域外です');
+    const checkDirectory = async (dir: string) => {
+      const info = await fs.lstat(dir);
+      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`文書保存先が通常のディレクトリではありません: ${dir}`);
+    };
+    try { await fs.mkdir(root); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    await checkDirectory(root);
+    let current = root;
+    const parent = relative(root, dirname(target));
+    for (const segment of parent ? parent.split(sep) : []) {
+      current = join(current, segment);
+      try { await fs.mkdir(current); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
+      await checkDirectory(current);
+    }
+    const lockPath = `${target}.rebuild-lock`;
+    const lock = await fs.open(lockPath, 'wx', 0o600);
+    const tmpPath = `${target}.${randomUUID()}.tmp`;
+    let createdTmp = false;
+    try {
+      for (const candidate of [target, `${target}.tmp`]) {
+        try {
+          const info = await fs.lstat(candidate);
+          if (candidate !== target || !info.isFile() || info.isSymbolicLink()) {
+            throw new Error(`文書保存先を確認できません: ${candidate}`);
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+      const docWithHash = {
+        ...document,
+        metadata: { ...document.metadata, fileHash: this.calculateHash(document.content) },
+      };
+      const tmp = await fs.open(tmpPath, 'wx', 0o600);
+      createdTmp = true;
+      try { await tmp.writeFile(JSON.stringify(docWithHash, null, 2), 'utf8'); } finally { await tmp.close(); }
+      await fs.rename(tmpPath, target);
+      createdTmp = false;
+    } finally {
+      if (createdTmp) await fs.unlink(tmpPath);
+      await lock.close();
+      await fs.unlink(lockPath);
+    }
   }
 
   /**
