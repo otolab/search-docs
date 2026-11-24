@@ -141,6 +141,27 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
       const beforeUnsafe = [await snapshot(indexPath), await snapshot(documentsPath)];
       await expect(createService(config, root, 'test')).rejects.toThrow();
       expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(beforeUnsafe);
+      const clean = new DBEngine({ dbPath: indexPath });
+      try {
+        await clean.connect({ skipInitModel: true });
+        await clean.updateManyIndexRequests({ documentPath: '../outside.md', status: 'pending' }, { status: 'skipped' });
+      } finally {
+        await clean.disconnect();
+      }
+      let stoppedRepair!: () => Promise<unknown>;
+      const repairServer = { registerTool: vi.fn((_name, _options, handler) => { stoppedRepair = handler; return {}; }) };
+      registerMaintenanceRepairTool({
+        server: repairServer,
+        systemState: { state: 'RUNNING', config, projectRoot: root },
+      } as unknown as ToolRegistrationContext);
+      const heartbeatPath = path.join(indexPath, 'writer_heartbeat.lance');
+      for (const damaged of [path.join(heartbeatPath, '_versions'), heartbeatPath]) {
+        await rm(damaged, { recursive: true });
+        const before = [await snapshot(indexPath), await snapshot(documentsPath)];
+        await expect(createService(config, root, 'test')).rejects.toThrow();
+        await expect(stoppedRepair()).rejects.toThrow(/修復前の診断/);
+        expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(before);
+      }
     } finally {
       try {
         if (instances) await stopService(instances);
