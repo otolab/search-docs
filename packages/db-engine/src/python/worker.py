@@ -726,6 +726,12 @@ class SearchDocsWorker:
                 result = self.release_writer(params)
             elif method == "repairTables":
                 result = self.repair_tables()
+            elif method == "probeRepairTable":
+                result = self.probe_repair_table(params)
+            elif method == "recreateRepairTable":
+                result = self.recreate_repair_table(params)
+            elif method == "checkRepairDimension":
+                result = self.check_repair_dimension(params)
             else:
                 return {
                     "jsonrpc": "2.0",
@@ -1506,7 +1512,7 @@ class SearchDocsWorker:
         """Return every distinct section path, including documents without requests."""
         table = self._get_sections_table()
         df = table.search().select(["document_path"]).limit(None).to_pandas()
-        return {"paths": df["document_path"].dropna().unique().tolist()}
+        return {"paths": df["document_path"].unique().tolist()}
 
     def get_paths_with_status(self, params: Dict[str, Any]) -> Dict[str, List]:
         """特定のstatusを持つdocument_pathを取得"""
@@ -1521,7 +1527,7 @@ class SearchDocsWorker:
         where_str = " OR ".join(status_clauses)
 
         # クエリ実行（document_pathカラムのみ取得でメモリ効率化）
-        df = table.search().where(where_str).select(["document_path"]).to_pandas()
+        df = table.search().where(where_str).select(["document_path"]).limit(None).to_pandas()
 
         # ユニークなdocument_pathを抽出
         paths = df["document_path"].unique().tolist()
@@ -1611,8 +1617,49 @@ class SearchDocsWorker:
         return {"success": True}
 
 
+    def probe_repair_table(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        name = params.get("table")
+        if name not in ALL_TABLES:
+            raise ValueError("Unknown repair table")
+        if name not in self.db.table_names():
+            raise ValueError(f"Table does not exist: {name}")
+        try:
+            self.db.open_table(name).count_rows()
+            return {"readable": True}
+        except Exception as e:
+            return {"readable": False, "error": str(e)}
+
+    def check_repair_dimension(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        dimension = params.get("dimension")
+        if not isinstance(dimension, int) or isinstance(dimension, bool) or dimension <= 0:
+            raise ValueError("Invalid vector dimension")
+        identity = self.db.open_table("embedding_identity").to_arrow().to_pylist()
+        if len(identity) != 1 or identity[0].get("dimension") != dimension:
+            raise ValueError("Cannot confirm embedding dimension")
+        return {"confirmed": True}
+
+    def recreate_repair_table(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if self.read_only:
+            raise ValueError("Cannot recreate a table in read-only mode")
+        name = params.get("table")
+        if name not in ALL_TABLES:
+            raise ValueError("Unknown repair table")
+        if self.probe_repair_table(params)["readable"]:
+            raise ValueError("Selected table is readable")
+        if name == SECTIONS_TABLE:
+            dimension = params.get("dimension")
+            self.check_repair_dimension(params)
+            schema = get_sections_schema(dimension)
+        elif name == INDEX_REQUESTS_TABLE:
+            schema = get_index_requests_schema()
+        else:
+            schema = get_writer_heartbeat_schema()
+        self.db.drop_table(name)
+        self.db.create_table(name, schema=schema)
+        return {"recreated": name}
+
     def repair_tables(self) -> Dict[str, Any]:
-        """破損テーブルを検出し、drop→再作成で修復する"""
+        """通常の保守では不明な読み取りエラーを理由にテーブルを削除しない。"""
         results = {}
 
         try:
@@ -1625,7 +1672,7 @@ class SearchDocsWorker:
         for table_name in ALL_TABLES:
             try:
                 if table_name not in existing_tables:
-                    results[table_name] = {"status": "missing", "action": "created"}
+                    results[table_name] = {"status": "missing", "error": "Table is missing"}
                     continue
 
                 table = self.db.open_table(table_name)
@@ -1633,29 +1680,11 @@ class SearchDocsWorker:
                 results[table_name] = {"status": "ok"}
             except Exception as e:
                 error_msg = str(e)
-                sys.stderr.write(f"[Repair] Table {table_name} is corrupted: {error_msg}\n")
+                sys.stderr.write(f"[Repair] Table {table_name} is unreadable: {error_msg}\n")
                 sys.stderr.flush()
-                try:
-                    self.db.drop_table(table_name)
-                    results[table_name] = {"status": "corrupted", "action": "dropped_and_recreated", "error": error_msg}
-                except Exception as drop_err:
-                    results[table_name] = {"status": "corrupted", "action": "drop_failed", "error": error_msg, "dropError": str(drop_err)}
-                    sys.stderr.write(f"[Repair] Failed to drop {table_name}: {drop_err}\n")
-                    sys.stderr.flush()
+                results[table_name] = {"status": "unreadable", "error": error_msg}
 
-        self._sections_table = None
-        self._index_requests_table = None
-
-        try:
-            self.init_tables()
-        except Exception as e:
-            sys.stderr.write(f"[Repair] init_tables failed: {e}\n")
-            sys.stderr.flush()
-            return {"tables": results, "repairedCount": 0, "initTablesError": str(e)}
-
-        repaired_count = sum(1 for r in results.values() if r.get("action") in ("dropped_and_recreated", "drop_failed"))
-        created_count = sum(1 for r in results.values() if r.get("action") == "created")
-        return {"tables": results, "repairedCount": repaired_count, "createdCount": created_count}
+        return {"tables": results, "repairedCount": 0, "createdCount": 0}
 
 
 def main():

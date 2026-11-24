@@ -1340,6 +1340,18 @@ export class DBEngine extends EventEmitter {
     return response.paths;
   }
 
+  async probeRepairTable(table: 'sections' | 'index_requests' | 'writer_heartbeat'): Promise<{ readable: boolean; error?: string }> {
+    return await this.sendRequest('probeRepairTable', { table }) as { readable: boolean; error?: string };
+  }
+
+  async recreateRepairTable(table: 'sections' | 'index_requests' | 'writer_heartbeat', dimension: number): Promise<void> {
+    await this.sendRequest('recreateRepairTable', { table, dimension });
+  }
+
+  async checkRepairDimension(dimension: number): Promise<void> {
+    await this.sendRequest('checkRepairDimension', { dimension });
+  }
+
   // ========================================
   // Writer Heartbeat操作
   // ========================================
@@ -1407,4 +1419,4 @@ export class DBEngine extends EventEmitter {
 
 export default DBEngine;
 
-export { MaintenanceLock, acquireStandardStorageRegistration } from './maintenance-lock.js';
+export { MaintenanceLock, acquireStandardStorageRegistration, strictMaintenanceLock } from './maintenance-lock.js';

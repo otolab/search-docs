@@ -9,7 +9,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Command } from 'commander';
 import { createRequire } from 'module';
 import * as path from 'path';
-import { setupLogRedirect } from '@search-docs/server';
+import { setupLogRedirect, StrictSafetyError } from '@search-docs/server';
 
 import { detectSystemState, createService, type SystemState, type ServiceInstances } from './state.js';
 import { ServerManager } from './server-manager.js';
@@ -176,6 +176,7 @@ async function main() {
       debugLog('✓ In-process service created successfully');
     } catch (error) {
       debugLog(`✗ Service creation failed: ${(error as Error).message}`);
+      if (error instanceof StrictSafetyError) throw error;
     }
   }
   debugLog('='.repeat(60));

@@ -5,7 +5,8 @@
 
 import * as path from 'path';
 import { ConfigLoader } from '@search-docs/config';
-import { DBEngine, acquireStandardStorageRegistration, type RepairTablesResponse } from '@search-docs/db-engine';
+import { DBEngine, strictMaintenanceLock, UnconfirmedProcessStopError, type RepairTablesResponse } from '@search-docs/db-engine';
+import { diagnoseStrictConfig } from '@search-docs/server';
 
 export interface MaintenanceRepairOptions {
   config?: string;
@@ -14,6 +15,7 @@ export interface MaintenanceRepairOptions {
 function formatRepairResult(response: RepairTablesResponse): void {
   console.log('テーブル修復結果:');
   console.log('');
+  let unreadable = false;
 
   for (const [tableName, result] of Object.entries(response.tables)) {
     const icon = result.status === 'ok' ? '✓' : '⚠';
@@ -23,6 +25,7 @@ function formatRepairResult(response: RepairTablesResponse): void {
     }
     console.log(line);
     if (result.error) {
+      unreadable = true;
       console.log(`    エラー: ${result.error}`);
     }
   }
@@ -36,7 +39,9 @@ function formatRepairResult(response: RepairTablesResponse): void {
     console.log(`${response.createdCount}個のテーブルを新規作成しました。`);
   }
 
-  if (response.repairedCount > 0) {
+  if (unreadable) {
+    console.log('テーブルを変更していません。バックアップし、maintenance force-repair の手順を確認してください。');
+  } else if (response.repairedCount > 0) {
     console.log(`${response.repairedCount}個の破損テーブルを修復しました。`);
     console.log('インデックスデータが失われているため、再インデックスが必要です:');
     console.log('  search-docs index rebuild --force');
@@ -64,23 +69,37 @@ export async function executeMaintenanceRepair(
     console.log('テーブルの修復を開始します...');
     console.log('');
 
-    const release = await acquireStandardStorageRegistration({
+    const lock = await strictMaintenanceLock({
       projectRoot,
       indexPath: config.storage.indexPath,
       documentsPath: config.storage.documentsPath,
+      files: config.files,
     });
+    const release = await lock.acquireShared();
+    let releaseAdmission: (() => Promise<void>) | undefined;
+    let retainRegistration = false;
     const dbEngine = new DBEngine({
       dbPath,
       readOnly: false,
     });
 
     try {
+      releaseAdmission = await lock.acquireAdmission();
+      try {
+        await diagnoseStrictConfig(config);
+      } catch (error) {
+        if (error instanceof UnconfirmedProcessStopError) retainRegistration = true;
+        throw new Error(`修復前の診断に失敗しました: ${String(error)}。全プロセスを停止し、データをバックアップして、設定と保存先を確認してください。診断できない DB は別環境で手動復旧してください。`);
+      }
       await dbEngine.connect({ skipInitModel: true });
       const result = await dbEngine.repairTables();
       formatRepairResult(result);
     } finally {
       await dbEngine.disconnect();
-      await release?.();
+      if (!retainRegistration) {
+        await releaseAdmission?.();
+        await release();
+      }
     }
   } catch (error) {
     console.error('Error:', (error as Error).message);

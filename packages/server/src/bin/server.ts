@@ -7,12 +7,13 @@ import { prepareEmbeddingOptions } from '../embedding/providers.js';
 
 import * as path from 'path';
 import { readFileSync } from 'fs';
+import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'url';
 import { FileStorage } from '@search-docs/storage';
-import { DBEngine, acquireStandardStorageRegistration } from '@search-docs/db-engine';
+import { DBEngine, strictMaintenanceLock, UnconfirmedProcessStopError } from '@search-docs/db-engine';
 import { ConfigLoader } from '@search-docs/config';
 import type { PidFileContent } from '@search-docs/types';
-import { SearchDocsServer, JsonRpcServer, WatcherProcess, EmbeddingServerProcess } from '../index.js';
+import { SearchDocsServer, JsonRpcServer, WatcherProcess, EmbeddingServerProcess, diagnoseStrictConfig } from '../index.js';
 import {
   writePidFile,
   deletePidFile,
@@ -31,6 +32,9 @@ export async function main(): Promise<void> {
   let shutdownRequested = false;
   let startupComplete = false;
   let releaseStorageRegistration: (() => Promise<void>) | null = null;
+  let diagnosticStopUnconfirmed = false;
+  let releaseAdmission: (() => Promise<void>) | undefined;
+  let startupEngine: DBEngine | undefined;
 
   const ensureStartupNotInterrupted = () => {
     if (shutdownRequested) {
@@ -56,9 +60,11 @@ export async function main(): Promise<void> {
         pidFileWritten = false;
       }
       if (jsonRpcServer) await attempt(() => jsonRpcServer!.stop());
+      else if (startupEngine) await attempt(() => startupEngine!.disconnect());
       if (embeddingServer) await attempt(() => embeddingServer!.stop());
 
-      if (errors.length === 0 && releaseStorageRegistration) {
+      if (errors.length === 0 && !diagnosticStopUnconfirmed && releaseAdmission) await attempt(() => releaseAdmission!());
+      if (errors.length === 0 && !diagnosticStopUnconfirmed && releaseStorageRegistration) {
         await attempt(() => releaseStorageRegistration!());
       }
       if (errors.length > 0) {
@@ -90,11 +96,16 @@ export async function main(): Promise<void> {
   try {
     // 設定読み込みとプロジェクトルート決定
     const { config, configPath, projectRoot } = await ConfigLoader.resolve();
-    releaseStorageRegistration = await acquireStandardStorageRegistration({
+    const maintenanceLock = await strictMaintenanceLock({
       projectRoot,
       indexPath: config.storage.indexPath,
       documentsPath: config.storage.documentsPath,
+      files: config.files,
     });
+    releaseStorageRegistration = await maintenanceLock.acquireShared();
+    releaseAdmission = await maintenanceLock.acquireAdmission();
+    await diagnoseStrictConfig(config);
+    await mkdir(path.resolve(projectRoot, config.storage.documentsPath), { recursive: true });
     ensureStartupNotInterrupted();
     projectRootForCleanup = projectRoot;
 
@@ -218,6 +229,10 @@ export async function main(): Promise<void> {
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
       readOnly: false,
     });
+    startupEngine = dbEngine;
+    await dbEngine.connect();
+    await releaseAdmission!();
+    releaseAdmission = undefined;
 
     // SearchDocsサーバ初期化
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
@@ -234,7 +249,16 @@ export async function main(): Promise<void> {
     jsonRpcServer = localJsonRpcServer;
 
     // WatcherProcess 生成・接続
-    const localWatcherProcess = new WatcherProcess(config, storage, dbEngine);
+    const localWatcherProcess = new WatcherProcess(config, storage, dbEngine, async () => {
+      const release = await maintenanceLock.acquireAdmission();
+      try { await diagnoseStrictConfig(config); }
+      catch (error) { if (error instanceof UnconfirmedProcessStopError) diagnosticStopUnconfirmed = true; throw error; }
+      finally { if (!diagnosticStopUnconfirmed) await release(); }
+    }, error => {
+      console.error('安全性を確認できないためサービスを停止します:', error);
+      shutdownRequested = true;
+      void cleanup().catch(cleanupError => console.error('停止に失敗しました:', cleanupError));
+    });
     watcherProcess = localWatcherProcess;
     searchDocsServer.setWatcherProcess(localWatcherProcess);
 
@@ -254,6 +278,7 @@ export async function main(): Promise<void> {
     console.log(`  - RPC endpoint: http://${config.server.host}:${config.server.port}/rpc`);
     console.log(`  - Mode: read-write (watcher enabled)`);
   } catch (error) {
+    if (error instanceof UnconfirmedProcessStopError) diagnosticStopUnconfirmed = true;
     if (!shutdownRequested) {
       console.error('Failed to start server:', error);
     }

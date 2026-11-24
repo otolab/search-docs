@@ -459,3 +459,22 @@ describe('shutdown release failures', () => {
     expect(db.releaseWriter).toHaveBeenCalledOnce();
   });
 });
+
+describe('strict writer admission', () => {
+  it('does not recover requests or start work when the promotion diagnostic fails', async () => {
+    const db = {
+      updateHeartbeat: vi.fn(async () => {}),
+      updateManyIndexRequests: vi.fn(async () => {}),
+      getWriterHeartbeat: vi.fn(async () => heartbeatFor('writer')),
+    };
+    const onUnsafe = vi.fn();
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine,
+      async () => { throw new Error('invalid key'); }, onUnsafe);
+    const internal = internals(instance);
+    internal.writerState = 'claiming';
+    await internal.transitionToWatching();
+    expect(onUnsafe).toHaveBeenCalledOnce();
+    expect(db.updateManyIndexRequests).not.toHaveBeenCalled();
+    expect(instance.getStatus().writerState).not.toBe('watching');
+  });
+});
