@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { promisify } from 'node:util';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine, strictMaintenanceLock } from '@search-docs/db-engine';
 import { DEFAULT_CONFIG } from '@search-docs/types';
@@ -154,14 +156,34 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
         server: repairServer,
         systemState: { state: 'RUNNING', config, projectRoot: root },
       } as unknown as ToolRegistrationContext);
+      await writeFile(path.join(root, '.search-docs.json'), JSON.stringify(config));
+      const cli = (...args: string[]) => promisify(execFile)(
+        process.execPath,
+        [path.resolve('../cli/dist/index.js'), ...args],
+        { cwd: root, env: { ...process.env, UV_NO_SYNC: '1', UV_CACHE_DIR: '/tmp/search-docs-uv-cache' }, timeout: 60000 },
+      );
       const heartbeatPath = path.join(indexPath, 'writer_heartbeat.lance');
-      for (const damaged of [path.join(heartbeatPath, '_versions'), heartbeatPath]) {
-        await rm(damaged, { recursive: true });
-        const before = [await snapshot(indexPath), await snapshot(documentsPath)];
-        await expect(createService(config, root, 'test')).rejects.toThrow();
-        await expect(stoppedRepair()).rejects.toThrow(/修復前の診断/);
-        expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(before);
-      }
+      await rm(path.join(heartbeatPath, '_versions'), { recursive: true });
+      const corruptBefore = [await snapshot(indexPath), await snapshot(documentsPath)];
+      await expect(createService(config, root, 'test')).rejects.toThrow();
+      await expect(stoppedRepair()).rejects.toThrow(/修復前の診断/);
+      await expect(cli('maintenance', 'repair')).rejects.toThrow();
+      expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(corruptBefore);
+      const unaffected = await Promise.all(['sections.lance', 'index_requests.lance', 'embedding_identity.lance'].map(name => snapshot(path.join(indexPath, name))));
+      const preview = await cli('maintenance', 'force-repair', '--table', 'writer_heartbeat');
+      const token = preview.stdout.match(/--confirm ([a-f0-9]{64})/)?.[1];
+      expect(token).toBeDefined();
+      expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(corruptBefore);
+      await cli('maintenance', 'force-repair', '--table', 'writer_heartbeat', '--confirm', token!, '--backup', '--isolated');
+      expect(await Promise.all(['sections.lance', 'index_requests.lance', 'embedding_identity.lance'].map(name => snapshot(path.join(indexPath, name))))).toEqual(unaffected);
+      expect(await snapshot(documentsPath)).toEqual(corruptBefore[1]);
+      await cli('maintenance', 'repair');
+      await rm(heartbeatPath, { recursive: true });
+      const missingBefore = [await snapshot(indexPath), await snapshot(documentsPath)];
+      await expect(createService(config, root, 'test')).rejects.toThrow();
+      await expect(stoppedRepair()).rejects.toThrow(/修復前の診断/);
+      await expect(cli('maintenance', 'repair')).rejects.toThrow();
+      expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(missingBefore);
     } finally {
       try {
         if (instances) await stopService(instances);
@@ -173,5 +195,5 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
         await rm(root, { recursive: true, force: true });
       }
     }
-  }, 180000);
+  }, 240000);
 });
