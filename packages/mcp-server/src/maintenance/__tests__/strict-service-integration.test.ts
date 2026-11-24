@@ -1,11 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { FileStorage } from '@search-docs/storage';
+import { DBEngine } from '@search-docs/db-engine';
 import { DEFAULT_CONFIG } from '@search-docs/types';
 import { createService, stopService, type ServiceInstances } from '../../state.js';
+
+async function snapshot(root: string): Promise<string[]> {
+  const result: string[] = [];
+  async function walk(dir: string): Promise<void> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) await walk(file);
+      else if (entry.isFile()) result.push(`${path.relative(root, file)}:${createHash('sha256').update(await readFile(file)).digest('hex')}`);
+      else throw new Error(`unexpected entry: ${file}`);
+    }
+  }
+  await walk(root);
+  return result.sort();
+}
 
 describe.skipIf(process.platform === 'win32')('strict サービスと native watcher', () => {
   it('探索、監視、停止中の変更を同じキーで保存し、再起動時に照合する', async () => {
@@ -73,6 +89,25 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
       await indexed('docs/offline.md');
       await vi.waitFor(async () => expect(await storage.get('docs/first.md')).toBeNull(), { timeout: 30000, interval: 200 });
       expect(await instances.dbEngine.getIndexedPaths()).not.toContain('docs/first.md');
+      await stopService(instances);
+      instances = undefined;
+      const indexPath = path.join(root, '.search-docs/index');
+      const documentsPath = path.join(root, '.search-docs/documents');
+      const beforeLink = [await snapshot(indexPath), await snapshot(documentsPath)];
+      await symlink(path.join(root, 'docs/offline.md'), path.join(root, 'docs/link.md'));
+      await expect(createService(config, root, 'test')).rejects.toThrow(/シンボリックリンク/);
+      expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(beforeLink);
+      await rm(path.join(root, 'docs/link.md'));
+      const inject = new DBEngine({ dbPath: indexPath });
+      try {
+        await inject.connect({ skipInitModel: true });
+        await inject.createIndexRequest({ documentPath: '../outside.md', documentHash: 'test' });
+      } finally {
+        await inject.disconnect();
+      }
+      const beforeUnsafe = [await snapshot(indexPath), await snapshot(documentsPath)];
+      await expect(createService(config, root, 'test')).rejects.toThrow();
+      expect([await snapshot(indexPath), await snapshot(documentsPath)]).toEqual(beforeUnsafe);
     } finally {
       try {
         if (instances) await stopService(instances);
