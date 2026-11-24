@@ -232,6 +232,97 @@ describe('embedding lifecycle', () => {
       .rejects.toThrow('Failed to reap the embedding process: process tree 7000 did not exit');
   });
 
+  it.each(['SIGINT', 'SIGTERM'] as const)('reaps the launcher when %s interrupts readiness', async (signal) => {
+    let readinessSignal: AbortSignal | undefined;
+    const before = process.listeners(signal);
+    embeddingMocks.waitForEmbeddingReady.mockImplementation((_host, _port, _timeout, abortSignal) =>
+      new Promise<boolean>((_resolve, reject) => {
+        readinessSignal = abortSignal;
+        abortSignal.addEventListener('abort', () => reject(abortSignal.reason), { once: true });
+      }),
+    );
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(readinessSignal).toBeDefined());
+    const handler = process.listeners(signal).find((listener) => !before.includes(listener));
+    expect(handler).toBeDefined();
+    handler!(signal);
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(signal === 'SIGINT' ? 130 : 143);
+    expect(process.listeners(signal)).toEqual(before);
+  });
+
+  it('does not publish a PID if interrupted after readiness during health lookup', async () => {
+    let finishHealth!: (value: unknown) => void;
+    embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValueOnce(null)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishHealth = resolve; }));
+    const before = process.listeners('SIGINT');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishHealth).toBeDefined());
+    process.listeners('SIGINT').find((listener) => !before.includes(listener))!('SIGINT');
+    finishHealth({ health: health() });
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(130);
+  });
+
+  it('cleans up the PID file if interrupted while it is being written', async () => {
+    let finishWrite!: () => void;
+    fsMocks.writeFile.mockImplementation(() => new Promise<void>((resolve) => { finishWrite = resolve; }));
+    const before = process.listeners('SIGTERM');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishWrite).toBeDefined());
+    process.listeners('SIGTERM').find((listener) => !before.includes(listener))!('SIGTERM');
+    finishWrite();
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.unlink).toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(process.exitCode).toBe(143);
+  });
+
+  it('does not hide cleanup failure after interruption', async () => {
+    let abort: AbortSignal | undefined;
+    embeddingMocks.waitForEmbeddingReady.mockImplementation((_host, _port, _timeout, signal) =>
+      new Promise<boolean>((_resolve, reject) => {
+        abort = signal;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }));
+    processMocks.killProcessTree.mockRejectedValue(new Error('cannot reap'));
+    const before = process.listeners('SIGTERM');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(abort).toBeDefined());
+    const handler = process.listeners('SIGTERM').find((listener) => !before.includes(listener))!;
+    handler('SIGTERM');
+    handler('SIGTERM');
+    await expect(starting).rejects.toThrow('Failed to reap the embedding process: cannot reap');
+    expect(processMocks.killProcessTree).toHaveBeenCalledOnce();
+    expect(process.listeners('SIGTERM')).toEqual(before);
+  });
+
+  it('does not manage or kill an already running external server', async () => {
+    embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValue({ host: '127.0.0.1', health: health() });
+    await startEmbeddingServer({ port });
+    expect(childMocks.spawn).not.toHaveBeenCalled();
+    expect(processMocks.killProcessTree).not.toHaveBeenCalled();
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('does not claim success when the launcher exits during PID file writing', async () => {
+    let finishWrite!: () => void;
+    fsMocks.writeFile.mockImplementation(() => new Promise<void>((resolve) => { finishWrite = resolve; }));
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishWrite).toBeDefined());
+    const child = childMocks.spawn.mock.results[0].value;
+    child.exitCode = 1;
+    child.emit('exit', 1, null);
+    finishWrite();
+    await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.unlink).toHaveBeenCalledOnce();
+  });
+
   it('persists the listener PID and passes it through status and stop', async () => {
     await startEmbeddingServer({ port, dimension: 3 });
 

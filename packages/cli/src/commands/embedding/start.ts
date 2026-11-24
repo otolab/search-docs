@@ -224,12 +224,26 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
 
   proc.unref();
 
+  let interruptedBy: 'SIGINT' | 'SIGTERM' | null = null;
+  let pidFileWritten = false;
+  const readinessController = new AbortController();
+  const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
+    interruptedBy ??= signal;
+    readinessController.abort(new Error(`Embedding startup interrupted by ${signal}`));
+  };
+  const onSigint = () => interrupt('SIGINT');
+  const onSigterm = () => interrupt('SIGTERM');
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
+  const throwIfInterrupted = () => {
+    if (interruptedBy) throw new Error(`Embedding startup interrupted by ${interruptedBy}`);
+  };
+
   // readiness 待ち（初回はモデルダウンロードで時間がかかる）
   console.log(
     `Waiting up to ${readyTimeoutMs}ms for embedding server readiness ` +
     '(the first model download may take several minutes)...',
   );
-  const readinessController = new AbortController();
   const processFailure: { spawnError: Error | null } = { spawnError: null };
   const onSpawnError = (error: Error) => {
     processFailure.spawnError = error;
@@ -242,6 +256,16 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       new Error(`Embedding launcher exited with ${result} before readiness`),
     );
   };
+  const throwIfLauncherExited = () => {
+    if (processFailure.spawnError || proc.exitCode !== null || proc.signalCode !== null) {
+      const result = processFailure.spawnError
+        ? `failed to spawn: ${processFailure.spawnError.message}`
+        : proc.signalCode
+          ? `exited with signal ${proc.signalCode}`
+          : `exited with code ${proc.exitCode}`;
+      throw new Error(`Embedding launcher ${result} before readiness was recorded`);
+    }
+  };
   proc.once('error', onSpawnError);
   proc.once('exit', onProcessExit);
 
@@ -253,6 +277,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       readinessController.signal,
     );
 
+    throwIfInterrupted();
     if (!ready) {
       throw new Error(
         `Embedding server did not become ready within ${readyTimeoutMs}ms. ` +
@@ -260,14 +285,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
         `Check log: ${logPath}`,
       );
     }
-    if (processFailure.spawnError || proc.exitCode !== null || proc.signalCode !== null) {
-      const result = processFailure.spawnError
-        ? `failed to spawn: ${processFailure.spawnError.message}`
-        : proc.signalCode
-          ? `exited with signal ${proc.signalCode}`
-          : `exited with code ${proc.exitCode}`;
-      throw new Error(`Embedding launcher ${result} before readiness was recorded`);
-    }
+    throwIfLauncherExited();
 
     // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
     // LISTENしているEmbeddingプロセスのPIDを保存する。
@@ -279,6 +297,8 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       );
     }
     const healthLocation = await findEmbeddingHealth(port);
+    throwIfInterrupted();
+    throwIfLauncherExited();
     const health = healthLocation?.health;
     const pidFile = {
       pid: owner.pid,
@@ -295,12 +315,17 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       { encoding: 'utf-8', mode: 0o600 },
     );
 
+    pidFileWritten = true;
+    throwIfInterrupted();
+    throwIfLauncherExited();
+
     console.log(`Embedding server started successfully (PID: ${owner.pid})`);
     console.log(`  Model: ${pidFile.model}`);
     console.log(`  Dimension: ${pidFile.dimension}`);
     console.log(`  Port: ${port}`);
     console.log(`  Log: ${logPath}`);
   } catch (error) {
+    const wasInterrupted = interruptedBy;
     try {
       await killProcessTree(proc.pid);
     } catch (cleanupError) {
@@ -311,6 +336,11 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
         { cause: error },
       );
     }
+    if (pidFileWritten) await removeStalePidFile();
+    if (wasInterrupted) {
+      process.exitCode = wasInterrupted === 'SIGINT' ? 130 : 143;
+      return;
+    }
     if (processFailure.spawnError) {
       throw new Error(
         `Embedding server process failed to start: ${processFailure.spawnError.message}`,
@@ -319,6 +349,8 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     }
     throw error;
   } finally {
+    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGTERM', onSigterm);
     proc.removeListener('error', onSpawnError);
     proc.removeListener('exit', onProcessExit);
   }

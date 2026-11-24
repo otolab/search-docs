@@ -597,6 +597,8 @@ ONNX Runtimeのアクセラレータを自動検出します：
 - IPv6専用サーバを検出した場合はURLを `http://[::1]:<port>` 形式で表示します
 - すでにsearch-docs管理下のサーバが起動している場合はエラーになります
 - 初回は Hugging Face からモデルを取得するため、ネットワーク速度に応じて数分かかることがあります。起動前に取得するには `search-docs embedding download` を実行してください
+- デーモンの準備待ちを Ctrl-C または SIGTERM で中断すると、この起動で生成したプロセスの終了を待ちます。起動完了後は通常の `embedding stop` で停止してください
+- 起動直後は LISTEN や PID ファイルの作成前のため、別の `embedding stop --port` では対象を特定できない場合があります
 - ログは `~/.search-docs/embedding.log` に出力されます
 
 ### embedding download
