@@ -4,7 +4,8 @@
 
 import { spawn } from 'child_process';
 import { closeSync, openSync } from 'fs';
-import { mkdir, unlink, writeFile } from 'fs/promises';
+import { link, mkdir, unlink, writeFile } from 'fs/promises';
+import { randomUUID } from 'node:crypto';
 import * as path from 'path';
 import {
   EMBEDDING_READY_TIMEOUT_ENV,
@@ -226,6 +227,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
 
   let interruptedBy: 'SIGINT' | 'SIGTERM' | null = null;
   let pidFileWritten = false;
+  const temporaryPidPath = `${embeddingPidPath()}.${randomUUID()}.tmp`;
   const readinessController = new AbortController();
   const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
     interruptedBy ??= signal;
@@ -310,11 +312,14 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     };
 
     await writeFile(
-      embeddingPidPath(),
+      temporaryPidPath,
       JSON.stringify(pidFile, null, 2),
-      { encoding: 'utf-8', mode: 0o600 },
+      { encoding: 'utf-8', mode: 0o600, flag: 'wx' },
     );
 
+    throwIfInterrupted();
+    throwIfLauncherExited();
+    await link(temporaryPidPath, embeddingPidPath());
     pidFileWritten = true;
     throwIfInterrupted();
     throwIfLauncherExited();
@@ -353,5 +358,8 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     process.removeListener('SIGTERM', onSigterm);
     proc.removeListener('error', onSpawnError);
     proc.removeListener('exit', onProcessExit);
+    await unlink(temporaryPidPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
   }
 }

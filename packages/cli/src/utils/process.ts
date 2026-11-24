@@ -186,54 +186,36 @@ async function killProcessWindows(
   timeout: number,
   force: boolean = false,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const killProcess = spawn('taskkill', [
-      '/PID',
-      pid.toString(),
-      ...(force ? ['/F'] : []),
-      '/T', // サブプロセスも終了
-    ]);
-
-    if (force) {
-      killProcess.on('close', (code) => {
-        if (code === 0 || code === 128) resolve();
-        else reject(new Error(`taskkill failed with code ${code}`));
-      });
-      killProcess.on('error', reject);
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      // タイムアウト: 強制終了
-      const forceKill = spawn('taskkill', [
-        '/PID',
-        pid.toString(),
-        '/F', // 強制終了
-        '/T',
-      ]);
-
-      forceKill.on('close', () => {
-        resolve();
-      });
-
-      forceKill.on('error', reject);
-    }, timeout);
-
-    killProcess.on('close', (code) => {
-      clearTimeout(timeoutId);
-      if (code === 0 || code === 128) {
-        // 128: プロセスが見つからない（既に終了している）
-        resolve();
-      } else {
-        reject(new Error(`taskkill failed with code ${code}`));
-      }
-    });
-
-    killProcess.on('error', (error) => {
-      clearTimeout(timeoutId);
-      reject(error);
+  const runTaskkill = (forced: boolean): Promise<void> => new Promise((resolve, reject) => {
+    const child = spawn('taskkill', ['/PID', String(pid), ...(forced ? ['/F'] : []), '/T']);
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`taskkill${forced ? ' /F' : ''} failed with code ${code}`));
     });
   });
+
+  if (force) {
+    await runTaskkill(true);
+  } else {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    const graceful = runTaskkill(false);
+    try {
+      await Promise.race([
+        graceful,
+        new Promise<void>((resolve) => {
+          timeoutId = setTimeout(() => { timedOut = true; resolve(); }, timeout);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (timedOut) await runTaskkill(true);
+  }
+  if (!(await waitForProcessExit(pid, 1000))) {
+    throw new Error(`Process ${pid} did not exit after taskkill`);
+  }
 }
 
 /**

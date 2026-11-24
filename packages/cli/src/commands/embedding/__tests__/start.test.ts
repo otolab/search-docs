@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startEmbeddingServer } from '../start.js';
 import { stopEmbeddingServer } from '../stop.js';
@@ -11,6 +14,7 @@ const fsMocks = vi.hoisted(() => ({
   closeSync: vi.fn(),
   openSync: vi.fn(),
   mkdir: vi.fn(),
+  link: vi.fn(),
   unlink: vi.fn(),
   writeFile: vi.fn(),
 }));
@@ -48,6 +52,7 @@ vi.mock('fs/promises', async () => {
   return {
     ...actual,
     mkdir: fsMocks.mkdir,
+    link: fsMocks.link,
     unlink: fsMocks.unlink,
     writeFile: fsMocks.writeFile,
   };
@@ -120,6 +125,7 @@ beforeEach(() => {
   embeddingMocks.embeddingLogPath.mockReturnValue('/tmp/search-docs-embedding/embedding.log');
   fsMocks.openSync.mockReturnValue(42);
   fsMocks.mkdir.mockResolvedValue(undefined);
+  fsMocks.link.mockResolvedValue(undefined);
   fsMocks.unlink.mockResolvedValue(undefined);
   fsMocks.writeFile.mockImplementation(async (_path: string, content: string) => {
     storedPidFile = JSON.parse(content) as typeof storedPidFile;
@@ -278,8 +284,46 @@ describe('embedding lifecycle', () => {
     finishWrite();
     await starting;
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
-    expect(fsMocks.unlink).toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
     expect(process.exitCode).toBe(143);
+  });
+
+  it('removes a partial temporary PID file without publishing it', async () => {
+    fsMocks.writeFile.mockRejectedValueOnce(new Error('disk full'));
+    await expect(startEmbeddingServer({ port })).rejects.toThrow('disk full');
+    expect(fsMocks.link).not.toHaveBeenCalled();
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+  });
+
+  it('removes a real partially written temporary PID file and can retry', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'embedding-pid-'));
+    const pidPath = join(directory, 'embedding.pid');
+    embeddingMocks.embeddingPidPath.mockReturnValue(pidPath);
+    const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+    fsMocks.unlink.mockImplementation(actualFs.unlink);
+    fsMocks.link.mockImplementation(actualFs.link);
+    fsMocks.writeFile.mockImplementationOnce(async (filename: string) => {
+      await actualFs.writeFile(filename, '{partial');
+      throw new Error('disk full');
+    }).mockImplementation(actualFs.writeFile);
+    try {
+      await expect(startEmbeddingServer({ port })).rejects.toThrow('disk full');
+      expect(await readdir(directory)).toEqual([]);
+      embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValueOnce(null)
+        .mockResolvedValue({ host: '127.0.0.1', health: health() });
+      await startEmbeddingServer({ port });
+      expect(await readdir(directory)).toEqual(['embedding.pid']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not overwrite a concurrently created PID file', async () => {
+    fsMocks.link.mockRejectedValueOnce(Object.assign(new Error('already exists'), { code: 'EEXIST' }));
+    await expect(startEmbeddingServer({ port })).rejects.toThrow('already exists');
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
   });
 
   it('does not hide cleanup failure after interruption', async () => {
@@ -320,7 +364,7 @@ describe('embedding lifecycle', () => {
     finishWrite();
     await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
-    expect(fsMocks.unlink).toHaveBeenCalledOnce();
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
   });
 
   it('persists the listener PID and passes it through status and stop', async () => {
