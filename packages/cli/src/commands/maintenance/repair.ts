@@ -89,7 +89,7 @@ export async function executeMaintenanceRepair(
         await diagnoseStrictConfig(config);
       } catch (error) {
         if (error instanceof UnconfirmedProcessStopError) retainRegistration = true;
-        throw new Error(`修復前の診断に失敗しました: ${String(error)}。全プロセスを停止し、データをバックアップして、設定と保存先を確認してください。診断できない DB は別環境で手動復旧してください。`);
+        throw new Error(`修復前の診断に失敗しました: ${String(error)}。全プロセスを停止し、データをバックアップして、設定と保存先を確認してください。読めないテーブルが残っている場合は maintenance force-repair のプレビューを確認し、対象が欠損している場合などはバックアップからの復旧を検討してください。`);
       }
       await dbEngine.connect({ skipInitModel: true });
       const result = await dbEngine.repairTables();
