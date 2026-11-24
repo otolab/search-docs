@@ -4,7 +4,8 @@
 
 import { spawn } from 'child_process';
 import { closeSync, openSync } from 'fs';
-import { mkdir, unlink, writeFile } from 'fs/promises';
+import { link, mkdir, unlink, writeFile } from 'fs/promises';
+import { randomUUID } from 'node:crypto';
 import * as path from 'path';
 import {
   EMBEDDING_READY_TIMEOUT_ENV,
@@ -224,12 +225,27 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
 
   proc.unref();
 
+  let interruptedBy: 'SIGINT' | 'SIGTERM' | null = null;
+  let published = false;
+  const temporaryPidPath = `${embeddingPidPath()}.${randomUUID()}.tmp`;
+  const readinessController = new AbortController();
+  const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
+    interruptedBy ??= signal;
+    readinessController.abort(new Error(`Embedding startup interrupted by ${signal}`));
+  };
+  const onSigint = () => interrupt('SIGINT');
+  const onSigterm = () => interrupt('SIGTERM');
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
+  const throwIfInterrupted = () => {
+    if (interruptedBy) throw new Error(`Embedding startup interrupted by ${interruptedBy}`);
+  };
+
   // readiness 待ち（初回はモデルダウンロードで時間がかかる）
   console.log(
     `Waiting up to ${readyTimeoutMs}ms for embedding server readiness ` +
     '(the first model download may take several minutes)...',
   );
-  const readinessController = new AbortController();
   const processFailure: { spawnError: Error | null } = { spawnError: null };
   const onSpawnError = (error: Error) => {
     processFailure.spawnError = error;
@@ -242,6 +258,16 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       new Error(`Embedding launcher exited with ${result} before readiness`),
     );
   };
+  const throwIfLauncherExited = () => {
+    if (processFailure.spawnError || proc.exitCode !== null || proc.signalCode !== null) {
+      const result = processFailure.spawnError
+        ? `failed to spawn: ${processFailure.spawnError.message}`
+        : proc.signalCode
+          ? `exited with signal ${proc.signalCode}`
+          : `exited with code ${proc.exitCode}`;
+      throw new Error(`Embedding launcher ${result} before readiness was recorded`);
+    }
+  };
   proc.once('error', onSpawnError);
   proc.once('exit', onProcessExit);
 
@@ -253,6 +279,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       readinessController.signal,
     );
 
+    throwIfInterrupted();
     if (!ready) {
       throw new Error(
         `Embedding server did not become ready within ${readyTimeoutMs}ms. ` +
@@ -260,14 +287,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
         `Check log: ${logPath}`,
       );
     }
-    if (processFailure.spawnError || proc.exitCode !== null || proc.signalCode !== null) {
-      const result = processFailure.spawnError
-        ? `failed to spawn: ${processFailure.spawnError.message}`
-        : proc.signalCode
-          ? `exited with signal ${proc.signalCode}`
-          : `exited with code ${proc.exitCode}`;
-      throw new Error(`Embedding launcher ${result} before readiness was recorded`);
-    }
+    throwIfLauncherExited();
 
     // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
     // LISTENしているEmbeddingプロセスのPIDを保存する。
@@ -279,6 +299,8 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       );
     }
     const healthLocation = await findEmbeddingHealth(port);
+    throwIfInterrupted();
+    throwIfLauncherExited();
     const health = healthLocation?.health;
     const pidFile = {
       pid: owner.pid,
@@ -290,26 +312,52 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     };
 
     await writeFile(
-      embeddingPidPath(),
+      temporaryPidPath,
       JSON.stringify(pidFile, null, 2),
-      { encoding: 'utf-8', mode: 0o600 },
+      { encoding: 'utf-8', mode: 0o600, flag: 'wx' },
     );
+
+    throwIfInterrupted();
+    throwIfLauncherExited();
+    await link(temporaryPidPath, embeddingPidPath());
+    // Publication transfers ownership to the PID file. A signal received while
+    // link was pending must not retract the published server.
+    published = true;
+    const pendingSignal = interruptedBy;
+    interruptedBy = null;
+    throwIfLauncherExited();
 
     console.log(`Embedding server started successfully (PID: ${owner.pid})`);
     console.log(`  Model: ${pidFile.model}`);
     console.log(`  Dimension: ${pidFile.dimension}`);
     console.log(`  Port: ${port}`);
     console.log(`  Log: ${logPath}`);
+    if (pendingSignal) {
+      console.log(`Startup completed despite ${String(pendingSignal)}; use embedding stop to stop the server.`);
+    }
   } catch (error) {
+    const wasInterrupted = interruptedBy;
     try {
       await killProcessTree(proc.pid);
     } catch (cleanupError) {
       const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
       throw new Error(
         `${error instanceof Error ? error.message : String(error)}. ` +
-        `Failed to reap the embedding process: ${message}`,
+        `Failed to reap the embedding process: ${message}` +
+        (published ? '. A PID file may remain; inspect it and the server before retrying or stopping.' : ''),
         { cause: error },
       );
+    }
+    if (published) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}. ` +
+        'A PID file may remain; inspect it and the server before retrying or stopping.',
+        { cause: error },
+      );
+    }
+    if (wasInterrupted) {
+      process.exitCode = wasInterrupted === 'SIGINT' ? 130 : 143;
+      return;
     }
     if (processFailure.spawnError) {
       throw new Error(
@@ -319,7 +367,14 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     }
     throw error;
   } finally {
+    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGTERM', onSigterm);
     proc.removeListener('error', onSpawnError);
     proc.removeListener('exit', onProcessExit);
+    await unlink(temporaryPidPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') {
+        console.warn(`Failed to remove temporary PID file ${temporaryPidPath}: ${error.message}`);
+      }
+    });
   }
 }

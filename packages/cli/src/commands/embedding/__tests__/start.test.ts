@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startEmbeddingServer } from '../start.js';
 import { stopEmbeddingServer } from '../stop.js';
@@ -11,6 +14,7 @@ const fsMocks = vi.hoisted(() => ({
   closeSync: vi.fn(),
   openSync: vi.fn(),
   mkdir: vi.fn(),
+  link: vi.fn(),
   unlink: vi.fn(),
   writeFile: vi.fn(),
 }));
@@ -48,6 +52,7 @@ vi.mock('fs/promises', async () => {
   return {
     ...actual,
     mkdir: fsMocks.mkdir,
+    link: fsMocks.link,
     unlink: fsMocks.unlink,
     writeFile: fsMocks.writeFile,
   };
@@ -120,6 +125,7 @@ beforeEach(() => {
   embeddingMocks.embeddingLogPath.mockReturnValue('/tmp/search-docs-embedding/embedding.log');
   fsMocks.openSync.mockReturnValue(42);
   fsMocks.mkdir.mockResolvedValue(undefined);
+  fsMocks.link.mockResolvedValue(undefined);
   fsMocks.unlink.mockResolvedValue(undefined);
   fsMocks.writeFile.mockImplementation(async (_path: string, content: string) => {
     storedPidFile = JSON.parse(content) as typeof storedPidFile;
@@ -230,6 +236,275 @@ describe('embedding lifecycle', () => {
 
     await expect(startEmbeddingServer({ port, dimension: 3, readyTimeout: 1000 }))
       .rejects.toThrow('Failed to reap the embedding process: process tree 7000 did not exit');
+  });
+
+  it.each(['SIGINT', 'SIGTERM'] as const)('reaps the launcher when %s interrupts readiness', async (signal) => {
+    let readinessSignal: AbortSignal | undefined;
+    const before = process.listeners(signal);
+    embeddingMocks.waitForEmbeddingReady.mockImplementation((_host, _port, _timeout, abortSignal) =>
+      new Promise<boolean>((_resolve, reject) => {
+        readinessSignal = abortSignal;
+        abortSignal.addEventListener('abort', () => reject(abortSignal.reason), { once: true });
+      }),
+    );
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(readinessSignal).toBeDefined());
+    const handler = process.listeners(signal).find((listener) => !before.includes(listener));
+    expect(handler).toBeDefined();
+    handler!(signal);
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(signal === 'SIGINT' ? 130 : 143);
+    expect(process.listeners(signal)).toEqual(before);
+  });
+
+  it('does not publish a PID if interrupted after readiness during health lookup', async () => {
+    let finishHealth!: (value: unknown) => void;
+    embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValueOnce(null)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishHealth = resolve; }));
+    const before = process.listeners('SIGINT');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishHealth).toBeDefined());
+    process.listeners('SIGINT').find((listener) => !before.includes(listener))!('SIGINT');
+    finishHealth({ health: health() });
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(130);
+  });
+
+  it('cleans up the PID file if interrupted while it is being written', async () => {
+    let finishWrite!: () => void;
+    fsMocks.writeFile.mockImplementation(() => new Promise<void>((resolve) => { finishWrite = resolve; }));
+    const before = process.listeners('SIGTERM');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishWrite).toBeDefined());
+    process.listeners('SIGTERM').find((listener) => !before.includes(listener))!('SIGTERM');
+    finishWrite();
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+    expect(process.exitCode).toBe(143);
+  });
+
+  it('removes a partial temporary PID file without publishing it', async () => {
+    fsMocks.writeFile.mockRejectedValueOnce(new Error('disk full'));
+    await expect(startEmbeddingServer({ port })).rejects.toThrow('disk full');
+    expect(fsMocks.link).not.toHaveBeenCalled();
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+  });
+
+  it('removes a real partially written temporary PID file and can retry', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'embedding-pid-'));
+    const pidPath = join(directory, 'embedding.pid');
+    embeddingMocks.embeddingPidPath.mockReturnValue(pidPath);
+    const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+    fsMocks.unlink.mockImplementation(actualFs.unlink);
+    fsMocks.link.mockImplementation(actualFs.link);
+    fsMocks.writeFile.mockImplementationOnce(async (filename: string) => {
+      await actualFs.writeFile(filename, '{partial');
+      throw new Error('disk full');
+    }).mockImplementation(actualFs.writeFile);
+    try {
+      await expect(startEmbeddingServer({ port })).rejects.toThrow('disk full');
+      expect(await readdir(directory)).toEqual([]);
+      embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValueOnce(null)
+        .mockResolvedValue({ host: '127.0.0.1', health: health() });
+      await startEmbeddingServer({ port });
+      expect(await readdir(directory)).toEqual(['embedding.pid']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a successful start successful if temporary file cleanup fails', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fsMocks.unlink.mockRejectedValueOnce(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    try {
+      await expect(startEmbeddingServer({ port })).resolves.toBeUndefined();
+      expect(processMocks.killProcessTree).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('Failed to remove temporary PID file'));
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('preserves startup failure when temporary file cleanup also fails', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fsMocks.writeFile.mockRejectedValueOnce(new Error('disk full'));
+    fsMocks.unlink.mockRejectedValueOnce(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    try {
+      await expect(startEmbeddingServer({ port })).rejects.toThrow('disk full');
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('Failed to remove temporary PID file'));
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('preserves process cleanup failure when temporary file cleanup also fails', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    embeddingMocks.waitForEmbeddingReady.mockResolvedValue(false);
+    processMocks.killProcessTree.mockRejectedValue(new Error('reap failed'));
+    fsMocks.unlink.mockRejectedValueOnce(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    try {
+      await expect(startEmbeddingServer({ port })).rejects.toThrow('Failed to reap the embedding process: reap failed');
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('Failed to remove temporary PID file'));
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('preserves interruption when temporary file cleanup fails', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let finishWrite!: () => void;
+    fsMocks.writeFile.mockImplementation(() => new Promise<void>((resolve) => { finishWrite = resolve; }));
+    fsMocks.unlink.mockRejectedValueOnce(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    const before = process.listeners('SIGTERM');
+    try {
+      const starting = startEmbeddingServer({ port });
+      await vi.waitFor(() => expect(finishWrite).toBeDefined());
+      process.listeners('SIGTERM').find((listener) => !before.includes(listener))!('SIGTERM');
+      finishWrite();
+      await starting;
+      expect(process.exitCode).toBe(143);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('Failed to remove temporary PID file'));
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('does not overwrite a concurrently created PID file', async () => {
+    fsMocks.link.mockRejectedValueOnce(Object.assign(new Error('already exists'), { code: 'EEXIST' }));
+    await expect(startEmbeddingServer({ port })).rejects.toThrow('already exists');
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+  });
+
+  it('does not hide cleanup failure after interruption', async () => {
+    let abort: AbortSignal | undefined;
+    embeddingMocks.waitForEmbeddingReady.mockImplementation((_host, _port, _timeout, signal) =>
+      new Promise<boolean>((_resolve, reject) => {
+        abort = signal;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }));
+    processMocks.killProcessTree.mockRejectedValue(new Error('cannot reap'));
+    const before = process.listeners('SIGTERM');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(abort).toBeDefined());
+    const handler = process.listeners('SIGTERM').find((listener) => !before.includes(listener))!;
+    handler('SIGTERM');
+    handler('SIGTERM');
+    await expect(starting).rejects.toThrow('Failed to reap the embedding process: cannot reap');
+    expect(processMocks.killProcessTree).toHaveBeenCalledOnce();
+    expect(process.listeners('SIGTERM')).toEqual(before);
+  });
+
+  it('does not manage or kill an already running external server', async () => {
+    embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValue({ host: '127.0.0.1', health: health() });
+    await startEmbeddingServer({ port });
+    expect(childMocks.spawn).not.toHaveBeenCalled();
+    expect(processMocks.killProcessTree).not.toHaveBeenCalled();
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('does not claim success when the launcher exits during PID file writing', async () => {
+    let finishWrite!: () => void;
+    fsMocks.writeFile.mockImplementation(() => new Promise<void>((resolve) => { finishWrite = resolve; }));
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishWrite).toBeDefined());
+    const child = childMocks.spawn.mock.results[0].value;
+    child.exitCode = 1;
+    child.emit('exit', 1, null);
+    finishWrite();
+    await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+  });
+
+  it.each(['SIGINT', 'SIGTERM'] as const)('transfers ownership if %s arrives while publication succeeds', async (signal) => {
+    let finishLink!: () => void;
+    fsMocks.link.mockImplementation(() => new Promise<void>((resolve) => { finishLink = resolve; }));
+    const before = process.listeners(signal);
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishLink).toBeDefined());
+    process.listeners(signal).find((listener) => !before.includes(listener))!(signal);
+    finishLink();
+    await starting;
+    expect(processMocks.killProcessTree).not.toHaveBeenCalled();
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('reaps the launcher when publication fails after an interrupt', async () => {
+    let failLink!: (error: Error) => void;
+    fsMocks.link.mockImplementation(() => new Promise<void>((_resolve, reject) => { failLink = reject; }));
+    const before = process.listeners('SIGTERM');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(failLink).toBeDefined());
+    process.listeners('SIGTERM').find((listener) => !before.includes(listener))!('SIGTERM');
+    failLink(new Error('publication failed'));
+    await starting;
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(process.exitCode).toBe(143);
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+  });
+
+  it('reports launcher failure after publication even if interrupted during publication', async () => {
+    let finishLink!: () => void;
+    fsMocks.link.mockImplementation(() => new Promise<void>((resolve) => { finishLink = resolve; }));
+    const before = process.listeners('SIGTERM');
+    const starting = startEmbeddingServer({ port });
+    await vi.waitFor(() => expect(finishLink).toBeDefined());
+    process.listeners('SIGTERM').find((listener) => !before.includes(listener))!('SIGTERM');
+    const child = childMocks.spawn.mock.results[0].value;
+    child.exitCode = 1;
+    child.emit('exit', 1, null);
+    finishLink();
+    await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+  });
+
+  it('reports possible PID file retention if post-publication reaping fails', async () => {
+    fsMocks.link.mockImplementation(async () => {
+      const child = childMocks.spawn.mock.results[0].value;
+      child.exitCode = 1;
+      child.emit('exit', 1, null);
+    });
+    processMocks.killProcessTree.mockRejectedValue(new Error('reap failed'));
+    await expect(startEmbeddingServer({ port })).rejects.toThrow('A PID file may remain');
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+  });
+
+  it('preserves a replacement PID file when a failed launcher is reaped', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'embedding-race-'));
+    const target = join(directory, 'embedding.pid');
+    const actual = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+    embeddingMocks.embeddingPidPath.mockReturnValue(target);
+    fsMocks.writeFile.mockImplementation(actual.writeFile);
+    fsMocks.unlink.mockImplementation(actual.unlink);
+    fsMocks.link.mockImplementation(async (source: string, destination: string) => {
+      await actual.link(source, destination);
+      const child = childMocks.spawn.mock.results[0].value;
+      child.exitCode = 1;
+      child.emit('exit', 1, null);
+    });
+    let finishReap!: () => void;
+    processMocks.killProcessTree.mockImplementation(() => new Promise<void>((resolve) => { finishReap = resolve; }));
+    try {
+      const starting = startEmbeddingServer({ port });
+      await vi.waitFor(() => expect(finishReap).toBeDefined());
+      await actual.unlink(target);
+      const replacement = JSON.stringify({ pid: 9999, port, startedAt: 'replacement' });
+      await actual.writeFile(target, replacement);
+      finishReap();
+      await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
+      expect(await actual.readFile(target, 'utf8')).toBe(replacement);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('persists the listener PID and passes it through status and stop', async () => {
