@@ -49,6 +49,9 @@ jobs:
       - name: DB maintenance regression tests
         run: pnpm --filter @search-docs/db-engine exec vitest run --config vitest.config.maintenance.ts
 
+      - name: Force repair regression tests
+        run: uv run --project packages/db-engine python -m unittest packages/db-engine/src/python/__tests__/test_force_repair.py
+
       - name: MCP maintenance regression tests
         run: pnpm --filter @search-docs/mcp-server exec vitest run --config vitest.config.maintenance.ts
 

@@ -11,8 +11,17 @@ const mocks = vi.hoisted(() => ({
   setupLogRedirect: vi.fn(),
   acquireRegistration: vi.fn(),
   releaseRegistration: vi.fn(),
+  strictMaintenanceLock: vi.fn(),
+  acquireAdmission: vi.fn(),
+  releaseAdmission: vi.fn(),
+  diagnoseStrictConfig: vi.fn(),
+  mkdir: vi.fn(),
 }));
 
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:fs/promises')>(),
+  mkdir: mocks.mkdir,
+}));
 vi.mock('@search-docs/config', () => ({
   ConfigLoader: { resolve: mocks.resolveConfig },
 }));
@@ -21,13 +30,15 @@ vi.mock('@search-docs/storage', () => ({
 }));
 vi.mock('@search-docs/db-engine', () => ({
   DBEngine: vi.fn(),
-  acquireStandardStorageRegistration: mocks.acquireRegistration,
+  strictMaintenanceLock: mocks.strictMaintenanceLock,
+  UnconfirmedProcessStopError: class extends Error {},
 }));
 vi.mock('../../index.js', () => ({
   SearchDocsServer: vi.fn(),
   JsonRpcServer: vi.fn(),
   WatcherProcess: vi.fn(),
   EmbeddingServerProcess: mocks.embeddingServerConstructor,
+  diagnoseStrictConfig: mocks.diagnoseStrictConfig,
 }));
 vi.mock('../../utils/pid.js', () => ({
   writePidFile: mocks.writePidFile,
@@ -53,6 +64,14 @@ describe('server startup cleanup', () => {
     embeddingServer.stop.mockResolvedValue(undefined);
     mocks.acquireRegistration.mockResolvedValue(mocks.releaseRegistration);
     mocks.releaseRegistration.mockResolvedValue(undefined);
+    mocks.strictMaintenanceLock.mockResolvedValue({
+      acquireShared: mocks.acquireRegistration,
+      acquireAdmission: mocks.acquireAdmission,
+    });
+    mocks.acquireAdmission.mockResolvedValue(mocks.releaseAdmission);
+    mocks.releaseAdmission.mockResolvedValue(undefined);
+    mocks.diagnoseStrictConfig.mockResolvedValue(undefined);
+    mocks.mkdir.mockResolvedValue(undefined);
     mocks.resolveConfig.mockResolvedValue({
       config: {
         project: { name: 'test-project' },
@@ -88,6 +107,7 @@ describe('server startup cleanup', () => {
 
     expect(embeddingServer.start).toHaveBeenCalledOnce();
     expect(embeddingServer.stop).toHaveBeenCalledOnce();
+    expect(mocks.releaseAdmission).toHaveBeenCalledOnce();
     expect(mocks.releaseRegistration).toHaveBeenCalledOnce();
     expect(mocks.writePidFile).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -98,6 +118,10 @@ describe('server startup cleanup', () => {
   it('retains registration when startup cleanup fails', async () => {
     embeddingServer.stop.mockRejectedValue(new Error('stop failed'));
     await main();
+    expect(embeddingServer.start).toHaveBeenCalledOnce();
+    expect(embeddingServer.stop).toHaveBeenCalledOnce();
+    expect(mocks.acquireRegistration).toHaveBeenCalledOnce();
+    expect(mocks.releaseAdmission).not.toHaveBeenCalled();
     expect(mocks.releaseRegistration).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });

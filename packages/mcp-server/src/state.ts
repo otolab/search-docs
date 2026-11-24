@@ -3,11 +3,12 @@
  */
 
 import * as path from 'path';
+import { mkdir } from 'node:fs/promises';
 import { ConfigLoader, type ConfigDeprecation } from '@search-docs/config';
 import type { SearchDocsConfig, SearchDocsService } from '@search-docs/types';
 import { FileStorage } from '@search-docs/storage';
-import { DBEngine, acquireStandardStorageRegistration } from '@search-docs/db-engine';
-import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess, prepareEmbeddingOptions } from '@search-docs/server';
+import { DBEngine, strictMaintenanceLock, UnconfirmedProcessStopError } from '@search-docs/db-engine';
+import { SearchDocsServer, WatcherProcess, EmbeddingServerProcess, prepareEmbeddingOptions, diagnoseStrictConfig, StrictSafetyError } from '@search-docs/server';
 
 /**
  * システム状態の種類
@@ -100,15 +101,24 @@ export async function createService(
   projectRoot: string,
   version: string
 ): Promise<ServiceInstances> {
-  const releaseStorageRegistration = await acquireStandardStorageRegistration({
-    projectRoot,
-    indexPath: config.storage.indexPath,
-    documentsPath: config.storage.documentsPath,
-  });
+  let maintenanceLock: Awaited<ReturnType<typeof strictMaintenanceLock>>;
+  let releaseStorageRegistration: () => Promise<void>;
+  try {
+    maintenanceLock = await strictMaintenanceLock({
+      projectRoot, indexPath: config.storage.indexPath, documentsPath: config.storage.documentsPath, files: config.files,
+    });
+    releaseStorageRegistration = await maintenanceLock.acquireShared();
+  } catch (error) {
+    throw new StrictSafetyError(`保存先の安全性を確認できません: ${String(error)}`);
+  }
   // DB または文書を使い始める前の失敗なら登録を安全に解放できる。
   let storageStarted = false;
   let service: SearchDocsServer | undefined;
   let watcherProcess: WatcherProcess | undefined;
+  let admission: (() => Promise<void>) | undefined;
+  let startupEngine: DBEngine | undefined;
+  let checkingSafety = true;
+  let diagnosticStopUnconfirmed = false;
   // 1. EmbeddingServerProcess検出・起動
   const embeddingServer = new EmbeddingServerProcess({
     embedding: config.indexing.embedding,
@@ -120,6 +130,10 @@ export async function createService(
     dimension: config.indexing.vectorDimension,
   });
   try {
+    admission = await maintenanceLock.acquireAdmission();
+    await diagnoseStrictConfig(config);
+    await mkdir(path.resolve(projectRoot, config.storage.documentsPath), { recursive: true });
+    checkingSafety = false;
     const embeddingUrl = await embeddingServer.start();
 
     // 2. FileStorage初期化
@@ -140,12 +154,30 @@ export async function createService(
       memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
       readOnly: false,
     });
+    startupEngine = dbEngine;
+    await dbEngine.connect();
+    await admission();
+    admission = undefined;
 
     // 4. SearchDocsServer初期化
     service = new SearchDocsServer(config, storage, dbEngine, version);
 
     // 5. WatcherProcess初期化・接続
-    watcherProcess = new WatcherProcess(config, storage, dbEngine);
+    watcherProcess = new WatcherProcess(config, storage, dbEngine, async () => {
+      const releaseAdmission = await maintenanceLock.acquireAdmission();
+      try { await diagnoseStrictConfig(config); }
+      catch (error) { if (error instanceof UnconfirmedProcessStopError) diagnosticStopUnconfirmed = true; throw error; }
+      finally { if (!diagnosticStopUnconfirmed) await releaseAdmission(); }
+    }, error => {
+      console.error('安全性を確認できないためサービスを停止します:', error);
+      void stopService({
+        service: service!,
+        watcherProcess: watcherProcess!,
+        dbEngine,
+        embeddingServer,
+        releaseStorageRegistration: diagnosticStopUnconfirmed ? undefined : releaseStorageRegistration,
+      }).catch(stopError => console.error('停止に失敗しました:', stopError));
+    });
     service.setWatcherProcess(watcherProcess);
 
     // 6. 起動
@@ -153,9 +185,16 @@ export async function createService(
     service.start();
     watcherProcess.start();
 
-    return { service, watcherProcess, dbEngine, embeddingServer, releaseStorageRegistration };
+    return { service, watcherProcess, dbEngine, embeddingServer, releaseStorageRegistration: async () => {
+      if (!diagnosticStopUnconfirmed) await releaseStorageRegistration();
+    } };
   } catch (error) {
-    let stopped = !storageStarted;
+    if (error instanceof UnconfirmedProcessStopError) diagnosticStopUnconfirmed = true;
+    let stopped = !storageStarted && !diagnosticStopUnconfirmed;
+    if (!storageStarted && startupEngine) {
+      try { await startupEngine.disconnect(); } catch { stopped = false; }
+    }
+    if (stopped) await admission?.();
     if (storageStarted) {
       try {
         if (watcherProcess) await watcherProcess.stop();
@@ -167,6 +206,7 @@ export async function createService(
     }
     embeddingServer.shutdown();
     if (stopped) await releaseStorageRegistration?.();
+    if (checkingSafety) throw new StrictSafetyError(`診断に失敗しました: ${String(error)}。保存先を確認し、DB を読み取れない場合は CLI の maintenance force-repair のプレビューを確認してください。`);
     throw error;
   }
 }

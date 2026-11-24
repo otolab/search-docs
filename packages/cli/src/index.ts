@@ -276,10 +276,28 @@ const maintenanceCmd = program
 
 maintenanceCmd
   .command('repair')
-  .description('LanceDBテーブルの破損を検出・修復')
+  .description('LanceDB テーブルの読み取りを確認')
   .action(async () => {
     const { executeMaintenanceRepair } = await import('./commands/maintenance/repair.js');
     await executeMaintenanceRepair({ config: globalConfigPath });
+  });
+
+
+maintenanceCmd
+  .command('force-repair')
+  .description('読めない指定テーブルの強制修復（初回はプレビュー）')
+  .requiredOption('--table <name>', '対象テーブル')
+  .option('--confirm <token>', 'プレビューに表示された確認値')
+  .option('--backup', 'バックアップ済みであることを確認')
+  .option('--isolated', '全アクセス停止と専用領域を確認')
+  .action(async (options: { table: string; confirm?: string; backup?: boolean; isolated?: boolean }) => {
+    try {
+      const { executeForceRepair } = await import('./commands/maintenance/force-repair.js');
+      await executeForceRepair({ ...options, config: globalConfigPath });
+    } catch (error) {
+      console.error('Error:', (error as Error).message);
+      process.exitCode = 1;
+    }
   });
 
 

@@ -16,6 +16,7 @@ import { IndexWorker } from '../worker/index.js';
 import { DocumentQueue } from '../worker/document-queue.js';
 import { StartupSyncWorker } from '../worker/startup-sync-worker.js';
 import { reconcileStartup } from './startup-reconciliation.js';
+import { assertSourcePath } from '../discovery/strict-path.js';
 
 /**
  * WatcherProcess
@@ -73,6 +74,8 @@ export class WatcherProcess {
     private config: SearchDocsConfig,
     private storage: FileStorage,
     private dbEngine: DBEngine,
+    private beforeWriter?: () => Promise<void>,
+    private onUnsafe?: (error: unknown) => void,
   ) {
     this.writerId = `${os.hostname()}-${process.pid}-${randomUUID()}`;
     this.splitter = new MarkdownSplitter(config.indexing);
@@ -291,6 +294,36 @@ export class WatcherProcess {
    */
   private async transitionToWatching(): Promise<void> {
     if (this.stopping || this.writerState === 'watching') return;
+
+    if (this.beforeWriter) {
+      let heartbeatError: unknown;
+      let pendingHeartbeat: Promise<void> = Promise.resolve();
+      const timer = setInterval(() => {
+        pendingHeartbeat = pendingHeartbeat.then(async () => {
+          try {
+            await this.dbEngine.updateHeartbeat({
+              writerId: this.writerId, host: os.hostname(), pid: process.pid, state: 'claiming',
+            });
+          } catch (error) { heartbeatError = error; }
+        });
+      }, WatcherProcess.HEARTBEAT_INTERVAL_MS);
+      try {
+        await this.beforeWriter();
+        clearInterval(timer);
+        await pendingHeartbeat;
+        if (heartbeatError) throw heartbeatError instanceof Error ? heartbeatError : new Error('Heartbeat update failed');
+        const current = await this.dbEngine.getWriterHeartbeat();
+        if (this.stopping || !current.exists || current.heartbeat?.writerId !== this.writerId) {
+          throw new Error('writer の所有権を確認できません');
+        }
+      } catch (error) {
+        this.onUnsafe?.(error);
+        return;
+      } finally {
+        clearInterval(timer);
+        await pendingHeartbeat;
+      }
+    }
 
     console.log('[WatcherProcess] → WATCHING');
 
@@ -558,6 +591,7 @@ export class WatcherProcess {
 
   private async handleLockedFileChange(event: FileChangeEvent, generation: number): Promise<void> {
     if (generation !== this.ownershipGeneration) return;
+    if (this.beforeWriter) await this.checkSourceBoundary(event.path, event.type === 'unlink');
     console.log(`File ${event.type}: ${event.path}`);
 
     switch (event.type) {
@@ -614,6 +648,7 @@ export class WatcherProcess {
 
   private async indexLockedDocument(filePath: string, force: boolean, generation: number): Promise<{ success: boolean; sectionsCreated: number }> {
     if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
+    if (this.beforeWriter) await this.checkSourceBoundary(filePath);
     const absolutePath = path.join(this.config.project.root, filePath);
     const stat = await fs.stat(absolutePath);
     if (generation !== this.ownershipGeneration) return { success: false, sectionsCreated: 0 };
@@ -685,5 +720,15 @@ export class WatcherProcess {
       documentsProcessed,
       sectionsCreated,
     };
+  }
+
+  private async checkSourceBoundary(filePath: string, requireParent = false): Promise<void> {
+    try {
+      await assertSourcePath(this.config.project.root, filePath, requireParent);
+    } catch (error) {
+      this.ownershipGeneration++;
+      this.onUnsafe?.(error);
+      throw error;
+    }
   }
 }

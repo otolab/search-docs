@@ -67,7 +67,11 @@ describe.skipIf(process.platform === 'win32')('CLI 再構築と purge の実プ�
       const engine = new DBEngine({ dbPath: path.join(root, '.search-docs/index'), embeddingUrl: url });
       try { await engine.connect(); expect((await engine.getSectionsByPath('source.md')).sections.length).toBeGreaterThan(0); } finally { await engine.disconnect(); }
       await run('index', 'purge', '--confirm-isolated');
-      expect(await readdir(path.join(root, '.search-docs/index'))).toEqual([]);
+      expect((await readdir(path.join(root, '.search-docs/index'))).sort()).toEqual([
+        'embedding_identity.lance', 'index_requests.lance', 'sections.lance', 'writer_heartbeat.lance',
+      ]);
+      const empty = new DBEngine({ dbPath: path.join(root, '.search-docs/index'), readOnly: true });
+      try { await empty.connect({ skipInitModel: true }); expect(await empty.getIndexedPaths()).toEqual([]); } finally { await empty.disconnect(); }
       expect(await readFile(path.join(root, 'source.md'), 'utf8')).toContain('Document');
       failEmbedding = true;
       try {
