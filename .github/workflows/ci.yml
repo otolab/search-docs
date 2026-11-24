@@ -41,6 +41,11 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
+      - name: Embedding startup process regression tests
+        run: |
+          python3 packages/cli/scripts/test-embedding-interruption.py
+          python3 packages/cli/scripts/test-embedding-lifecycle.py
+
       - name: DB maintenance regression tests
         run: pnpm --filter @search-docs/db-engine exec vitest run --config vitest.config.maintenance.ts
 
