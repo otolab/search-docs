@@ -20,10 +20,12 @@ describe('削除前の元文書検査', () => {
     const options = await fixture();
     const script = [
       'import lancedb, sys',
+      'from datetime import timedelta',
       'db = lancedb.connect(sys.argv[1])',
       "table = db.create_table('sections', data=[{'id': 'a', 'document_path': 'a.md', 'vector': [1.0, 2.0]}])",
       "table.create_scalar_index('document_path', index_type='BTREE')",
       "table.create_scalar_index('id', index_type='BITMAP')",
+      "table.wait_for_index(['document_path_idx', 'id_idx'], timeout=timedelta(seconds=30))",
     ].join('\n');
     await promisify(execFile)('uv', ['run', '--project', path.resolve('../db-engine'), 'python', '-c', script, options.indexPath], {
       env: { ...process.env, UV_NO_SYNC: '1', UV_CACHE_DIR: '/tmp/search-docs-uv-cache' },
