@@ -5,9 +5,11 @@ import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { FileStorage } from '@search-docs/storage';
-import { DBEngine } from '@search-docs/db-engine';
+import { DBEngine, strictMaintenanceLock } from '@search-docs/db-engine';
 import { DEFAULT_CONFIG } from '@search-docs/types';
 import { createService, stopService, type ServiceInstances } from '../../state.js';
+import { registerMaintenanceRepairTool } from '../../tools/maintenance-repair.js';
+import type { ToolRegistrationContext } from '../../tools/types.js';
 
 async function snapshot(root: string): Promise<string[]> {
   const result: string[] = [];
@@ -61,6 +63,7 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
     };
     const storage = new FileStorage({ basePath: path.join(root, '.search-docs/documents') });
     let instances: ServiceInstances | undefined;
+    let second: ServiceInstances | undefined;
     const copied = async (name: string, text: string) => {
       await vi.waitFor(async () => expect((await storage.get(name))?.content).toContain(text), { timeout: 30000, interval: 200 });
     };
@@ -89,8 +92,38 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
       await indexed('docs/offline.md');
       await vi.waitFor(async () => expect(await storage.get('docs/first.md')).toBeNull(), { timeout: 30000, interval: 200 });
       expect(await instances.dbEngine.getIndexedPaths()).not.toContain('docs/first.md');
+      const lock = await strictMaintenanceLock({ projectRoot: root, indexPath: config.storage.indexPath, documentsPath: config.storage.documentsPath, files: config.files });
+      const releaseAdmission = await lock.acquireAdmission();
+      let secondStarted = false;
+      const starting = createService(config, root, 'test').then(value => { secondStarted = true; return value; });
+      try {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        expect(secondStarted).toBe(false);
+      } finally { await releaseAdmission(); }
+      second = await starting;
+      await vi.waitFor(() => expect(second!.watcherProcess.getStatus().writerState).toBe('sleeping'), { timeout: 15000, interval: 200 });
+      let repairHandler!: () => Promise<unknown>;
+      const server = { registerTool: vi.fn((_name, _options, handler) => { repairHandler = handler; return {}; }) };
+      registerMaintenanceRepairTool({
+        server,
+        systemState: { state: 'RUNNING', config, projectRoot: root },
+        getDbEngine: () => second!.dbEngine,
+      } as unknown as ToolRegistrationContext);
+      const releaseRepairGate = await lock.acquireAdmission();
+      let repairFinished = false;
+      const repair = repairHandler().then(value => { repairFinished = true; return value; });
+      try {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        expect(repairFinished).toBe(false);
+      } finally { await releaseRepairGate(); }
+      await expect(repair).resolves.toBeDefined();
       await stopService(instances);
       instances = undefined;
+      await vi.waitFor(() => expect(second!.watcherProcess.getStatus().writerState).toBe('watching'), { timeout: 75000, interval: 250 });
+      await writeFile(path.join(root, 'docs/promoted.md'), '# Promoted\n\nafter takeover');
+      await copied('docs/promoted.md', 'after takeover');
+      await stopService(second);
+      second = undefined;
       const indexPath = path.join(root, '.search-docs/index');
       const documentsPath = path.join(root, '.search-docs/documents');
       const beforeLink = [await snapshot(indexPath), await snapshot(documentsPath)];
@@ -111,6 +144,7 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
     } finally {
       try {
         if (instances) await stopService(instances);
+        if (second) await stopService(second);
       } finally {
         if (previousEmbeddingUrl === undefined) delete process.env.EMBEDDING_URL;
         else process.env.EMBEDDING_URL = previousEmbeddingUrl;
@@ -118,5 +152,5 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
         await rm(root, { recursive: true, force: true });
       }
     }
-  }, 120000);
+  }, 180000);
 });
