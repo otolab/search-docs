@@ -226,7 +226,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   proc.unref();
 
   let interruptedBy: 'SIGINT' | 'SIGTERM' | null = null;
-  let pidFileWritten = false;
+  let published = false;
   const temporaryPidPath = `${embeddingPidPath()}.${randomUUID()}.tmp`;
   const readinessController = new AbortController();
   const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
@@ -320,8 +320,11 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     throwIfInterrupted();
     throwIfLauncherExited();
     await link(temporaryPidPath, embeddingPidPath());
-    pidFileWritten = true;
-    throwIfInterrupted();
+    // Publication transfers ownership to the PID file. A signal received while
+    // link was pending must not retract the published server.
+    published = true;
+    const pendingSignal = interruptedBy;
+    interruptedBy = null;
     throwIfLauncherExited();
 
     console.log(`Embedding server started successfully (PID: ${owner.pid})`);
@@ -329,6 +332,9 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     console.log(`  Dimension: ${pidFile.dimension}`);
     console.log(`  Port: ${port}`);
     console.log(`  Log: ${logPath}`);
+    if (pendingSignal) {
+      console.log(`Startup completed despite ${String(pendingSignal)}; use embedding stop to stop the server.`);
+    }
   } catch (error) {
     const wasInterrupted = interruptedBy;
     try {
@@ -337,11 +343,18 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
       throw new Error(
         `${error instanceof Error ? error.message : String(error)}. ` +
-        `Failed to reap the embedding process: ${message}`,
+        `Failed to reap the embedding process: ${message}` +
+        (published ? '. A PID file may remain; inspect it and the server before retrying or stopping.' : ''),
         { cause: error },
       );
     }
-    if (pidFileWritten) await removeStalePidFile();
+    if (published) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}. ` +
+        'A PID file may remain; inspect it and the server before retrying or stopping.',
+        { cause: error },
+      );
+    }
     if (wasInterrupted) {
       process.exitCode = wasInterrupted === 'SIGINT' ? 130 : 143;
       return;
@@ -359,7 +372,9 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     proc.removeListener('error', onSpawnError);
     proc.removeListener('exit', onProcessExit);
     await unlink(temporaryPidPath).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error;
+      if (error.code !== 'ENOENT') {
+        console.warn(`Failed to remove temporary PID file ${temporaryPidPath}: ${error.message}`);
+      }
     });
   }
 }
