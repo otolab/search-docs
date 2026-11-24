@@ -332,7 +332,7 @@ search-docs index recreate --confirm-isolated
 search-docs index purge --confirm-isolated
 ```
 
-MCP の `index_purge` は同じ確認を行った場合に `confirmIsolated: true` を指定します。MCP 自身は受理済み要求を待ち、サービス停止後に削除し、再開します。再開後は通常の監視によって再び索引が作られる場合があります。確認を省く既存の呼び出しは失敗します。CLI の purge も確認が必要です。
+MCP の `index_purge` は同じ確認を行った場合に `confirmIsolated: true` を指定します。MCP 自身は受理済み要求を待ち、サービス停止後に削除し、空の DB を初期化して通常診断に合格すれば再開します。初期化には設定済みの embedding サービスが必要です。再開後は通常の監視によって再び索引が作られる場合があります。確認を省く既存の呼び出しは失敗します。CLI の purge も確認が必要です。
 
 自動削除は `index` と `documents` が同じ親を持つ標準配置に限ります。プロジェクト外の文書は再構築できません。未知の DB 構造や判別不能な項目は削除せず拒否します。Windows は安全なプロセスツリー停止を確認できないため、これらの破壊操作を拒否します。
 再構築では brace 展開後の各対象を確認します。境界を安全に確認できない extglob・エスケープを含む `sources` や、探索結果が空の設定は、削除前に拒否します。設定を確認し、必要なら通常の glob に書き換えてください。

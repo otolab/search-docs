@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { MaintenanceLock } from '@search-docs/db-engine';
+import { strictMaintenanceLock } from '@search-docs/db-engine';
+import { DEFAULT_CONFIG } from '@search-docs/types';
 
 describe.skipIf(process.platform === 'win32')('MCP 実プロセスの保守手順', () => {
   it('受理済み MCP 要求を待って実サービスを停止し、排他を確認して再開する', async () => {
@@ -36,9 +37,15 @@ describe.skipIf(process.platform === 'win32')('MCP 実プロセスの保守手�
       expect(probe.isError).toBe(true);
       await client.callTool({ name: 'release', arguments: {} });
       expect((await pending).isError).not.toBe(true);
-      expect((await maintenance).isError).not.toBe(true);
+      const maintenanceResult = await maintenance;
+      expect(maintenanceResult.isError, JSON.stringify(maintenanceResult)).not.toBe(true);
       expect((await client.callTool({ name: 'probe', arguments: {} })).isError).not.toBe(true);
-      const competing = await new MaintenanceLock(path.join(root, '.search-docs/.search-docs-maintenance')).acquireShared();
+      const competing = await (await strictMaintenanceLock({
+        projectRoot: root,
+        indexPath: DEFAULT_CONFIG.storage.indexPath,
+        documentsPath: DEFAULT_CONFIG.storage.documentsPath,
+        files: { ...DEFAULT_CONFIG.files, sources: [], respectGitignore: false },
+      })).acquireShared();
       try {
         expect((await client.callTool({ name: 'index_purge', arguments: { confirmIsolated: true } })).isError).toBe(true);
         expect((await client.callTool({ name: 'probe', arguments: {} })).isError).not.toBe(true);

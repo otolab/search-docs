@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { MaintenanceLock } from '@search-docs/db-engine';
+import { MaintenanceLock, UnconfirmedProcessStopError } from '@search-docs/db-engine';
 import { exclusivePurge } from '../exclusive-purge.js';
 import { RequestGate } from '../request-gate.js';
 import { ServiceLifecycle } from '../../service-lifecycle.js';
@@ -41,6 +41,14 @@ describe.skipIf(process.platform === 'win32')('未公開の purge 排他', () =>
     await expect(lock.acquireShared()).rejects.toThrow(/未完了/);
     await expect(exclusivePurge({ confirmed: true, validate, remove })).rejects.toThrow(/未完了/);
     expect(remove).toHaveBeenCalledOnce();
+  });
+  it('子プロセスの停止を確認できなければ排他も未完了マーカーも保持する', async () => {
+    const { layout, lock, validate, remove } = await fixture();
+    remove.mockRejectedValueOnce(new UnconfirmedProcessStopError(new Error('stop failed')));
+    await expect(exclusivePurge({ confirmed: true, validate, remove })).rejects.toThrow(/停止を確認/);
+    await expect(lock.acquireShared()).rejects.toThrow(/保守操作/);
+    await expect(lock.acquireExclusive()).rejects.toThrow(/保守操作/);
+    expect((await lstat(path.join(layout.managementPath, 'incomplete'))).isDirectory()).toBe(true);
   });
   it('排他取得後に配置が変化したら削除しない', async () => {
     const { layout, validate, remove } = await fixture();

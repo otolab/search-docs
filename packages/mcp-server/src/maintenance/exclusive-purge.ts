@@ -1,4 +1,4 @@
-import { MaintenanceLock } from '@search-docs/db-engine';
+import { MaintenanceLock, UnconfirmedProcessStopError } from '@search-docs/db-engine';
 
 export interface PurgeLayout {
   indexPath: string;
@@ -40,11 +40,15 @@ export async function exclusivePurge(options: {
     await lease.release();
     throw new MaintenanceNotStartedError(error);
   }
+  let retainLock = false;
   try {
     await lease.markIncomplete();
     await options.remove(checked);
     await lease.complete();
+  } catch (error) {
+    if (error instanceof UnconfirmedProcessStopError) retainLock = true;
+    throw error;
   } finally {
-    await lease.release();
+    if (!retainLock) await lease.release();
   }
 }
