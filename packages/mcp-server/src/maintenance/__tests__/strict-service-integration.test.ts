@@ -72,6 +72,12 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
     const indexed = async (name: string) => {
       await vi.waitFor(async () => expect(await instances!.dbEngine.getIndexedPaths()).toContain(name), { timeout: 30000, interval: 200 });
     };
+    await writeFile(path.join(root, '.search-docs.json'), JSON.stringify(config));
+    const cli = (...args: string[]) => promisify(execFile)(
+      process.execPath,
+      [path.resolve('../cli/dist/index.js'), ...args],
+      { cwd: root, env: { ...process.env, UV_NO_SYNC: '1', UV_CACHE_DIR: '/tmp/search-docs-uv-cache' }, timeout: 60000 },
+    );
     try {
       instances = await createService(config, root, 'test');
       await copied('docs/first.md', 'initial');
@@ -128,6 +134,15 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
       second = undefined;
       const indexPath = path.join(root, '.search-docs/index');
       const documentsPath = path.join(root, '.search-docs/documents');
+      const documentsBeforePurge = await snapshot(documentsPath);
+      await cli('index', 'purge', '--confirm-isolated');
+      expect(await snapshot(documentsPath)).toEqual(documentsBeforePurge);
+      instances = await createService(config, root, 'test');
+      await indexed('docs/offline.md');
+      await indexed('docs/promoted.md');
+      await copied('docs/offline.md', 'created while stopped');
+      await stopService(instances);
+      instances = undefined;
       const beforeLink = [await snapshot(indexPath), await snapshot(documentsPath)];
       await symlink(path.join(root, 'docs/offline.md'), path.join(root, 'docs/link.md'));
       await expect(createService(config, root, 'test')).rejects.toThrow(/シンボリックリンク/);
@@ -156,12 +171,6 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
         server: repairServer,
         systemState: { state: 'RUNNING', config, projectRoot: root },
       } as unknown as ToolRegistrationContext);
-      await writeFile(path.join(root, '.search-docs.json'), JSON.stringify(config));
-      const cli = (...args: string[]) => promisify(execFile)(
-        process.execPath,
-        [path.resolve('../cli/dist/index.js'), ...args],
-        { cwd: root, env: { ...process.env, UV_NO_SYNC: '1', UV_CACHE_DIR: '/tmp/search-docs-uv-cache' }, timeout: 60000 },
-      );
       const heartbeatPath = path.join(indexPath, 'writer_heartbeat.lance');
       await rm(path.join(heartbeatPath, '_versions'), { recursive: true });
       const corruptBefore = [await snapshot(indexPath), await snapshot(documentsPath)];
