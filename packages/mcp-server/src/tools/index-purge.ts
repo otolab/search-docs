@@ -37,6 +37,9 @@ export function registerIndexPurgeTool(context: ToolRegistrationContext): Regist
           dimension: config.indexing.vectorDimension,
         });
         let engine: DBEngine | undefined;
+        let failure: unknown;
+        let failed = false;
+        const errors: unknown[] = [];
         try {
           const embeddingUrl = await embedding.start();
           await clearIndexContents(layout.indexPath);
@@ -53,12 +56,15 @@ export function registerIndexPurgeTool(context: ToolRegistrationContext): Regist
             memoryCheckIntervalMs: config.worker.memoryCheckIntervalMs,
           });
           await engine.connect();
+        } catch (error) {
+          failure = error;
+          failed = true;
         } finally {
-          const errors: unknown[] = [];
           if (engine) await engine.disconnect().catch(error => errors.push(error));
           await embedding.stop().catch(error => errors.push(error));
-          if (errors.length) throw new UnconfirmedProcessStopError(new AggregateError(errors, '保守プロセスの停止を確認できません'));
         }
+        if (errors.length) throw new UnconfirmedProcessStopError(new AggregateError(failed ? [failure, ...errors] : errors, '保守プロセスの停止を確認できません'));
+        if (failed) throw failure;
       },
     }));
     return { content: [{ type: 'text' as const, text: 'インデックスを削除し、サービスを再開しました。' }] };
