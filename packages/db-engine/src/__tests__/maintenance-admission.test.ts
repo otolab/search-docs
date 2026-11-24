@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readdir, rm, rmdir, symlink, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { MaintenanceLock, strictMaintenanceLock } from '../typescript/maintenance-lock.js';
@@ -7,6 +7,33 @@ import { MaintenanceLock, strictMaintenanceLock } from '../typescript/maintenanc
 const files = { sources: ['**/*.md'], exclude: [], maxFileSize: 1024, respectGitignore: true };
 
 describe('maintenance admission', () => {
+  it('停止後の残存 identity と admission を個別に除去しても未完了マーカーは残る', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'search-docs-recovery-'));
+    try {
+      const lock = new MaintenanceLock(directory, 'test-identity');
+      await lock.acquireShared();
+      await lock.acquireAdmission();
+      const users = path.join(directory, 'users');
+      const registrations = await readdir(users);
+      expect(registrations).toHaveLength(1);
+      const registration = path.join(users, registrations[0]);
+      await expect(rmdir(registration)).rejects.toThrow();
+      await expect(lock.acquireExclusive()).rejects.toThrow(/使用中/);
+      await expect(lock.acquireAdmission({ timeoutMs: 0 })).rejects.toThrow(/タイムアウト/);
+      // このテストでは登録元プロセスが停止した状況を再現する。
+      await unlink(path.join(registration, 'identity'));
+      await rmdir(registration);
+      await rmdir(path.join(directory, 'admission'));
+      const lease = await lock.acquireExclusive();
+      await lease.markIncomplete();
+      await lease.release();
+      await expect(lock.acquireShared()).rejects.toThrow(/未完了/);
+      await expect(lock.acquireExclusive({ requireComplete: true })).rejects.toThrow(/未完了/);
+      expect((await lstat(path.join(directory, 'incomplete'))).isDirectory()).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it('serializes admission while allowing shared registrations', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'search-docs-admission-'));
     try {
