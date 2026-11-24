@@ -33,6 +33,7 @@ export async function diagnoseStrictConfig(config: SearchDocsConfig, options: { 
   const diagnostic = new DBEngine({ dbPath: indexPath, readOnly: true });
   try {
     await diagnostic.connect({ skipInitModel: true });
+    if (options.skipTable !== 'writer_heartbeat') await diagnostic.getWriterHeartbeat();
     const keys = new Set([
       ...await storage.list({ strict: true }),
       ...(options.skipTable === 'sections' ? [] : await diagnostic.getIndexedPaths()),
