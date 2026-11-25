@@ -2,99 +2,35 @@
 
 ## 概要
 
-search-docsは、プロジェクト毎に起動される単一の文書管理・検索サーバと、それと通信するクライアントに分けて実装します。
+search-docsは、文書管理・検索機能とクライアントに分けて実装されています。MCPサーバは検索機能を同一プロセス内に持ち、HTTPサーバとして公開することもできます。複数インスタンスはheartbeatで書き込みを調停します。
 
 ## アーキテクチャ図
 
 ### MCPサーバモード（in-process構成）
 
-```
-┌─────────────────────────────────────────┐
-│       MCP Server (Claude Code)          │
-│         (stdio通信)                     │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  SearchDocsServer (read-only)   │   │
-│  │  - search, getDocument          │   │
-│  │  - getOutline, getStatus        │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  WatcherProcess (write)         │   │
-│  │  - Heartbeat調停                │   │
-│  │  - FileWatcher (master時)       │   │
-│  │  - IndexWorker (master時)       │   │
-│  │  - StartupSyncWorker            │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  DBEngine                       │   │
-│  │  - LanceDB操作                  │   │
-│  │  - Vector検索                   │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  EmbeddingServerProcess         │   │
-│  │  - 自動検出・起動管理           │   │
-│  └─────────────────────────────────┘   │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│              LanceDB                    │
-│  - documents                            │
-│  - sections                             │
-│  - writer_heartbeat (調停用)            │
-└─────────────────────────────────────────┘
+```text
+Claude Code ── stdio ── MCP Server（Node.js）
+                         ├─ SearchDocsServer（read-only）──┐
+                         ├─ WatcherProcess（write、heartbeat調停）──┤
+                         ├─ FileStorage ── 文書ファイル ←──────────┘
+                         ├─ DBEngine ── stdio ── Python worker ── LanceDB
+                         │                             └── HTTP ── Embedding Server
+                         └─ EmbeddingServerProcess ── Embedding Server の検出・起動管理
 ```
 
 ### HTTPサーバモード（`server start` コマンド）
 
+```text
+CLIなど ── JSON-RPC / HTTP ── JSON-RPC Server（Node.js）
+                                ├─ SearchDocsServer（read-only）──┐
+                                ├─ WatcherProcess（write、heartbeat調停）──┤
+                                ├─ FileStorage ── 文書ファイル ←──────────┘
+                                ├─ DBEngine ── stdio ── Python worker ── LanceDB
+                                │                             └── HTTP ── Embedding Server
+                                └─ EmbeddingServerProcess ── Embedding Server の検出・起動管理
 ```
-┌─────────────────────────────────────────┐
-│           Client Applications           │
-│  - CLI Tool                             │
-│  - REST API Client                      │
-└──────────────┬──────────────────────────┘
-               │ JSON-RPC / HTTP
-               │
-┌──────────────▼──────────────────────────┐
-│   JSON-RPC Server (HTTP)                │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  SearchDocsServer (read-only)   │   │
-│  │  - search, getDocument          │   │
-│  │  - getOutline, getStatus        │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  WatcherProcess (write)         │   │
-│  │  - Heartbeat調停                │   │
-│  │  - FileWatcher (master時)       │   │
-│  │  - IndexWorker (master時)       │   │
-│  │  - StartupSyncWorker            │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  DBEngine                       │   │
-│  │  - LanceDB操作                  │   │
-│  │  - Vector検索                   │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │  EmbeddingServerProcess         │   │
-│  │  - 自動検出・起動管理           │   │
-│  └─────────────────────────────────┘   │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│              LanceDB                    │
-│  - documents                            │
-│  - sections                             │
-│  - writer_heartbeat (調停用)            │
-└─────────────────────────────────────────┘
-```
+
+両モードとも、`SearchDocsServer` と `WatcherProcess` が同じプロセス内の `FileStorage` と `DBEngine` を利用します。Python worker が LanceDB を操作し、埋め込み生成時には embedding の接続先と HTTP 通信します。`EmbeddingServerProcess` は接続先の検出や子の起動・停止を担います。
 
 ## コンポーネント設計
 
@@ -110,7 +46,7 @@ search-docsは、プロジェクト毎に起動される単一の文書管理・
 - **MCPサーバ**: in-processで直接インスタンスを保持
 - **HTTPサーバ**: `server start` コマンドで起動、JSON-RPC経由でアクセス
 
-WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間を自動協調します。
+MCP / HTTPサーバの起動経路はそれぞれWatcherProcessを同一プロセス内に作り、Heartbeat調停で複数インスタンス間を自動協調します。
 
 #### 2. WatcherProcess (Write)
 
@@ -169,9 +105,10 @@ WatcherProcessを常に内蔵し、Heartbeat調停で複数インスタンス間
 - **単体利用**: `EmbeddingServerProcess`が自動検出・起動（TypeScript管理）
 - **共有利用**: 独立プロセスとして起動（Docker Compose等）
 
-**管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`
-- 外部検出 → Docker service → host.docker.internal → ローカルspawnの順で検索
-- GET /health ポーリングで readiness 待ち
+**管理**: `packages/server/src/embedding/embedding-server-process.ts`
+- 接続先の応答を確認し、利用できる既存サーバに接続する。見つからなければローカルの子を起動し、readinessを待つ
+- 各インスタンスは自分で起動した子の停止を試みるが、相乗り先の寿命は延長しない
+- 検出順序、独立 `embedding start` との違い、競合時の制約は [Embeddingの共有と寿命](architecture.md#embeddingの共有と寿命) を参照
 
 **統合場所**: `packages/server/src/bin/server.ts`
 
