@@ -109,7 +109,7 @@ docker run --rm -i \
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `EMBEDDING_URL` | 優先して使うEmbeddingサーバURL。接続できなければ起動を中止 | - |
+| `EMBEDDING_URL` | builtin の `indexing.embedding.url` がなければ使用するURL。設定時は選ばれたURLへの接続が必須 | - |
 | `EMBEDDING_MODEL` | Ollamaで使用するモデル名。Ollama利用時は必須 | - |
 | `EMBEDDING_SERVER_PORT` | Embeddingサーバポート | `24281` |
 | `EMBEDDING_RUNTIME` | standalone Embedding サーバのランタイム（`onnx` または `torch`） | `onnx` |
@@ -118,22 +118,22 @@ docker run --rm -i \
 
 ## Embeddingサーバ自動検出
 
-MCPサーバ起動時に、`EmbeddingServerProcess`（TypeScript管理）が以下の順序でEmbeddingサーバを探します：
+builtin provider では、MCPサーバ起動時に `EmbeddingServerProcess`（TypeScript管理）が次の順序で接続先を選びます。
 
-1. `EMBEDDING_URL` 環境変数。失敗した場合は他を試さず停止
-2. 設定ファイルの `indexing.embeddingUrl`。従来との互換性のため、失敗時は次へ進む
-3. URLが未指定の場合、`http://127.0.0.1:24281`（同一環境の共有サーバ）
-4. `http://search-docs-embedding:24281`（Docker network内）
-5. `http://host.docker.internal:24281`（ホスト側サービス）
-6. 見つからなければ内蔵サーバを起動
+1. 指定URLは `indexing.embedding.url`、`EMBEDDING_URL`、`indexing.embeddingUrl` の順で最初のものを使う。`EMBEDDING_URL` が設定されていれば、選ばれたURLに接続できない場合は停止する。設定されていなければ、指定URLの失敗時は手順3へ進む
+2. URLが指定されていない場合、`http://127.0.0.1:24281` を試す
+3. `http://search-docs-embedding:24281`、次に `http://host.docker.internal:24281` を試す
+4. 見つからなければローカルの子を起動する
 
-`indexing.embedding.runtime` は手順 6 でローカル起動する場合に使われます。検出済みの共有サーバを選ぶ際に runtime の一致は確認しません。別ポートで起動した torch サーバを指定する例は [ユーザーガイド](user-guide.md#外部-embedding-provider) を参照してください。
+つまり `indexing.embedding.url` と `EMBEDDING_URL` の両方がある場合、前者を必須の接続先として扱います。外部providerを明示した場合は別の接続検証を行い、ローカル起動にはフォールバックしません。
+
+`indexing.embedding.runtime` は手順 4 でローカル起動する場合に使われます。検出済みの共有サーバを選ぶ際に runtime の一致は確認しません。別ポートで起動した torch サーバを指定する例は [ユーザーガイド](user-guide.md#外部-embedding-provider) を参照してください。
 
 **注意**: Docker内から `localhost` はコンテナ自身を指します。ホスト側のサービスには `host.docker.internal`（macOS/Windows）を使います。Linux では `--add-host=host.docker.internal:host-gateway` が必要です。
 
 **検出エンドポイント**: 内蔵サーバは `/health` と `/ready`、Ollama は `/api/tags` を確認します。Ollama ではさらに指定モデルで試験的にベクトルを生成し、次元を確認します。
 
-**管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`
+**管理**: `packages/server/src/embedding/embedding-server-process.ts`
 
 ## Dockerイメージ構成
 
@@ -184,7 +184,7 @@ docker run --rm -i \
 
 ホスト側のOllamaがコンテナから到達可能なアドレスで待ち受ける必要があります。Linuxでは上記コマンドに `--add-host=host.docker.internal:host-gateway` を追加します。`EMBEDDING_MODEL` には `/api/tags` に存在するモデルを指定してください。Ollama v0.21.0ではruri-v3のModernBERTに対応していないため、従来のruri-v3は当面内蔵ONNXサーバで利用してください。
 
-既存の `indexing.embeddingUrl` を厳格な接続に移行するには、同じURLを `EMBEDDING_URL` に設定します。環境変数は設定ファイルより優先され、接続できない場合に他のサーバへ切り替わりません。設定ファイルだけを残した場合は従来どおり fallback します。
+既存の `indexing.embeddingUrl` を厳格な接続に移行するには、同じURLを `EMBEDDING_URL` に設定します。`indexing.embedding.url` の設定がなければ環境変数のURLが使われ、接続できない場合に他のサーバへ切り替わりません。設定ファイルだけを残した場合は従来どおり fallback します。
 
 ### モデル変更とインデックスの再作成
 

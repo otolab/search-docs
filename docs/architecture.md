@@ -50,12 +50,9 @@ search-docsは以下の構成で動作します。
 
 - **役割**: Ollama API互換のHTTP埋め込みサーバ
 - **アクセスモード**: ステートレス、複数クライアントから共有利用可能
-- **起動モード**:
-  - 単体利用: `EmbeddingServerProcess`が自動検出・起動（TypeScript管理）
-  - 共有利用: 独立プロセスとして起動（複数プロジェクト共有）
-- **管理**: `packages/server/src/embedding/EmbeddingServerProcess.ts`で統合管理
-  - 外部検出 → Docker service → host.docker.internal → ローカルspawnの順で検索
-  - GET /health ポーリングで readiness 待ち
+- **接続**: MCP / HTTPサーバは `EmbeddingServerProcess` を通じて既存サーバを検出するか、ローカルの子プロセスを起動する
+- **独立起動**: `embedding start` や Docker Compose で別に起動し、複数プロジェクトから共有できる
+- **実装**: `packages/server/src/embedding/embedding-server-process.ts`
 
 ### プロセス間の関係
 
@@ -66,23 +63,31 @@ MCP Server (stdio)
   │   ├─ FileWatcher (master時のみ起動)
   │   ├─ IndexWorker (master時のみ起動)
   │   └─ StartupSyncWorker (master時のみ起動)
-  ├─ in-process: DBEngine
-  └─ subprocess: Embedding Server (stateless)
-           │
-           ▼
-       LanceDB (共有ストレージ)
+  ├─ EmbeddingServerProcess ── Embedding Server の検出・起動管理
+  └─ in-process: DBEngine ── Python worker ── HTTP ── Embedding Server
+                                  └── LanceDB (共有ストレージ)
 
 ─────────────────────────────────────────
 
 JSON-RPC Server (HTTP) ← `server start` コマンドで起動
   ├─ in-process: SearchDocsServer (read-only)
   ├─ in-process: WatcherProcess (write, heartbeat調停)
-  ├─ in-process: DBEngine
-  └─ subprocess: Embedding Server (stateless)
-           │
-           ▼
-       LanceDB (共有ストレージ)
+  ├─ EmbeddingServerProcess ── Embedding Server の検出・起動管理
+  └─ in-process: DBEngine ── Python worker ── HTTP ── Embedding Server
+                                  └── LanceDB (共有ストレージ)
 ```
+
+### Embeddingの共有と寿命
+
+MCPサーバとHTTPサーバはそれぞれ `SearchDocsServer`、`WatcherProcess`、`DBEngine` を自分のプロセス内に持ちます。`WatcherProcess` は名前に反して独立したOSプロセスではなく、同じインデックスを使う各インスタンスの間で heartbeat によりwriterを調停します。embeddingサーバの選択・寿命管理はこのwriter調停とは別です。
+
+builtin providerの場合、設定の `indexing.embedding.url` があれば、それを優先して試します。なければ `EMBEDDING_URL`、次に `indexing.embeddingUrl` を使います。`EMBEDDING_URL` が設定されている場合は、実際に選ばれたURLへの接続に失敗すると後続を試さずエラーになります。したがって builtin の `url` と `EMBEDDING_URL` の両方がある場合は、前者を必須の接続先として扱います。`EMBEDDING_URL` がない場合は、設定URLの失敗後も検出を続けます。URLの指定がない場合は `127.0.0.1:24281` を試し、その後 Docker service、`host.docker.internal` の順に試します。候補が利用できなければローカルの子を起動し、準備を待ちます。既存候補は `/health` と `/ready` で確認し、旧サーバで `/ready` が404の場合は `/health` にフォールバックします。`/health` が利用できない候補では Ollama互換の `/api/tags` も試します。明示した外部providerはその接続先を検証し、失敗してもローカル起動にフォールバックしません。
+
+既存サーバへの相乗りは接続先の応答による判定であり、PIDファイルや起動元の所有権を確認する仕組みではありません。各利用者は独立して接続先を選び、参照数の管理や起動元の寿命の延長は行いません。MCP / HTTPサーバが自分で起動した子は、起動失敗時や終了処理で停止を試みます。既存サーバや外部providerはそのインスタンスの停止対象にはしません。あるインスタンスが別のインスタンスの子に相乗りしていても、起動元の終了時には子が停止され得ます。MCPの終了処理は停止要求を非同期で開始し、HTTPサーバは停止処理を待ちます。異常終了や停止処理の失敗時まで子の回収を保証するものではありません。
+
+ローカル起動後の準備確認もポートへの応答に基づき、その応答元が今回起動した子自身であることまでは確認しません。起動時のポート競合は [Issue #167](https://github.com/otolab/search-docs/issues/167) で追跡しています。
+
+`embedding start` による独立起動は別の経路です。デーモン起動時は `~/.search-docs/embedding.pid` に管理情報を保存し、起動したCLIの終了後も動作します。foreground起動ではPIDファイルを公開しません。MCP / HTTPサーバによる既存サーバの検出はこのファイルを参照せず、逆に自動起動した子をこのファイルに登録しません。独立起動の停止と診断は [CLIリファレンス](cli-reference.md#embedding-コマンド) を参照してください。PID再利用時の停止対象の安全性は [Issue #168](https://github.com/otolab/search-docs/issues/168) で検討中です。
 
 **SearchDocsServiceインターフェイス**:
 
