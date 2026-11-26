@@ -1,5 +1,16 @@
 # @search-docs/config
 
+## 1.1.0
+
+### Minor Changes
+
+- 5f70f6f: Respect .gitignore during file watching and add the clearer respectGitignore setting while preserving compatibility with ignoreGitignore. Serialize indexing and deletion, reconcile missing documents at startup, and improve shutdown and recovery of indexing services.
+
+### Patch Changes
+
+- Updated dependencies [5f70f6f]
+  - @search-docs/types@1.6.0
+
 ## 1.0.2
 
 ### Patch Changes

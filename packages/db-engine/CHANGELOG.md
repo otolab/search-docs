@@ -1,5 +1,19 @@
 # @search-docs/db-engine
 
+## 1.6.0
+
+### Minor Changes
+
+- 38c9e68: Add embedding model prefetch and configurable startup readiness timeouts, and clean up local embedding subprocesses on failures.
+
+### Patch Changes
+
+- 9b09509: Python 3.14 に対応し、torch ランタイムの選択時に必要な依存関係を利用できるようにします。
+- be9bf8e: Add read-only diagnostics for duplicate section trees and reduce redundant index requests.
+- 7ed5435: Fix writer heartbeat expiry checks in non-UTC timezones.
+- Updated dependencies [5f70f6f]
+  - @search-docs/types@1.6.0
+
 ## 1.5.9
 
 ### Patch Changes

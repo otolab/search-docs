@@ -1,5 +1,25 @@
 # @search-docs/mcp-server
 
+## 1.10.2
+
+### Patch Changes
+
+- be9bf8e: Add read-only diagnostics for duplicate section trees and reduce redundant index requests.
+- 5f70f6f: Respect .gitignore during file watching and add the clearer respectGitignore setting while preserving compatibility with ignoreGitignore. Serialize indexing and deletion, reconcile missing documents at startup, and improve shutdown and recovery of indexing services.
+- Updated dependencies [9b09509]
+- Updated dependencies [38c9e68]
+- Updated dependencies [be9bf8e]
+- Updated dependencies [7ed5435]
+- Updated dependencies [5f70f6f]
+  - @search-docs/db-engine@1.6.0
+  - @search-docs/cli@1.4.0
+  - @search-docs/server@1.6.0
+  - @search-docs/common@1.2.0
+  - @search-docs/config@1.1.0
+  - @search-docs/types@1.6.0
+  - @search-docs/storage@1.0.26
+  - @search-docs/client@1.0.27
+
 ## 1.10.1
 
 ### Patch Changes
