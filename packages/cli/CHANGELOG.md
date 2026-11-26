@@ -1,5 +1,27 @@
 # @search-docs/cli
 
+## 1.4.0
+
+### Minor Changes
+
+- 38c9e68: Add embedding model prefetch and configurable startup readiness timeouts, and clean up local embedding subprocesses on failures.
+
+### Patch Changes
+
+- 9b09509: Python 3.14 に対応し、torch ランタイムの選択時に必要な依存関係を利用できるようにします。
+- 5f70f6f: Respect .gitignore during file watching and add the clearer respectGitignore setting while preserving compatibility with ignoreGitignore. Serialize indexing and deletion, reconcile missing documents at startup, and improve shutdown and recovery of indexing services.
+- Updated dependencies [9b09509]
+- Updated dependencies [38c9e68]
+- Updated dependencies [be9bf8e]
+- Updated dependencies [7ed5435]
+- Updated dependencies [5f70f6f]
+  - @search-docs/db-engine@1.6.0
+  - @search-docs/server@1.6.0
+  - @search-docs/common@1.2.0
+  - @search-docs/config@1.1.0
+  - @search-docs/types@1.6.0
+  - @search-docs/client@1.0.27
+
 ## 1.3.1
 
 ### Patch Changes

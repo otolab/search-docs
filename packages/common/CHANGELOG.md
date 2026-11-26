@@ -1,5 +1,16 @@
 # @search-docs/common
 
+## 1.2.0
+
+### Minor Changes
+
+- 38c9e68: Add embedding model prefetch and configurable startup readiness timeouts, and clean up local embedding subprocesses on failures.
+
+### Patch Changes
+
+- Updated dependencies [5f70f6f]
+  - @search-docs/types@1.6.0
+
 ## 1.1.1
 
 ### Patch Changes
