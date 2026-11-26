@@ -3,12 +3,14 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fork, type ChildProcess } from 'node:child_process';
-import { describe, expect, it, vi } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { fork, spawn, type ChildProcess } from 'node:child_process';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { WatcherProcess } from '../watcher/watcher-process.js';
 import { FileStorage } from '@search-docs/storage';
 import { DBEngine } from '@search-docs/db-engine';
 import type { SearchDocsConfig } from '@search-docs/types';
+import { isExpectedWorkerExit } from './fixtures/writer-heartbeat-worker-exit.mjs';
 
 interface ChildExit {
   code: number | null;
@@ -102,6 +104,76 @@ function invokeChild(
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const CHILD_EXIT_TIMEOUT_MS = 5_000;
+const DB_ENGINE_PROJECT = fileURLToPath(new URL('../../../db-engine/', import.meta.url));
+const UV_EXIT_TEST_ROOT = mkdtempSync(join(tmpdir(), 'heartbeat-uv-exit-'));
+
+async function waitForChildOutput(child: ChildProcess, marker: string, timeoutMs: number): Promise<void> {
+  if (!child.stdout) throw new Error('uv worker stdout is unavailable');
+  if (hasExited(child)) throw new Error(`uv worker exited before readiness: ${JSON.stringify(childExit(child))}`);
+  await new Promise<void>((resolve, reject) => {
+    let output = '';
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.stdout?.off('data', onData);
+      child.off('exit', onExit);
+      child.off('error', onError);
+    };
+    const onData = (chunk: Buffer | string) => {
+      output += chunk.toString();
+      if (output.includes(marker)) {
+        cleanup();
+        resolve();
+      }
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      cleanup();
+      reject(new Error(`uv worker exited before readiness: ${JSON.stringify({ code, signal })}`));
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`uv worker did not become ready within ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout?.on('data', onData);
+    child.once('exit', onExit);
+    child.once('error', onError);
+    if (hasExited(child)) onExit(child.exitCode, child.signalCode);
+  });
+}
+
+async function runUvPythonExitCase(
+  pythonCode: string,
+  sendSigtermToGroup: boolean,
+): Promise<ChildExit> {
+  const cachePath = join(UV_EXIT_TEST_ROOT, `cache-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const child = spawn('uv', [
+    '--project', DB_ENGINE_PROJECT,
+    'run', 'python', '-u', '-c', pythonCode,
+  ], {
+    detached: process.platform !== 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONUNBUFFERED: '1', UV_CACHE_DIR: cachePath },
+  });
+  const pid = child.pid;
+  try {
+    if (sendSigtermToGroup) {
+      await waitForChildOutput(child, 'READY', CHILD_EXIT_TIMEOUT_MS);
+      if (!pid) throw new Error('uv worker has no process ID');
+      signalWorkerGroup(pid, 'SIGTERM');
+    }
+    return await waitForChildExit(child, CHILD_EXIT_TIMEOUT_MS);
+  } finally {
+    if (pid) {
+      signalWorkerGroup(pid, 'SIGKILL');
+      await waitForWorkerGroupsToExit([pid], CHILD_EXIT_TIMEOUT_MS);
+    }
+  }
+}
+
+afterAll(() => rmSync(UV_EXIT_TEST_ROOT, { recursive: true, force: true }));
 
 async function stopRemoteWriter(child: ChildProcess, id: number, childErrors: Error[]): Promise<void> {
   if (hasExited(child)) {
@@ -371,4 +443,39 @@ describe('writer coordination with LanceDB', () => {
       }
     }
   }, 60000);
+});
+
+describe.skipIf(process.platform === 'win32')('uv 配下のPython worker終了status', () => {
+  const disableCoreDump = 'import resource; resource.setrlimit(resource.RLIMIT_CORE, (0, 0))';
+
+  it('Python自身のSIGABRTは終了code 134として伝わり、正常停止と判定されない', async () => {
+    const abortCode = await runUvPythonExitCase(
+      `${disableCoreDump}; import os; os.abort()`,
+      false,
+    );
+    expect(abortCode).toEqual({ code: 134, signal: null });
+    expect(isExpectedWorkerExit(abortCode, false)).toBe(false);
+    expect(isExpectedWorkerExit(abortCode, true)).toBe(false);
+  }, 15000);
+
+  it('process groupへの意図したSIGTERMは正常停止として判定される', async () => {
+    const sigtermCode = await runUvPythonExitCase(
+      'import time; print("READY", flush=True); time.sleep(60)',
+      true,
+    );
+    expect(
+      (sigtermCode.code === 128 + 15 && sigtermCode.signal === null)
+      || (sigtermCode.code === null && sigtermCode.signal === 'SIGTERM'),
+    ).toBe(true);
+    expect(isExpectedWorkerExit(sigtermCode, true)).toBe(true);
+  }, 15000);
+
+  it('停止時でもPython自身のSIGABRTは終了code 134として失敗に伝わる', async () => {
+    const abortOnSigtermCode = await runUvPythonExitCase(
+      `${disableCoreDump}; import os, signal, time; signal.signal(signal.SIGTERM, lambda *_: os.abort()); print("READY", flush=True); time.sleep(60)`,
+      true,
+    );
+    expect(abortOnSigtermCode).toEqual({ code: 134, signal: null });
+    expect(isExpectedWorkerExit(abortOnSigtermCode, true)).toBe(false);
+  }, 15000);
 });

@@ -1,4 +1,5 @@
 import { DBEngine } from '@search-docs/db-engine';
+import { isExpectedWorkerExit } from './writer-heartbeat-worker-exit.mjs';
 
 const WORKER_EXIT_TIMEOUT_MS = 5000;
 let db;
@@ -93,12 +94,10 @@ async function stopDatabase() {
     if (!observed?.duringShutdown) {
       errors.push(new Error(`DBEngine worker exited before shutdown: ${JSON.stringify(outcome)}`));
     }
-    // DBEngine currently stops its Python worker by sending SIGTERM. uv may
-    // report that as exit code 128 + SIGTERM instead of signalCode=SIGTERM.
-    const expectedTermination = outcome.code === 0
-      || outcome.signal === 'SIGTERM'
-      || (outcome.code === 128 + 15 && outcome.signal === null);
-    if (!expectedTermination) {
+    // The observed child is uv, which supervises the Python worker. The
+    // process-structure regression test verifies that Python SIGABRT remains
+    // 134 (also when triggered by SIGTERM), while intended group SIGTERM is 143.
+    if (!isExpectedWorkerExit(outcome, observed?.duringShutdown ?? false)) {
       errors.push(new Error(`DBEngine worker stopped unexpectedly: ${JSON.stringify(outcome)}`));
     }
   }
