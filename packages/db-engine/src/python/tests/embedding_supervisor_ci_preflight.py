@@ -245,8 +245,30 @@ def check_node_launcher():
     print(result.stdout.strip(), flush=True)
 
 
+def check_container_os():
+    release = {}
+    with open('/etc/os-release', encoding='ascii') as release_file:
+        for line in release_file:
+            key, separator, value = line.partition('=')
+            if separator:
+                release[key] = value.strip().strip('"')
+    expected_version = required_environment('CI_EXPECTED_OS_VERSION')
+    require(release.get('ID') == 'ubuntu', (
+        f'expected an Ubuntu container, got {release.get("ID")!r}'
+    ))
+    require(release.get('VERSION_ID') == expected_version, (
+        f'container Ubuntu {release.get("VERSION_ID")!r} does not match '
+        f'runner Ubuntu {expected_version!r}'
+    ))
+    print(
+        f'Container OS matches the runner: Ubuntu {release["VERSION_ID"]}.',
+        flush=True,
+    )
+
+
 def private_container():
     require(sys.platform.startswith('linux'), 'Linux is required')
+    check_container_os()
     check_project_environment()
     subprocess.run(
         [sys.executable, str(Path(__file__).resolve()), 'pid-child'],

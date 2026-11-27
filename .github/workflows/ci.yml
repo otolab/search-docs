@@ -53,6 +53,13 @@ jobs:
             exit 1
           fi
 
+          . /etc/os-release
+          if [[ "$ID" != ubuntu ]]; then
+            echo "Expected an Ubuntu host runner; got $ID." >&2
+            exit 1
+          fi
+          container_image="ubuntu:$VERSION_ID"
+
           uv_real="$(readlink -f "$(command -v uv)")"
           uv_directory="$(dirname "$uv_real")"
           node_real="$(readlink -f "$(command -v node)")"
@@ -87,8 +94,9 @@ jobs:
             -e "CI_PYTHON_LOCATION=$pythonLocation" \
             -e "CI_EXPECTED_UID=$runner_uid" \
             -e "CI_EXPECTED_GID=$runner_gid" \
+            -e "CI_EXPECTED_OS_VERSION=$VERSION_ID" \
             -e "CI_HOST_PID_NAMESPACE_INODE=$host_pid_namespace_inode" \
-            ubuntu:24.04 \
+            "$container_image" \
             /bin/bash -euo pipefail -c '
               mkdir -p "$HOME" "$UV_CACHE_DIR"
               "$CI_PROJECT_PREFIX/bin/python" \
