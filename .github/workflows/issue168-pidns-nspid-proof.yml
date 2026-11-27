@@ -1,0 +1,163 @@
+name: Issue 168 PID namespace proof
+
+on:
+  push:
+    branches:
+      - issue168-pidns-nspid-probe-20261127
+
+permissions:
+  contents: read
+
+jobs:
+  pid-namespace-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe current runner and controlled PID namespace views
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(id -u)" == 0 ]]; then
+            echo "The namespace proof must run as an ordinary UID." >&2
+            exit 1
+          fi
+          command -v python3
+          command -v unshare
+
+          cat > "$RUNNER_TEMP/issue168_pidns_probe.py" <<'PY'
+          import json
+          import os
+          import sys
+
+          def read_view():
+              with open('/proc/self/status', encoding='ascii') as status:
+                  values = [
+                      line.split(':', 1)[1].split()
+                      for line in status
+                      if line.startswith('NSpid:')
+                  ]
+              if len(values) != 1 or not values[0]:
+                  raise RuntimeError('NSpid is absent or ambiguous')
+              if not all(value.isdecimal() for value in values[0]):
+                  raise RuntimeError(f'invalid NSpid row: {values[0]!r}')
+              nspid = [int(value) for value in values[0]]
+              procfs_pid = os.readlink('/proc/self')
+              if not procfs_pid.isdecimal():
+                  raise RuntimeError(f'/proc/self did not resolve to a PID: {procfs_pid!r}')
+              return nspid, int(procfs_pid)
+
+          def candidate_pidfd(pid):
+              nspid, procfs_pid = read_view()
+              if len(nspid) != 1 or nspid[0] != os.getpid() or procfs_pid != os.getpid():
+                  raise RuntimeError(
+                      'procfs and caller PID namespaces differ or are unprovable: '
+                      f'NSpid={nspid}, procfs_self={procfs_pid}, getpid={os.getpid()}'
+                  )
+              return os.pidfd_open(pid, 0)
+
+          def verify_pidfd(fd, expected_pid):
+              with open(f'/proc/self/fdinfo/{fd}', encoding='ascii') as info:
+                  pids = [
+                      int(line.split()[1])
+                      for line in info
+                      if line.startswith('Pid:')
+                  ]
+              if len(pids) != 1 or pids[0] != expected_pid:
+                  raise RuntimeError(f'pidfd identity mismatch: {pids!r} != {expected_pid}')
+
+          mode = sys.argv[1]
+          nspid, procfs_pid = read_view()
+          current_ns_inode = os.stat('/proc/self/ns/pid').st_ino
+          expected_uid = int(os.environ['ISSUE168_EXPECTED_UID'])
+
+          if os.getuid() != expected_uid or os.geteuid() != expected_uid:
+              raise RuntimeError(
+                  f'probe UID changed: uid/euid={os.getuid()}/{os.geteuid()}, '
+                  f'expected={expected_uid}'
+              )
+
+          if mode in ('host', 'private-proc'):
+              if len(nspid) != 1 or nspid[0] != os.getpid() or procfs_pid != os.getpid():
+                  raise RuntimeError(
+                      f'expected matching procfs PID namespace: '
+                      f'NSpid={nspid}, procfs_self={procfs_pid}, getpid={os.getpid()}'
+                  )
+              if mode == 'private-proc':
+                  expected_pid1_inode = os.stat('/proc/1/ns/pid').st_ino
+                  if expected_pid1_inode != current_ns_inode:
+                      raise RuntimeError('controlled procfs PID 1 is outside the caller namespace')
+              pidfd = candidate_pidfd(os.getpid())
+              try:
+                  verify_pidfd(pidfd, os.getpid())
+              finally:
+                  os.close(pidfd)
+              print(json.dumps({
+                  'mode': mode,
+                  'uid': os.getuid(),
+                  'pid': os.getpid(),
+                  'NSpid': nspid,
+                  'procfs_self': procfs_pid,
+                  'pid_namespace_inode': current_ns_inode,
+                  'pidfd_Pid_matches': True,
+              }), flush=True)
+          elif mode == 'inherited-proc':
+              if len(nspid) < 2 or nspid[-1] != os.getpid() or nspid[0] != procfs_pid:
+                  raise RuntimeError(
+                      f'expected nested caller with inherited parent procfs: '
+                      f'NSpid={nspid}, procfs_self={procfs_pid}, getpid={os.getpid()}'
+                  )
+              original_pidfd_open = os.pidfd_open
+              calls = []
+              def tracked_pidfd_open(pid, flags=0):
+                  calls.append((pid, flags))
+                  return original_pidfd_open(pid, flags)
+              os.pidfd_open = tracked_pidfd_open
+              try:
+                  try:
+                      candidate_pidfd(procfs_pid)
+                  except RuntimeError as exc:
+                      if 'namespaces differ or are unprovable' not in str(exc):
+                          raise
+                  else:
+                      raise RuntimeError('mismatched procfs namespace was accepted')
+                  if calls:
+                      raise RuntimeError(f'pidfd_open ran before namespace rejection: {calls!r}')
+              finally:
+                  os.pidfd_open = original_pidfd_open
+              print(json.dumps({
+                  'mode': mode,
+                  'uid': os.getuid(),
+                  'pid': os.getpid(),
+                  'NSpid': nspid,
+                  'procfs_self': procfs_pid,
+                  'pid_namespace_inode': current_ns_inode,
+                  'mismatch_rejected_before_pidfd_open': True,
+              }), flush=True)
+          else:
+              raise RuntimeError(f'unknown probe mode: {mode}')
+          PY
+
+          echo "Runner UID/GID: $(id -u):$(id -g)"
+          export ISSUE168_EXPECTED_UID="$(id -u)"
+          python3 "$RUNNER_TEMP/issue168_pidns_probe.py" host
+
+          python3 - <<'PY'
+          import errno
+          import os
+          try:
+              inode = os.stat('/proc/1/ns/pid').st_ino
+          except OSError as exc:
+              if exc.errno not in (errno.EACCES, errno.EPERM):
+                  raise
+              print(f'Runner /proc/1/ns/pid: denied errno={exc.errno}')
+          else:
+              print(f'Runner /proc/1/ns/pid: readable inode={inode}')
+          PY
+
+          echo "Testing a child PID namespace with the inherited parent procfs mount."
+          unshare --user --map-current-user --pid --fork -- \
+            python3 "$RUNNER_TEMP/issue168_pidns_probe.py" inherited-proc
+
+          echo "Testing a private PID namespace with its own procfs mount."
+          unshare --user --map-current-user --mount --pid --fork --mount-proc -- \
+            python3 "$RUNNER_TEMP/issue168_pidns_probe.py" private-proc
