@@ -12,7 +12,9 @@ import tempfile
 from unittest.mock import patch
 
 PYTHON_ROOT = Path(__file__).resolve().parents[1]
+EXPERIMENTS_ROOT = PYTHON_ROOT / 'experiments'
 sys.path.insert(0, str(PYTHON_ROOT))
+sys.path.insert(0, str(EXPERIMENTS_ROOT))
 
 import embedding_linux_pidfd as pidfd  # noqa: E402
 from embedding_linux_pidfd import PinnedProcess, TargetUnavailable  # noqa: E402
