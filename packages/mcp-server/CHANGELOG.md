@@ -1,5 +1,15 @@
 # @search-docs/mcp-server
 
+## 1.10.3
+
+### Patch Changes
+
+- 6ce582d: Remove admission lock serialization from normal startup so concurrent MCP/server launches no longer time out or leave a stale `admission` lock that blocks every later startup (#180).
+- Updated dependencies [6ce582d]
+  - @search-docs/db-engine@1.6.1
+  - @search-docs/server@1.6.1
+  - @search-docs/cli@1.4.1
+
 ## 1.10.2
 
 ### Patch Changes
