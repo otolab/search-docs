@@ -18,6 +18,33 @@ from lancedb_utils import (
 from worker import SearchDocsWorker
 
 
+CURRENT_MISSING_FRAGMENT = (
+    "lance error: LanceError(IO): Object at location "
+    "/tmp/index/sections.lance/data/fragment.lance not found: "
+    "No such file or directory (os error 2)"
+)
+CURRENT_NESTED_MISSING_FRAGMENT = (
+    "lance error: LanceError(IO): Generic N/A error: Cloned error: "
+    "Cloned error: LanceError(IO): Object at location "
+    "/tmp/index/sections.lance/data/fragment.lance not found: "
+    "No such file or directory (os error 2), "
+    "/.../lance-io-4.0.0/src/object_reader.rs:270:51, "
+    "/rustc/library/core/src/result.rs:1884:29"
+)
+LEGACY_MISSING_FRAGMENT = (
+    "lance error: Not found: "
+    "/Users/search/.search-docs/index/sections.lance/data/"
+    "0b7f23a4-4c2d-4f18-98dd-b5c70bd65d27.lance, "
+    "/.../lance-io-4.0.0/src/local.rs:132:40"
+)
+LEGACY_MISSING_SCALAR_INDEX = (
+    "lance error: Not found: "
+    "/Users/search/.search-docs/index/sections.lance/_indices/"
+    "6f15d8ca-03bb-4b5f-a791-12f5541b67c8/page_data.lance, "
+    "/.../lance-io-4.0.0/src/local.rs:132:40"
+)
+
+
 def test_connect_lancedb_sets_the_shared_read_consistency_interval(monkeypatch):
     connect = Mock(return_value=object())
     monkeypatch.setattr("lancedb_utils.lancedb.connect", connect)
@@ -32,17 +59,52 @@ def test_connect_lancedb_sets_the_shared_read_consistency_interval(monkeypatch):
     assert READ_CONSISTENCY_INTERVAL == timedelta(seconds=5)
 
 
-def test_is_lance_not_found_matches_missing_object_files_only():
-    missing_object = RuntimeError(
-        "lance error: LanceError(IO): Object at location "
-        "/tmp/index/sections.lance/data/fragment.lance not found: "
-        "No such file or directory (os error 2)"
-    )
+def test_is_lance_not_found_matches_current_and_legacy_table_files():
+    assert is_lance_not_found(RuntimeError(CURRENT_MISSING_FRAGMENT))
+    assert is_lance_not_found(RuntimeError(CURRENT_NESTED_MISSING_FRAGMENT))
+    assert is_lance_not_found(RuntimeError(LEGACY_MISSING_FRAGMENT))
+    assert is_lance_not_found(RuntimeError(LEGACY_MISSING_SCALAR_INDEX))
 
-    assert is_lance_not_found(missing_object)
-    assert not is_lance_not_found(RuntimeError("column not found: document_path"))
-    assert not is_lance_not_found(RuntimeError("index not found: status_idx"))
-    assert not is_lance_not_found(RuntimeError("Not found: stale manifest"))
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "column not found: document_path",
+        "index not found: status_idx",
+        "Not found: stale manifest",
+        (
+            "lance error: Not found: /tmp/project/config.json, "
+            "/.../lance-io-4.0.0/src/local.rs:132:40"
+        ),
+        (
+            "lance error: LanceError(IO): Object at location "
+            "/tmp/project/config.json not found: "
+            "No such file or directory (os error 2)"
+        ),
+        (
+            "lance error: LanceError(IO): Object at location "
+            "/tmp/index/sections.lance/data/fragment.txt not found: "
+            "No such file or directory (os error 2)"
+        ),
+        (
+            "lance error: Not found: "
+            "/tmp/index/sections.lance/_versions/42.manifest, "
+            "/.../lance-io-4.0.0/src/local.rs:132:40"
+        ),
+        (
+            "lance error: Not found: "
+            "/tmp/index/sections.lance/data/fragment.lance, "
+            "unexpected source location"
+        ),
+        (
+            "lance error: LanceError(IO): Object at location "
+            "/tmp/index/sections.lance/_versions/42.manifest not found: "
+            "No such file or directory (os error 2)"
+        ),
+    ],
+)
+def test_is_lance_not_found_rejects_unrelated_errors(message):
+    assert not is_lance_not_found(RuntimeError(message))
 
 
 class ReadTable:
@@ -68,16 +130,21 @@ class ReadDatabase:
         return self.refreshed_table
 
 
-def test_read_table_reopens_once_and_retries_not_found(capsys):
-    stale_table = ReadTable(
-        [
-            RuntimeError(
-                "lance error: LanceError(IO): Object at location "
-                "/tmp/index/sections.lance/data/fragment.lance not found: "
-                "No such file or directory (os error 2)"
-            )
-        ]
-    )
+@pytest.mark.parametrize(
+    "message",
+    [
+        CURRENT_MISSING_FRAGMENT,
+        CURRENT_NESTED_MISSING_FRAGMENT,
+        LEGACY_MISSING_FRAGMENT,
+    ],
+    ids=[
+        "current-lancedb-error",
+        "current-wrapped-lancedb-error",
+        "legacy-production-error",
+    ],
+)
+def test_read_table_reopens_once_and_retries_not_found(message, capsys):
+    stale_table = ReadTable([RuntimeError(message)])
     refreshed_table = ReadTable([["latest"]])
     db = ReadDatabase(refreshed_table)
     refreshed = []
@@ -98,11 +165,33 @@ def test_read_table_reopens_once_and_retries_not_found(capsys):
     assert "retrying once" in capsys.readouterr().err
 
 
-def test_read_table_does_not_retry_other_errors():
-    stale_table = ReadTable([RuntimeError("permission denied")])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "permission denied",
+        "column not found: document_path",
+        "index not found: status_idx",
+        (
+            "lance error: Not found: /tmp/project/config.json, "
+            "/.../lance-io-4.0.0/src/local.rs:132:40"
+        ),
+        (
+            "lance error: Not found: "
+            "/tmp/index/sections.lance/_versions/42.manifest, "
+            "/.../lance-io-4.0.0/src/local.rs:132:40"
+        ),
+        (
+            "lance error: LanceError(IO): Object at location "
+            "/tmp/project/config.json not found: "
+            "No such file or directory (os error 2)"
+        ),
+    ],
+)
+def test_read_table_does_not_retry_other_errors(message):
+    stale_table = ReadTable([RuntimeError(message)])
     db = ReadDatabase(ReadTable([["unused"]]))
 
-    with pytest.raises(RuntimeError, match="permission denied"):
+    with pytest.raises(RuntimeError):
         read_table_with_retry(
             db,
             "sections",
@@ -118,7 +207,8 @@ def test_read_table_propagates_not_found_after_one_retry():
     stale_table = ReadTable(
         [
             RuntimeError(
-                "LanceError(IO): Object at location /tmp/stale.lance not found: "
+                "LanceError(IO): Object at location "
+                "/tmp/index/sections.lance/data/stale.lance not found: "
                 "No such file or directory (os error 2)"
             )
         ]
@@ -126,7 +216,8 @@ def test_read_table_propagates_not_found_after_one_retry():
     refreshed_table = ReadTable(
         [
             RuntimeError(
-                "LanceError(IO): Object at location /tmp/latest.lance not found: "
+                "LanceError(IO): Object at location "
+                "/tmp/index/sections.lance/data/latest.lance not found: "
                 "No such file or directory (os error 2)"
             )
         ]
@@ -157,7 +248,8 @@ def test_read_table_retries_when_open_table_reports_not_found():
             self.open_calls += 1
             if self.open_calls == 1:
                 raise RuntimeError(
-                    "LanceError(IO): Object at location /tmp/stale.manifest "
+                    "LanceError(IO): Object at location "
+                    "/tmp/index/sections.lance/data/stale.lance "
                     "not found: No such file or directory (os error 2)"
                 )
             return refreshed_table
@@ -179,7 +271,8 @@ def test_worker_replaces_its_cached_table_after_reopening():
     stale_table = ReadTable(
         [
             RuntimeError(
-                "LanceError(IO): Object at location /tmp/stale.lance not found: "
+                "LanceError(IO): Object at location "
+                "/tmp/index/sections.lance/data/stale.lance not found: "
                 "No such file or directory (os error 2)"
             )
         ]
