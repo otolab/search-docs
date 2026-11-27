@@ -35,6 +35,69 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify isolated Linux embedding supervisor prototype
+        run: |
+          uv run --project packages/db-engine --offline --no-sync python -m unittest discover \
+            -s packages/db-engine/src/python/tests \
+            -p test_embedding_supervisor_prototype_stdlib.py -v
+          uv run --project packages/db-engine --offline --no-sync python \
+            packages/cli/scripts/test-embedding-supervisor-prototype-cli.py
+
+      - name: Verify prototype is absent from product paths and npm packages
+        run: |
+          pnpm --dir packages/cli pack --pack-destination "$RUNNER_TEMP"
+          pnpm --dir packages/db-engine pack --pack-destination "$RUNNER_TEMP"
+          python3 - "$RUNNER_TEMP" <<'PY'
+          import pathlib
+          import sys
+          import tarfile
+
+          artifact_dir = pathlib.Path(sys.argv[1])
+          cli_tarball = next(artifact_dir.glob("search-docs-cli-*.tgz"))
+          db_tarball = next(artifact_dir.glob("search-docs-db-engine-*.tgz"))
+          markers = (
+              b"managed_supervisor_prototype",
+              b"embedding_supervisor_state",
+              b"embedding_linux_pidfd",
+              b"issue168-experimental-supervisor-cli",
+              b"SEARCH_DOCS_TEST_",
+              b"SEARCH_DOCS_EXPERIMENTAL_EMBEDDING_SUPERVISOR",
+          )
+
+          def inspect_tarball(path, package):
+              with tarfile.open(path) as archive:
+                  names = archive.getnames()
+                  for name in names:
+                      normalized = name.lstrip("./")
+                      if package == "db-engine":
+                          assert "/src/python/experiments/" not in f"/{normalized}", name
+                          assert "/src/python/tests/" not in f"/{normalized}", name
+                          assert not normalized.endswith("/embedding_linux_pidfd.py"), name
+                      else:
+                          assert "/scripts/" not in f"/{normalized}", name
+                      if not normalized.endswith((".js", ".py", ".json")):
+                          continue
+                      content = archive.extractfile(name).read()
+                      assert not any(marker in content for marker in markers), name
+
+          inspect_tarball(cli_tarball, "cli")
+          inspect_tarball(db_tarball, "db-engine")
+
+          source_roots = (
+              pathlib.Path("packages/cli/src"),
+              pathlib.Path("packages/db-engine/src"),
+          )
+          excluded = {"experiments", "tests", "__tests__", "__pycache__"}
+          for root in source_roots:
+              for source in root.rglob("*"):
+                  if not source.is_file() or excluded.intersection(source.parts):
+                      continue
+                  if source.suffix not in {".js", ".py", ".ts"}:
+                      continue
+                  content = source.read_bytes()
+                  assert not any(marker in content for marker in markers), source
+          PY
+
       - name: Lint
         run: pnpm lint
 
