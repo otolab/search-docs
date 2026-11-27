@@ -1565,12 +1565,15 @@ class SearchDocsWorker:
         if "completed_at" in updates and updates["completed_at"]:
             updates["completed_at"] = pd.Timestamp(updates["completed_at"], tz='UTC').floor('ms')
 
-        # takeover 時は他プロセスが更新した processing request を復旧する。
-        # キャッシュ済み接続では5秒の追従間隔内に古い状態を読むことがあるため、
-        # この一括更新では最新 snapshot を持つ接続を使う。
         where_str = " AND ".join(where_clauses)
-        fresh_db = connect_lancedb(self.db_path)
-        table = fresh_db.open_table(INDEX_REQUESTS_TABLE)
+        if params.get("refresh_connection", False):
+            # takeover 前の別プロセスによる更新を含む最新 snapshot で復旧し、
+            # 後続の照合・処理も同じ接続から読む。
+            refreshed_db = connect_lancedb(self.db_path)
+            refreshed_table = refreshed_db.open_table(INDEX_REQUESTS_TABLE)
+            self.db = refreshed_db
+            self._index_requests_table = refreshed_table
+        table = self._get_index_requests_table()
         count = table.count_rows(filter=where_str)
         table.update(
             where=where_str,

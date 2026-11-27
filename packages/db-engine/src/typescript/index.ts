@@ -1287,7 +1287,8 @@ export class DBEngine extends EventEmitter {
    */
   async updateManyIndexRequests(
     filter: Partial<IndexRequestFilter>,
-    updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash' | 'createdAt'>>
+    updates: Partial<Omit<IndexRequest, 'id' | 'documentPath' | 'documentHash' | 'createdAt'>>,
+    options: { refreshConnection?: boolean } = {}
   ): Promise<{ updated: boolean; count: number }> {
     // camelCase → snake_caseに変換
     const pythonFilter: Record<string, unknown> = {};
@@ -1317,6 +1318,7 @@ export class DBEngine extends EventEmitter {
     const pythonParams = {
       filter: pythonFilter,
       updates: pythonUpdates,
+      refresh_connection: options.refreshConnection ?? false,
     };
 
     const result = await this.sendRequest('updateManyIndexRequests', pythonParams);

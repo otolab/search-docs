@@ -343,7 +343,11 @@ export class WatcherProcess {
     if (this.stopping) return;
 
     // 前の writer が処理中に終了したリクエストを再実行できるようにする。
-    await this.dbEngine.updateManyIndexRequests({ status: 'processing' }, { status: 'pending' });
+    await this.dbEngine.updateManyIndexRequests(
+      { status: 'processing' },
+      { status: 'pending' },
+      { refreshConnection: true },
+    );
     if (this.stopping) return;
     this.writerState = 'watching';
 
