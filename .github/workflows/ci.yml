@@ -35,13 +35,71 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Verify isolated Linux embedding supervisor prototype
+      - name: Verify host procfs denial fails closed
         run: |
-          uv run --project packages/db-engine --offline --no-sync python -m unittest discover \
-            -s packages/db-engine/src/python/tests \
-            -p test_embedding_supervisor_prototype_stdlib.py -v
-          uv run --project packages/db-engine --offline --no-sync python \
-            packages/cli/scripts/test-embedding-supervisor-prototype-cli.py
+          CI_PROJECT_PREFIX="$GITHUB_WORKSPACE/packages/db-engine/.venv" \
+          CI_PYTHON_LOCATION="$pythonLocation" \
+            uv run --project packages/db-engine --offline --no-sync python \
+            packages/db-engine/src/python/tests/embedding_supervisor_ci_preflight.py \
+            host-negative
+
+      - name: Verify isolated Linux embedding supervisor prototype in a private PID namespace
+        run: |
+          set -euo pipefail
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
+          if [[ "$runner_uid" == 0 ]]; then
+            echo "The private PID namespace test must run as the non-root runner UID." >&2
+            exit 1
+          fi
+
+          uv_real="$(readlink -f "$(command -v uv)")"
+          uv_directory="$(dirname "$uv_real")"
+          node_real="$(readlink -f "$(command -v node)")"
+          node_root="$(dirname "$(dirname "$node_real")")"
+          host_pid_namespace_inode="$(stat -Lc '%i' /proc/self/ns/pid)"
+
+          docker run --rm \
+            --pull=missing \
+            --user "$runner_uid:$runner_gid" \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --pids-limit 512 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=1g,mode=1777 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=$GITHUB_WORKSPACE,readonly" \
+            --tmpfs "$GITHUB_WORKSPACE/.git:rw,nosuid,nodev,noexec,size=16m,mode=755" \
+            --mount "type=bind,src=$pythonLocation,dst=$pythonLocation,readonly" \
+            --mount "type=bind,src=$uv_directory,dst=/ci-toolchain/uv,readonly" \
+            --mount "type=bind,src=$node_root,dst=/ci-toolchain/node,readonly" \
+            -e "PATH=/ci-toolchain/uv:/ci-toolchain/node/bin:$pythonLocation/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            -e "LD_LIBRARY_PATH=$pythonLocation/lib" \
+            -e "HOME=/tmp/issue168-home" \
+            -e "TMPDIR=/tmp" \
+            -e "UV_CACHE_DIR=/tmp/uv-cache" \
+            -e "UV_OFFLINE=1" \
+            -e "UV_PYTHON_DOWNLOADS=never" \
+            -e "PYTHONDONTWRITEBYTECODE=1" \
+            -e "PYTHONNOUSERSITE=1" \
+            -e "CI_WORKSPACE=$GITHUB_WORKSPACE" \
+            -e "CI_PROJECT_PREFIX=$GITHUB_WORKSPACE/packages/db-engine/.venv" \
+            -e "CI_PYTHON_LOCATION=$pythonLocation" \
+            -e "CI_EXPECTED_UID=$runner_uid" \
+            -e "CI_EXPECTED_GID=$runner_gid" \
+            -e "CI_HOST_PID_NAMESPACE_INODE=$host_pid_namespace_inode" \
+            ubuntu:24.04 \
+            /bin/bash -euo pipefail -c '
+              mkdir -p "$HOME" "$UV_CACHE_DIR"
+              "$CI_PROJECT_PREFIX/bin/python" \
+                "$CI_WORKSPACE/packages/db-engine/src/python/tests/embedding_supervisor_ci_preflight.py" \
+                private-container
+              "$CI_PROJECT_PREFIX/bin/python" -m unittest discover \
+                -s "$CI_WORKSPACE/packages/db-engine/src/python/tests" \
+                -p test_embedding_supervisor_prototype_stdlib.py -v
+              "$CI_PROJECT_PREFIX/bin/python" \
+                "$CI_WORKSPACE/packages/cli/scripts/test-embedding-supervisor-prototype-cli.py"
+            '
 
       - name: Verify prototype is absent from product paths and npm packages
         run: |
