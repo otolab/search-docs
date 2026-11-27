@@ -105,14 +105,16 @@ jobs:
             "$container_image" \
             /bin/bash -euo pipefail -c '
               mkdir -p "$HOME" "$UV_CACHE_DIR"
+              cd "$CI_WORKSPACE"
               "$CI_PROJECT_PREFIX/bin/python" \
                 "$CI_WORKSPACE/packages/db-engine/src/python/tests/embedding_supervisor_ci_preflight.py" \
                 private-container
               "$CI_PROJECT_PREFIX/bin/python" -m unittest discover \
-                -s "$CI_WORKSPACE/packages/db-engine/src/python/tests" \
+                -s packages/db-engine/src/python/tests \
+                -t packages/db-engine/src/python/tests \
                 -p test_embedding_supervisor_prototype_stdlib.py -v
               "$CI_PROJECT_PREFIX/bin/python" \
-                "$CI_WORKSPACE/packages/cli/scripts/test-embedding-supervisor-prototype-cli.py"
+                packages/cli/scripts/test-embedding-supervisor-prototype-cli.py
             '
 
       - name: Verify prototype is absent from product paths and npm packages

@@ -179,6 +179,9 @@ def check_private_pid_namespace():
 def check_readonly_workspace_and_tmp():
     workspace = Path(required_environment('CI_WORKSPACE'))
     require(workspace.is_dir(), f'workspace is unavailable: {workspace}')
+    require(Path.cwd().resolve() == workspace.resolve(), (
+        f'container working directory differs from the checkout: {Path.cwd()}'
+    ))
     git_metadata = workspace / '.git'
     require(git_metadata.is_dir(), 'checkout metadata was not masked with a temporary mount')
     require(
