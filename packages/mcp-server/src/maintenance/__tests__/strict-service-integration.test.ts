@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { FileStorage } from '@search-docs/storage';
-import { DBEngine, strictMaintenanceLock } from '@search-docs/db-engine';
+import { DBEngine } from '@search-docs/db-engine';
 import { DEFAULT_CONFIG } from '@search-docs/types';
 import { createService, stopService, type ServiceInstances } from '../../state.js';
 import { registerMaintenanceRepairTool } from '../../tools/maintenance-repair.js';
@@ -100,15 +100,7 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
       await indexed('docs/offline.md');
       await vi.waitFor(async () => expect(await storage.get('docs/first.md')).toBeNull(), { timeout: 30000, interval: 200 });
       expect(await instances.dbEngine.getIndexedPaths()).not.toContain('docs/first.md');
-      const lock = await strictMaintenanceLock({ projectRoot: root, indexPath: config.storage.indexPath, documentsPath: config.storage.documentsPath, files: config.files });
-      const releaseAdmission = await lock.acquireAdmission();
-      let secondStarted = false;
-      const starting = createService(config, root, 'test').then(value => { secondStarted = true; return value; });
-      try {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        expect(secondStarted).toBe(false);
-      } finally { await releaseAdmission(); }
-      second = await starting;
+      second = await createService(config, root, 'test');
       await vi.waitFor(() => expect(second!.watcherProcess.getStatus().writerState).toBe('sleeping'), { timeout: 15000, interval: 200 });
       let repairHandler!: () => Promise<unknown>;
       const server = { registerTool: vi.fn((_name, _options, handler) => { repairHandler = handler; return {}; }) };
@@ -117,14 +109,7 @@ describe.skipIf(process.platform === 'win32')('strict サービスと native wat
         systemState: { state: 'RUNNING', config, projectRoot: root },
         getDbEngine: () => second!.dbEngine,
       } as unknown as ToolRegistrationContext);
-      const releaseRepairGate = await lock.acquireAdmission();
-      let repairFinished = false;
-      const repair = repairHandler().then(value => { repairFinished = true; return value; });
-      try {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        expect(repairFinished).toBe(false);
-      } finally { await releaseRepairGate(); }
-      await expect(repair).resolves.toBeDefined();
+      await expect(repairHandler()).resolves.toBeDefined();
       await stopService(instances);
       instances = undefined;
       await vi.waitFor(() => expect(second!.watcherProcess.getStatus().writerState).toBe('watching'), { timeout: 75000, interval: 250 });

@@ -76,7 +76,6 @@ export async function executeMaintenanceRepair(
       files: config.files,
     });
     const release = await lock.acquireShared();
-    let releaseAdmission: (() => Promise<void>) | undefined;
     let retainRegistration = false;
     const dbEngine = new DBEngine({
       dbPath,
@@ -84,7 +83,6 @@ export async function executeMaintenanceRepair(
     });
 
     try {
-      releaseAdmission = await lock.acquireAdmission();
       try {
         await diagnoseStrictConfig(config);
       } catch (error) {
@@ -97,7 +95,6 @@ export async function executeMaintenanceRepair(
     } finally {
       await dbEngine.disconnect();
       if (!retainRegistration) {
-        await releaseAdmission?.();
         await release();
       }
     }

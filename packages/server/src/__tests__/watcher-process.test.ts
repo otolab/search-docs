@@ -9,6 +9,8 @@ import { join } from 'node:path';
 type WatcherProcessInternals = {
   writerId: string;
   writerState: 'sleeping' | 'claiming' | 'watching';
+  claimAttempted: boolean;
+  coordination: Promise<void> | null;
   watcher?: {
     isRunning: () => boolean;
     stop: () => Promise<void>;
@@ -460,7 +462,7 @@ describe('shutdown release failures', () => {
   });
 });
 
-describe('strict writer admission', () => {
+describe('strict writer diagnosis', () => {
   it('does not recover requests or start work when the promotion diagnostic fails', async () => {
     const db = {
       updateHeartbeat: vi.fn(async () => {}),
@@ -475,6 +477,35 @@ describe('strict writer admission', () => {
     await internal.transitionToWatching();
     expect(onUnsafe).toHaveBeenCalledOnce();
     expect(db.updateManyIndexRequests).not.toHaveBeenCalled();
+    expect(instance.getStatus().writerState).not.toBe('watching');
+  });
+
+  it('waits for writer-promotion diagnosis to finish before shutdown completes', async () => {
+    let finishDiagnosis!: () => void;
+    const diagnosis = new Promise<void>(resolve => { finishDiagnosis = resolve; });
+    const db = {
+      updateHeartbeat: vi.fn(async () => {}),
+      getWriterHeartbeat: vi.fn(async () => heartbeatFor('writer')),
+      releaseWriter: vi.fn(async () => ({ success: true })),
+      disconnect: vi.fn(async () => {}),
+    };
+    const instance = new WatcherProcess(createConfig(), {} as FileStorage, db as unknown as DBEngine,
+      async () => diagnosis, vi.fn());
+    const internal = internals(instance);
+    internal.writerState = 'claiming';
+    internal.claimAttempted = true;
+    internal.coordination = internal.transitionToWatching();
+
+    let shutdownFinished = false;
+    const shutdown = instance.stop().then(() => { shutdownFinished = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(shutdownFinished).toBe(false);
+
+    finishDiagnosis();
+    await shutdown;
+    expect(shutdownFinished).toBe(true);
+    expect(db.releaseWriter).toHaveBeenCalledOnce();
+    expect(db.disconnect).toHaveBeenCalledOnce();
     expect(instance.getStatus().writerState).not.toBe('watching');
   });
 });

@@ -75,11 +75,9 @@ export function registerMaintenanceRepairTool(context: ToolRegistrationContext):
         files: systemState.config.files,
       });
       const release = await lock.acquireShared();
-      let releaseAdmission: (() => Promise<void>) | undefined;
       let fallbackEngine: DBEngine | undefined;
       let retainRegistration = false;
       try {
-        releaseAdmission = await lock.acquireAdmission();
         try {
           await diagnoseStrictConfig(systemState.config);
         } catch (error) {
@@ -99,7 +97,6 @@ export function registerMaintenanceRepairTool(context: ToolRegistrationContext):
       } finally {
         await fallbackEngine?.disconnect();
         if (!retainRegistration) {
-          await releaseAdmission?.();
           await release();
         }
       }

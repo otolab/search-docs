@@ -13,15 +13,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@search-docs/db-engine', () => ({
-  DBEngine: vi.fn(function () {
-    return {
-      connect: mocks.connect,
-      disconnect: mocks.disconnect,
-      getWriterHeartbeat: mocks.heartbeat,
-      getIndexedPaths: mocks.indexed,
-      getPathsWithStatus: mocks.pending,
-    };
-  }),
+  DBEngine: class {
+    connect = mocks.connect;
+    disconnect = mocks.disconnect;
+    getWriterHeartbeat = mocks.heartbeat;
+    getIndexedPaths = mocks.indexed;
+    getPathsWithStatus = mocks.pending;
+  },
   UnconfirmedProcessStopError: class extends Error {},
 }));
 
@@ -53,5 +51,46 @@ describe('strict heartbeat diagnosis', () => {
     expect(mocks.disconnect).toHaveBeenCalledOnce();
     await expect(diagnoseStrictConfig(config, { skipTable: 'writer_heartbeat' })).resolves.toBeUndefined();
     expect(mocks.heartbeat).toHaveBeenCalledOnce();
+  });
+
+  it('retries a required table that is still being created, then completes diagnosis', async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'strict-heartbeat-retry-'));
+    await mkdir(path.join(root, '.search-docs/index'), { recursive: true });
+    await mkdir(path.join(root, '.search-docs/documents'));
+    const config = {
+      ...DEFAULT_CONFIG,
+      project: { ...DEFAULT_CONFIG.project, root },
+      files: { ...DEFAULT_CONFIG.files, sources: [] },
+    };
+    mocks.connect.mockResolvedValue(undefined);
+    mocks.disconnect.mockResolvedValue(undefined);
+    mocks.heartbeat
+      .mockRejectedValueOnce(new Error("Table 'writer_heartbeat' was not found"))
+      .mockRejectedValueOnce(new Error("Table 'writer_heartbeat' was not found"))
+      .mockResolvedValue(undefined);
+    mocks.indexed.mockResolvedValue([]);
+    mocks.pending.mockResolvedValue([]);
+
+    await expect(diagnoseStrictConfig(config)).resolves.toBeUndefined();
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(3);
+    expect(mocks.disconnect).toHaveBeenCalledTimes(3);
+  });
+
+  it('still fails closed after bounded retries for a persistently missing required table', async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'strict-heartbeat-missing-'));
+    await mkdir(path.join(root, '.search-docs/index'), { recursive: true });
+    await mkdir(path.join(root, '.search-docs/documents'));
+    const config = {
+      ...DEFAULT_CONFIG,
+      project: { ...DEFAULT_CONFIG.project, root },
+      files: { ...DEFAULT_CONFIG.files, sources: [] },
+    };
+    mocks.connect.mockResolvedValue(undefined);
+    mocks.disconnect.mockResolvedValue(undefined);
+    mocks.heartbeat.mockRejectedValue(new Error("Table 'writer_heartbeat' was not found"));
+
+    await expect(diagnoseStrictConfig(config)).rejects.toThrow("Table 'writer_heartbeat' was not found");
+    expect(mocks.heartbeat).toHaveBeenCalledTimes(5);
+    expect(mocks.disconnect).toHaveBeenCalledTimes(5);
   });
 });

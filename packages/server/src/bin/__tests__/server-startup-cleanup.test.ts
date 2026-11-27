@@ -12,8 +12,6 @@ const mocks = vi.hoisted(() => ({
   acquireRegistration: vi.fn(),
   releaseRegistration: vi.fn(),
   strictMaintenanceLock: vi.fn(),
-  acquireAdmission: vi.fn(),
-  releaseAdmission: vi.fn(),
   diagnoseStrictConfig: vi.fn(),
   mkdir: vi.fn(),
 }));
@@ -66,10 +64,7 @@ describe('server startup cleanup', () => {
     mocks.releaseRegistration.mockResolvedValue(undefined);
     mocks.strictMaintenanceLock.mockResolvedValue({
       acquireShared: mocks.acquireRegistration,
-      acquireAdmission: mocks.acquireAdmission,
     });
-    mocks.acquireAdmission.mockResolvedValue(mocks.releaseAdmission);
-    mocks.releaseAdmission.mockResolvedValue(undefined);
     mocks.diagnoseStrictConfig.mockResolvedValue(undefined);
     mocks.mkdir.mockResolvedValue(undefined);
     mocks.resolveConfig.mockResolvedValue({
@@ -107,7 +102,6 @@ describe('server startup cleanup', () => {
 
     expect(embeddingServer.start).toHaveBeenCalledOnce();
     expect(embeddingServer.stop).toHaveBeenCalledOnce();
-    expect(mocks.releaseAdmission).toHaveBeenCalledOnce();
     expect(mocks.releaseRegistration).toHaveBeenCalledOnce();
     expect(mocks.writePidFile).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -121,7 +115,6 @@ describe('server startup cleanup', () => {
     expect(embeddingServer.start).toHaveBeenCalledOnce();
     expect(embeddingServer.stop).toHaveBeenCalledOnce();
     expect(mocks.acquireRegistration).toHaveBeenCalledOnce();
-    expect(mocks.releaseAdmission).not.toHaveBeenCalled();
     expect(mocks.releaseRegistration).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
