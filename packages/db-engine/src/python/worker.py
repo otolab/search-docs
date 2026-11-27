@@ -16,11 +16,11 @@ import threading
 import copy
 from typing import Any, Dict, Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
-import lancedb
 import pyarrow as pa
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from lancedb_utils import connect_lancedb, is_lance_not_found, read_table_with_retry
 
 # パフォーマンス監視用
 try:
@@ -238,10 +238,7 @@ class SearchDocsWorker:
         Path(db_path).mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
         self.read_only = read_only
-        connect_kwargs = {}
-        if read_only:
-            connect_kwargs['read_consistency_interval'] = timedelta(seconds=5)
-        self.db = lancedb.connect(db_path, **connect_kwargs)
+        self.db = connect_lancedb(db_path)
 
         # Embedding URLを取得（initModel()でサーバに接続）
         self.embedding_url = self._get_embedding_url()
@@ -272,9 +269,11 @@ class SearchDocsWorker:
         self.perf_logger = PerformanceLogger(interval=1.0)
         self.perf_logger.start()
 
-        if self.read_only:
-            sys.stderr.write("[Worker] Running in READ-ONLY mode (read_consistency_interval=5s)\n")
-            sys.stderr.flush()
+        mode = "READ-ONLY" if self.read_only else "READ-WRITE"
+        sys.stderr.write(
+            f"[Worker] Running in {mode} mode (read_consistency_interval=5s)\n"
+        )
+        sys.stderr.flush()
 
     def log_thread_info(self, label: str):
         """スレッド情報をログ出力（デバッグ用）"""
@@ -386,10 +385,10 @@ class SearchDocsWorker:
 
             # IndexRequestsテーブルのインデックスを作成
             try:
-                index_requests_table = self.db.open_table(INDEX_REQUESTS_TABLE)
-
                 # 既存のインデックスを確認
-                existing_indices = index_requests_table.list_indices()
+                existing_indices = self._read_table(
+                    INDEX_REQUESTS_TABLE, lambda table: table.list_indices()
+                )
                 sys.stderr.write(f"[IndexCheck] Existing indices on {INDEX_REQUESTS_TABLE}: {existing_indices}\n")
                 sys.stderr.flush()
 
@@ -403,11 +402,18 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] Creating BITMAP index on status column...\n")
                     sys.stderr.flush()
                     try:
-                        index_requests_table.create_scalar_index("status", index_type="BITMAP")
-                        index_requests_table.wait_for_index(["status_idx"], timeout=timedelta(seconds=60))
+                        self._get_index_requests_table().create_scalar_index("status", index_type="BITMAP")
+                        self._read_table(
+                            INDEX_REQUESTS_TABLE,
+                            lambda table: table.wait_for_index(
+                                ["status_idx"], timeout=timedelta(seconds=60)
+                            ),
+                        )
                         sys.stderr.write(f"[IndexCheck] BITMAP index on status created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
+                        if is_lance_not_found(idx_error):
+                            raise
                         sys.stderr.write(f"[IndexCheck] Error creating status index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
@@ -424,11 +430,18 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_path column...\n")
                     sys.stderr.flush()
                     try:
-                        index_requests_table.create_scalar_index("document_path", index_type="BTREE")
-                        index_requests_table.wait_for_index(["document_path_idx"], timeout=timedelta(seconds=60))
+                        self._get_index_requests_table().create_scalar_index("document_path", index_type="BTREE")
+                        self._read_table(
+                            INDEX_REQUESTS_TABLE,
+                            lambda table: table.wait_for_index(
+                                ["document_path_idx"], timeout=timedelta(seconds=60)
+                            ),
+                        )
                         sys.stderr.write(f"[IndexCheck] BTREE index on document_path created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
+                        if is_lance_not_found(idx_error):
+                            raise
                         sys.stderr.write(f"[IndexCheck] Error creating document_path index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
@@ -445,11 +458,18 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_hash column...\n")
                     sys.stderr.flush()
                     try:
-                        index_requests_table.create_scalar_index("document_hash", index_type="BTREE")
-                        index_requests_table.wait_for_index(["document_hash_idx"], timeout=timedelta(seconds=60))
+                        self._get_index_requests_table().create_scalar_index("document_hash", index_type="BTREE")
+                        self._read_table(
+                            INDEX_REQUESTS_TABLE,
+                            lambda table: table.wait_for_index(
+                                ["document_hash_idx"], timeout=timedelta(seconds=60)
+                            ),
+                        )
                         sys.stderr.write(f"[IndexCheck] BTREE index on document_hash created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
+                        if is_lance_not_found(idx_error):
+                            raise
                         sys.stderr.write(f"[IndexCheck] Error creating document_hash index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
@@ -457,15 +477,17 @@ class SearchDocsWorker:
                     sys.stderr.flush()
 
             except Exception as e:
+                if is_lance_not_found(e):
+                    raise
                 sys.stderr.write(f"[IndexCheck] Warning: Error while managing index_requests indices: {e}\n")
                 sys.stderr.flush()
 
             # Sectionsテーブルのインデックスを作成
             try:
-                sections_table = self.db.open_table(SECTIONS_TABLE)
-
                 # 既存のインデックスを確認
-                existing_indices = sections_table.list_indices()
+                existing_indices = self._read_table(
+                    SECTIONS_TABLE, lambda table: table.list_indices()
+                )
                 sys.stderr.write(f"[IndexCheck] Existing indices on {SECTIONS_TABLE}: {existing_indices}\n")
                 sys.stderr.flush()
 
@@ -479,11 +501,18 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_path column...\n")
                     sys.stderr.flush()
                     try:
-                        sections_table.create_scalar_index("document_path", index_type="BTREE")
-                        sections_table.wait_for_index(["document_path_idx"], timeout=timedelta(seconds=60))
+                        self._get_sections_table().create_scalar_index("document_path", index_type="BTREE")
+                        self._read_table(
+                            SECTIONS_TABLE,
+                            lambda table: table.wait_for_index(
+                                ["document_path_idx"], timeout=timedelta(seconds=60)
+                            ),
+                        )
                         sys.stderr.write(f"[IndexCheck] BTREE index on document_path created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
+                        if is_lance_not_found(idx_error):
+                            raise
                         sys.stderr.write(f"[IndexCheck] Error creating document_path index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
@@ -500,11 +529,18 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] Creating BITMAP index on is_dirty column...\n")
                     sys.stderr.flush()
                     try:
-                        sections_table.create_scalar_index("is_dirty", index_type="BITMAP")
-                        sections_table.wait_for_index(["is_dirty_idx"], timeout=timedelta(seconds=60))
+                        self._get_sections_table().create_scalar_index("is_dirty", index_type="BITMAP")
+                        self._read_table(
+                            SECTIONS_TABLE,
+                            lambda table: table.wait_for_index(
+                                ["is_dirty_idx"], timeout=timedelta(seconds=60)
+                            ),
+                        )
                         sys.stderr.write(f"[IndexCheck] BITMAP index on is_dirty created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
+                        if is_lance_not_found(idx_error):
+                            raise
                         sys.stderr.write(f"[IndexCheck] Error creating is_dirty index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
@@ -521,11 +557,18 @@ class SearchDocsWorker:
                     sys.stderr.write(f"[IndexCheck] Creating BTREE index on document_hash column...\n")
                     sys.stderr.flush()
                     try:
-                        sections_table.create_scalar_index("document_hash", index_type="BTREE")
-                        sections_table.wait_for_index(["document_hash_idx"], timeout=timedelta(seconds=60))
+                        self._get_sections_table().create_scalar_index("document_hash", index_type="BTREE")
+                        self._read_table(
+                            SECTIONS_TABLE,
+                            lambda table: table.wait_for_index(
+                                ["document_hash_idx"], timeout=timedelta(seconds=60)
+                            ),
+                        )
                         sys.stderr.write(f"[IndexCheck] BTREE index on document_hash created and ready\n")
                         sys.stderr.flush()
                     except Exception as idx_error:
+                        if is_lance_not_found(idx_error):
+                            raise
                         sys.stderr.write(f"[IndexCheck] Error creating document_hash index: {idx_error}\n")
                         sys.stderr.flush()
                 else:
@@ -533,6 +576,8 @@ class SearchDocsWorker:
                     sys.stderr.flush()
 
             except Exception as e:
+                if is_lance_not_found(e):
+                    raise
                 sys.stderr.write(f"[IndexCheck] Warning: Error while managing sections indices: {e}\n")
                 sys.stderr.flush()
 
@@ -621,6 +666,29 @@ class SearchDocsWorker:
         if self._index_requests_table is None:
             self._index_requests_table = self.db.open_table(INDEX_REQUESTS_TABLE)
         return self._index_requests_table
+
+    def _read_table(self, table_name: str, operation):
+        """キャッシュ済みテーブルから読み取り、Not found 時だけ一度開き直す。"""
+        if table_name == SECTIONS_TABLE:
+            table = self._sections_table
+        elif table_name == INDEX_REQUESTS_TABLE:
+            table = self._index_requests_table
+        else:
+            table = None
+
+        def cache_table(current_table):
+            if table_name == SECTIONS_TABLE:
+                self._sections_table = current_table
+            elif table_name == INDEX_REQUESTS_TABLE:
+                self._index_requests_table = current_table
+
+        return read_table_with_retry(
+            self.db,
+            table_name,
+            operation,
+            table=table,
+            on_table_change=cache_table,
+        )
 
     def format_section(self, section: Dict[str, Any]) -> Dict[str, Any]:
         """LanceDBのセクションデータをJSON-serializable形式に変換
@@ -849,7 +917,7 @@ class SearchDocsWorker:
         }
         if name not in tables:
             if SECTIONS_TABLE in tables:
-                schema = self.db.open_table(SECTIONS_TABLE).schema
+                schema = self._read_table(SECTIONS_TABLE, lambda table: table.schema)
                 existing_dimension = schema.field('vector').type.list_size
                 if existing_dimension != self.vector_dimension:
                     raise RuntimeError('Existing index dimension differs; stop all servers and rebuild the index')
@@ -865,11 +933,11 @@ class SearchDocsWorker:
                 # 別プロセスが同時に作成した場合も、必ず内容を照合する。
                 if name not in self.db.table_names():
                     raise
-        rows = self.db.open_table(name).to_arrow().to_pylist()
+        rows = self._read_table(name, lambda table: table.to_arrow().to_pylist())
         if len(rows) != 1 or rows[0] != identity:
             raise RuntimeError('Embedding provider, model, endpoint or dimension differs from the index; stop all servers and rebuild the index')
         if SECTIONS_TABLE in self.db.table_names():
-            schema = self.db.open_table(SECTIONS_TABLE).schema
+            schema = self._read_table(SECTIONS_TABLE, lambda table: table.schema)
             if schema.field('vector').type.list_size != self.vector_dimension:
                 raise RuntimeError('Existing index dimension differs; stop all servers and rebuild the index')
 
@@ -1075,9 +1143,6 @@ class SearchDocsWorker:
         query_vector = self.embedding_model.encode(query, self.vector_dimension)
 
         # 検索
-        table = self._get_sections_table()
-        search_query = table.search(query_vector).limit(limit)
-
         # フィルタ適用
         filters = []
         if depth is not None:
@@ -1098,10 +1163,13 @@ class SearchDocsWorker:
             for path in exclude_paths:
                 filters.append(f"document_path NOT LIKE '{_escape_like(path)}%'")
 
-        if filters:
-            search_query = search_query.where(" AND ".join(filters))
+        def execute_search(table):
+            search_query = table.search(query_vector).limit(limit)
+            if filters:
+                search_query = search_query.where(" AND ".join(filters))
+            return search_query.to_list()
 
-        results = search_query.to_list()
+        results = self._read_table(SECTIONS_TABLE, execute_search)
 
         # 結果を整形（snake_case形式で返す - TypeScript側で変換される）
         formatted_results = []
@@ -1133,8 +1201,12 @@ class SearchDocsWorker:
         if not document_path:
             raise ValueError("documentPath parameter is required")
 
-        table = self._get_sections_table()
-        results = table.search().where(f"document_path = '{_escape_sql(document_path)}'").to_list()
+        results = self._read_table(
+            SECTIONS_TABLE,
+            lambda table: table.search()
+            .where(f"document_path = '{_escape_sql(document_path)}'")
+            .to_list(),
+        )
 
         # 結果をフォーマット
         formatted_sections = [self.format_section(section) for section in results]
@@ -1147,8 +1219,10 @@ class SearchDocsWorker:
         if not section_id:
             raise ValueError("sectionId parameter is required")
 
-        table = self._get_sections_table()
-        results = table.search().where(f"id = '{_escape_sql(section_id)}'").to_list()
+        results = self._read_table(
+            SECTIONS_TABLE,
+            lambda table: table.search().where(f"id = '{_escape_sql(section_id)}'").to_list(),
+        )
 
         if not results:
             raise ValueError(f"Section not found: {section_id}")
@@ -1177,16 +1251,17 @@ class SearchDocsWorker:
         if not document_hash:
             raise ValueError("documentHash parameter is required")
 
-        table = self._get_sections_table()
-
         # 存在確認用途では1件だけ取得すれば十分（IndexWorkerでの使用を想定）
         # limit指定がない場合は1件のみ取得（デフォルト）
         limit = params.get("limit", 1)
 
-        results = table.search()\
-            .where(f"document_path = '{_escape_sql(document_path)}' AND document_hash = '{_escape_sql(document_hash)}'")\
-            .limit(limit)\
-            .to_list()
+        results = self._read_table(
+            SECTIONS_TABLE,
+            lambda table: table.search()
+            .where(f"document_path = '{_escape_sql(document_path)}' AND document_hash = '{_escape_sql(document_hash)}'")
+            .limit(limit)
+            .to_list(),
+        )
 
         # 結果をフォーマット
         formatted_sections = [self.format_section(section) for section in results]
@@ -1231,11 +1306,13 @@ class SearchDocsWorker:
         """Dirtyなセクションを取得"""
         limit = params.get("limit", 100)
 
-        table = self._get_sections_table()
-        results = table.search()\
-            .where("is_dirty = true")\
-            .limit(limit)\
-            .to_list()
+        results = self._read_table(
+            SECTIONS_TABLE,
+            lambda table: table.search()
+            .where("is_dirty = true")
+            .limit(limit)
+            .to_list(),
+        )
 
         # 結果をフォーマット
         formatted_sections = [self.format_section(section) for section in results]
@@ -1244,20 +1321,30 @@ class SearchDocsWorker:
 
     def get_stats(self) -> Dict[str, Any]:
         """統計情報を取得"""
-        table = self._get_sections_table()
+        total, dirty_count = self._read_table(
+            SECTIONS_TABLE,
+            lambda table: (
+                table.count_rows(),
+                table.count_rows(filter="is_dirty = true"),
+            ),
+        )
 
-        # 全件数
-        total = table.count_rows()
-
-        # Dirty件数（count_rows()で効率的にカウント）
-        dirty_count = table.count_rows(filter="is_dirty = true")
-
-        # ユニークな文書数を取得（Lance Dataset APIでベクトルカラムを除外）
+        # ユニークな文書数は補助値のため、従来どおり一般エラー時は0にする。
         try:
-            paths = table.to_lance().scanner(columns=["document_path"]).to_table()
-            total_documents = len(paths.column("document_path").unique())
-        except Exception as e:
-            sys.stderr.write(f"Warning: Could not get unique document count: {e}\n")
+            total_documents = self._read_table(
+                SECTIONS_TABLE,
+                lambda table: len(
+                    table.to_lance()
+                    .scanner(columns=["document_path"])
+                    .to_table()
+                    .column("document_path")
+                    .unique()
+                ),
+            )
+        except Exception as error:
+            if is_lance_not_found(error):
+                raise
+            sys.stderr.write(f"Warning: Could not get unique document count: {error}\n")
             sys.stderr.flush()
             total_documents = 0
 
@@ -1312,8 +1399,6 @@ class SearchDocsWorker:
 
     def find_index_requests(self, params: Dict[str, Any]) -> Dict[str, List]:
         """IndexRequestを検索"""
-        table = self._get_index_requests_table()
-
         # limit指定（デフォルト1000、大規模プロジェクトでのメモリ保護）
         limit = params.get("limit", 1000)
 
@@ -1335,19 +1420,15 @@ class SearchDocsWorker:
             else:
                 where_clauses.append(f"status = '{_escape_sql(status)}'")
 
-        # クエリの実行
-        query = table.search()
-
-        if where_clauses:
-            where_str = " AND ".join(where_clauses)
-            query = query.where(where_str)
-
-        # limit適用
-        query = query.limit(limit)
-
         # order指定
         order = params.get("order", "created_at ASC")
-        results = query.to_list()
+        def execute_query(table):
+            query = table.search()
+            if where_clauses:
+                query = query.where(" AND ".join(where_clauses))
+            return query.limit(limit).to_list()
+
+        results = self._read_table(INDEX_REQUESTS_TABLE, execute_query)
 
         # ソート
         if "DESC" in order:
@@ -1374,8 +1455,6 @@ class SearchDocsWorker:
 
     def count_index_requests(self, params: Dict[str, Any]) -> Dict[str, int]:
         """IndexRequestの件数をカウント（高速）"""
-        table = self._get_index_requests_table()
-
         # フィルタ条件の構築（find_index_requestsと同じロジック）
         where_clauses = []
 
@@ -1395,11 +1474,13 @@ class SearchDocsWorker:
                 where_clauses.append(f"status = '{_escape_sql(status)}'")
 
         # count_rows()を使用（インデックスが利用される）
-        if where_clauses:
-            where_str = " AND ".join(where_clauses)
-            count = table.count_rows(filter=where_str)
-        else:
-            count = table.count_rows()
+        where_str = " AND ".join(where_clauses) if where_clauses else None
+        count = self._read_table(
+            INDEX_REQUESTS_TABLE,
+            lambda table: table.count_rows(filter=where_str)
+            if where_str
+            else table.count_rows(),
+        )
 
         return {"count": count}
 
@@ -1429,7 +1510,13 @@ class SearchDocsWorker:
         self._maybe_optimize(table,"index_requests")
 
         # 更新後のオブジェクトを取得して返す
-        df = table.search().where(f"id = '{_escape_sql(request_id)}'").limit(1).to_pandas()
+        df = self._read_table(
+            INDEX_REQUESTS_TABLE,
+            lambda table: table.search()
+            .where(f"id = '{_escape_sql(request_id)}'")
+            .limit(1)
+            .to_pandas(),
+        )
         if len(df) == 0:
             raise ValueError(f"Request not found after update: {request_id}")
 
@@ -1452,8 +1539,6 @@ class SearchDocsWorker:
 
         if not updates:
             raise ValueError("Missing required field: updates")
-
-        table = self._get_index_requests_table()
 
         # フィルタ条件の構築
         where_clauses = []
@@ -1480,16 +1565,21 @@ class SearchDocsWorker:
         if "completed_at" in updates and updates["completed_at"]:
             updates["completed_at"] = pd.Timestamp(updates["completed_at"], tz='UTC').floor('ms')
 
-        # 更新前の件数を取得
         where_str = " AND ".join(where_clauses)
+        if params.get("refresh_connection", False):
+            # takeover 前の別プロセスによる更新を含む最新 snapshot で復旧し、
+            # 後続の照合・処理も同じ接続から読む。
+            refreshed_db = connect_lancedb(self.db_path)
+            refreshed_table = refreshed_db.open_table(INDEX_REQUESTS_TABLE)
+            self.db = refreshed_db
+            self._index_requests_table = refreshed_table
+        table = self._get_index_requests_table()
         count = table.count_rows(filter=where_str)
-
-        # 更新実行
         table.update(
             where=where_str,
             values=updates
         )
-        self._maybe_optimize(table,"index_requests")
+        self._maybe_optimize(table, "index_requests")
 
         return {"updated": True, "count": count}
 
@@ -1510,8 +1600,13 @@ class SearchDocsWorker:
 
     def get_indexed_paths(self) -> Dict[str, List]:
         """Return every distinct section path, including documents without requests."""
-        table = self._get_sections_table()
-        df = table.search().select(["document_path"]).limit(None).to_pandas()
+        df = self._read_table(
+            SECTIONS_TABLE,
+            lambda table: table.search()
+            .select(["document_path"])
+            .limit(None)
+            .to_pandas(),
+        )
         return {"paths": df["document_path"].unique().tolist()}
 
     def get_paths_with_status(self, params: Dict[str, Any]) -> Dict[str, List]:
@@ -1520,14 +1615,19 @@ class SearchDocsWorker:
         if not statuses:
             raise ValueError("Missing required field: statuses")
 
-        table = self._get_index_requests_table()
-
         # statusフィルタの構築
         status_clauses = [f"status = '{_escape_sql(s)}'" for s in statuses]
         where_str = " OR ".join(status_clauses)
 
         # クエリ実行（document_pathカラムのみ取得でメモリ効率化）
-        df = table.search().where(where_str).select(["document_path"]).limit(None).to_pandas()
+        df = self._read_table(
+            INDEX_REQUESTS_TABLE,
+            lambda table: table.search()
+            .where(where_str)
+            .select(["document_path"])
+            .limit(None)
+            .to_pandas(),
+        )
 
         # ユニークなdocument_pathを抽出
         paths = df["document_path"].unique().tolist()
@@ -1571,9 +1671,12 @@ class SearchDocsWorker:
 
     def get_writer_heartbeat(self) -> Dict[str, Any]:
         # 他プロセスの書き込みを確実に反映するため、新しいDB接続で読み取る
-        fresh_db = lancedb.connect(self.db_path)
-        table = fresh_db.open_table(WRITER_HEARTBEAT_TABLE)
-        results = table.search().limit(1).to_list()
+        fresh_db = connect_lancedb(self.db_path)
+        results = read_table_with_retry(
+            fresh_db,
+            WRITER_HEARTBEAT_TABLE,
+            lambda table: table.search().limit(1).to_list(),
+        )
         if len(results) == 0:
             return {"exists": False}
         row = results[0]
@@ -1608,8 +1711,20 @@ class SearchDocsWorker:
 
     def release_writer(self, params: Dict[str, Any]) -> Dict[str, Any]:
         writer_id = params["writer_id"]
-        table = self.db.open_table(WRITER_HEARTBEAT_TABLE)
-        results = table.search().limit(1).to_list()
+
+        def remember_table(current):
+            nonlocal table
+            table = current
+
+        table = None
+
+        results = read_table_with_retry(
+            self.db,
+            WRITER_HEARTBEAT_TABLE,
+            lambda current: current.search().limit(1).to_list(),
+            table=table,
+            on_table_change=remember_table,
+        )
         if len(results) > 0 and results[0]["writer_id"] != writer_id:
             return {"success": False, "reason": "not_current_master"}
         table.delete("writer_id IS NOT NULL")
@@ -1624,7 +1739,9 @@ class SearchDocsWorker:
         if name not in self.db.table_names():
             raise ValueError(f"Table does not exist: {name}")
         try:
-            self.db.open_table(name).count_rows()
+            read_table_with_retry(
+                self.db, name, lambda table: table.count_rows()
+            )
             return {"readable": True}
         except Exception as e:
             return {"readable": False, "error": str(e)}
@@ -1633,7 +1750,9 @@ class SearchDocsWorker:
         dimension = params.get("dimension")
         if not isinstance(dimension, int) or isinstance(dimension, bool) or dimension <= 0:
             raise ValueError("Invalid vector dimension")
-        identity = self.db.open_table("embedding_identity").to_arrow().to_pylist()
+        identity = self._read_table(
+            "embedding_identity", lambda table: table.to_arrow().to_pylist()
+        )
         if len(identity) != 1 or identity[0].get("dimension") != dimension:
             raise ValueError("Cannot confirm embedding dimension")
         return {"confirmed": True}
@@ -1675,8 +1794,7 @@ class SearchDocsWorker:
                     results[table_name] = {"status": "missing", "error": "Table is missing"}
                     continue
 
-                table = self.db.open_table(table_name)
-                table.count_rows()
+                self._read_table(table_name, lambda table: table.count_rows())
                 results[table_name] = {"status": "ok"}
             except Exception as e:
                 error_msg = str(e)

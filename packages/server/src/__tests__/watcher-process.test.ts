@@ -444,7 +444,11 @@ describe('WatcherProcess recovery and shutdown', () => {
     const internal = internals(instance);
     internal.startHeartbeat = vi.fn();
     await internal.transitionToWatching();
-    expect(db.updateManyIndexRequests).toHaveBeenCalledWith({ status: 'processing' }, { status: 'pending' });
+    expect(db.updateManyIndexRequests).toHaveBeenCalledWith(
+      { status: 'processing' },
+      { status: 'pending' },
+      { refreshConnection: true },
+    );
   });
 });
 

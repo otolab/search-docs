@@ -19,13 +19,22 @@ describe('削除前の元文書検査', () => {
   it('実際の LanceDB 索引と破損した manifest を既知の配置として検査する', async () => {
     const options = await fixture();
     const script = [
-      'import lancedb, sys',
+      'import asyncio, lancedb, sys',
       'from datetime import timedelta',
-      'db = lancedb.connect(sys.argv[1])',
-      "table = db.create_table('sections', data=[{'id': 'a', 'document_path': 'a.md', 'vector': [1.0, 2.0]}])",
-      "table.create_scalar_index('document_path', index_type='BTREE')",
-      "table.create_scalar_index('id', index_type='BITMAP')",
-      "table.wait_for_index(['document_path_idx', 'id_idx'], timeout=timedelta(seconds=30))",
+      'from lancedb.index import BTree, Bitmap',
+      'async def create_index(path):',
+      '    db = await lancedb.connect_async(path)',
+      '    try:',
+      "        table = await db.create_table('sections', data=[{'id': 'a', 'document_path': 'a.md', 'vector': [1.0, 2.0]}])",
+      '        try:',
+      "            await table.create_index('document_path', config=BTree())",
+      "            await table.create_index('id', config=Bitmap())",
+      "            await table.wait_for_index(['document_path_idx', 'id_idx'], timeout=timedelta(seconds=30))",
+      '        finally:',
+      '            table.close()',
+      '    finally:',
+      '        db.close()',
+      'asyncio.run(create_index(sys.argv[1]))',
     ].join('\n');
     await promisify(execFile)('uv', ['run', '--project', path.resolve('../db-engine'), 'python', '-c', script, options.indexPath], {
       env: { ...process.env, UV_NO_SYNC: '1', UV_CACHE_DIR: '/tmp/search-docs-uv-cache' },
