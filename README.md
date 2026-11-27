@@ -6,6 +6,8 @@
 
 search-docsは、Markdown文書をVector検索可能にし、Claude CodeなどのAIエージェントが自然言語で検索できるようにします。
 
+search-docs自体は、外部公開しない単一のローカルホストでCLIやMCPを実行する利用を前提としています。`server start` のHTTPサーバも同じホスト内から使う構成を想定しており、複数ホストから共有するサービスとしてはサポートしません。この前提はネットワーク公開範囲や filesystem の排他・永続性を自動で保証するものではありません。
+
 ## コンセプト
 
 - **ローカルファースト**: すべてのデータはローカルに保存、プライバシー重視
@@ -152,10 +154,10 @@ search-docsは**in-process構成（MCPサーバ）** と **クライアント・
   - DBEngine（Python/LanceDB/Ruri）
   - EmbeddingServerProcess（自動検出・起動）
 
-### HTTPサーバモード（外部クライアント向け）
+### HTTPサーバモード（同一ホスト内のクライアント向け）
 - **Server** (`@search-docs/server`): `server start` コマンドで起動
   - JSON-RPC API提供
-  - CLI Tool、Client Libraryから利用
+  - CLI Tool、Client Libraryから同じホスト内で利用
 - **CLI Tool** (`@search-docs/cli`): コマンドライン
 - **Client Library** (`@search-docs/client`): プログラマティックな利用
 
