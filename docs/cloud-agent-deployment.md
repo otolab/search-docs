@@ -93,7 +93,9 @@ pnpm run search-docs:snapshot
 
 ### 4. ローカル（Cursor Desktop）
 
-Cloud と同じ `storage` 絶対パスに揃えると VM と索引を共有しやすい。Cloud Agent のホームは多くの場合 `/home/ubuntu`。
+Cursor Desktop でも使う場合は、Desktop 側の環境に専用の `storage` を設定し、その環境で独立した索引を使ってください。Cloud Agent と Desktop で同じ絶対パス文字列を指定しても、同じ物理的な保存先を参照することにはなりません。別ホストから同じ可変の index / documents を共有する構成はサポート対象外です。
+
+このページの Environment Save / Restore は Cloud Environment 内の手順です。Desktop との間で index を共有・同期する手順を示すものではありません。Cloud Agent 上での手順自体の対応範囲は、Issue #183 の単一ホスト前提との整合確認が必要です。
 
 ## 補助スクリプト
 
