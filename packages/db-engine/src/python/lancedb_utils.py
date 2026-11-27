@@ -19,7 +19,12 @@ def connect_lancedb(uri: str):
 
 def is_lance_not_found(error: Exception) -> bool:
     """Return whether a LanceDB read failed because a referenced file is missing."""
-    return "not found" in str(error).lower()
+    message = str(error).lower()
+    return (
+        "object at location " in message
+        and "not found: no such file or directory" in message
+        and "(os error 2)" in message
+    )
 
 
 def read_table_with_retry(

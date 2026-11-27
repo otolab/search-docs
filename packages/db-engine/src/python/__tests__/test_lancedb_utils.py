@@ -12,6 +12,7 @@ from schemas import SECTIONS_TABLE
 from lancedb_utils import (
     READ_CONSISTENCY_INTERVAL,
     connect_lancedb,
+    is_lance_not_found,
     read_table_with_retry,
 )
 from worker import SearchDocsWorker
@@ -29,6 +30,19 @@ def test_connect_lancedb_sets_the_shared_read_consistency_interval(monkeypatch):
         read_consistency_interval=timedelta(seconds=5),
     )
     assert READ_CONSISTENCY_INTERVAL == timedelta(seconds=5)
+
+
+def test_is_lance_not_found_matches_missing_object_files_only():
+    missing_object = RuntimeError(
+        "lance error: LanceError(IO): Object at location "
+        "/tmp/index/sections.lance/data/fragment.lance not found: "
+        "No such file or directory (os error 2)"
+    )
+
+    assert is_lance_not_found(missing_object)
+    assert not is_lance_not_found(RuntimeError("column not found: document_path"))
+    assert not is_lance_not_found(RuntimeError("index not found: status_idx"))
+    assert not is_lance_not_found(RuntimeError("Not found: stale manifest"))
 
 
 class ReadTable:
@@ -55,7 +69,15 @@ class ReadDatabase:
 
 
 def test_read_table_reopens_once_and_retries_not_found(capsys):
-    stale_table = ReadTable([RuntimeError("lance error: Not found: fragment.lance")])
+    stale_table = ReadTable(
+        [
+            RuntimeError(
+                "lance error: LanceError(IO): Object at location "
+                "/tmp/index/sections.lance/data/fragment.lance not found: "
+                "No such file or directory (os error 2)"
+            )
+        ]
+    )
     refreshed_table = ReadTable([["latest"]])
     db = ReadDatabase(refreshed_table)
     refreshed = []
@@ -93,11 +115,25 @@ def test_read_table_does_not_retry_other_errors():
 
 
 def test_read_table_propagates_not_found_after_one_retry():
-    stale_table = ReadTable([RuntimeError("Not found: stale fragment")])
-    refreshed_table = ReadTable([RuntimeError("Not found: latest fragment")])
+    stale_table = ReadTable(
+        [
+            RuntimeError(
+                "LanceError(IO): Object at location /tmp/stale.lance not found: "
+                "No such file or directory (os error 2)"
+            )
+        ]
+    )
+    refreshed_table = ReadTable(
+        [
+            RuntimeError(
+                "LanceError(IO): Object at location /tmp/latest.lance not found: "
+                "No such file or directory (os error 2)"
+            )
+        ]
+    )
     db = ReadDatabase(refreshed_table)
 
-    with pytest.raises(RuntimeError, match="latest fragment"):
+    with pytest.raises(RuntimeError, match="latest\\.lance"):
         read_table_with_retry(
             db,
             "sections",
@@ -120,7 +156,10 @@ def test_read_table_retries_when_open_table_reports_not_found():
         def open_table(self, table_name):
             self.open_calls += 1
             if self.open_calls == 1:
-                raise RuntimeError("Not found: stale manifest")
+                raise RuntimeError(
+                    "LanceError(IO): Object at location /tmp/stale.manifest "
+                    "not found: No such file or directory (os error 2)"
+                )
             return refreshed_table
 
     db = Database()
@@ -137,7 +176,14 @@ def test_read_table_retries_when_open_table_reports_not_found():
 
 
 def test_worker_replaces_its_cached_table_after_reopening():
-    stale_table = ReadTable([RuntimeError("Not found: stale fragment")])
+    stale_table = ReadTable(
+        [
+            RuntimeError(
+                "LanceError(IO): Object at location /tmp/stale.lance not found: "
+                "No such file or directory (os error 2)"
+            )
+        ]
+    )
     refreshed_table = ReadTable([["latest"]])
     db = ReadDatabase(refreshed_table)
     worker = SearchDocsWorker.__new__(SearchDocsWorker)
