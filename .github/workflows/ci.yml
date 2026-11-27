@@ -109,7 +109,8 @@ jobs:
               "$CI_PROJECT_PREFIX/bin/python" \
                 "$CI_WORKSPACE/packages/db-engine/src/python/tests/embedding_supervisor_ci_preflight.py" \
                 private-container
-              "$CI_PROJECT_PREFIX/bin/python" -m unittest discover \
+              PYTHONPATH="$CI_WORKSPACE/packages/db-engine/src/python/tests" \
+                "$CI_PROJECT_PREFIX/bin/python" -m unittest discover \
                 -s packages/db-engine/src/python/tests \
                 -t packages/db-engine/src/python/tests \
                 -p test_embedding_supervisor_prototype_stdlib.py -v
