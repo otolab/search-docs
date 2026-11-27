@@ -1704,6 +1704,8 @@ const mergedExcludePaths = [
 - 2026-01-15: ADR-017追加（@parcel/watcherによるファイル監視）
 - 2026-05-07: ADR-018追加（CoreML GPU最適化のための静的形状オーバーライド）
 - 2026-05-07: ADR-019追加（files.sources リネームとツリーウォーク監視）
+- 2026-05-29: ADR-020追加（LanceDB最適化処理の安全な運用）
+- 2026-11-27: ADR-021追加（全接続での読み取り追従）、ADR-020に追記
 
 ---
 
@@ -2107,6 +2109,8 @@ systems/ → app-a/docs/ → deep
 
 承認済み（2026-05-29）
 
+> **追記（2026-11-27）**: 本 ADR は「リーダーは `read_consistency_interval` ごとに最新バージョンに追従する」ことを前提としているが、`readOnly: false` で接続するプロセスではこの前提が成立していなかった。読み取り側の追従について整理した [ADR-021](#adr-021-全接続での読み取り追従read_consistency_interval) を参照。本 ADR の決定（cleanup の猶予 10 分）は引き続き有効。
+
 ### コンテキスト
 
 ホスト側とDockerコンテナの両方でsearch-docsを動かす環境で、LanceDBのBITMAPインデックスファイルが見つからないエラーが発生した。
@@ -2193,6 +2197,76 @@ def _maybe_optimize(self, table, table_name: str) -> None:
 - LanceDB Consistency: https://lancedb.com/docs/tables/consistency/
 - 関連ADR: ADR-016（LanceDBインデックス戦略）
 - 関連タスク: task27（optimize()呼び出し頻度の適正化）、task46（本調査）
+- 後続ADR: ADR-021（全接続での読み取り追従）
+
+---
+
+## ADR-021: 全接続での読み取り追従（read_consistency_interval）
+
+### ステータス
+
+承認済み（2026-11-27）。実装は Issue #173 で行う。
+
+### コンテキスト
+
+ADR-020 で `cleanup_older_than` に 10 分の猶予を置いた後も、検索で次のエラーが再発した（#173）。
+
+```
+lance error: Not found: .../sections.lance/data/<hash>.lance
+lance error: Not found: .../sections.lance/_indices/<uuid>/page_data.lance
+```
+
+書き込みは heartbeat 調停で master になった 1 プロセスだけが行っており、複数の writer による競合は起きていなかった。原因は読み取り側にあった。
+
+- `read_consistency_interval=5s` は `read_only=True` のときにしか設定されていなかった。
+- MCP サーバ（2026-04-30 の in-process 化以降）と単独サーバは、writer への昇格がありうるため `readOnly: false` で接続している。
+- LanceDB では `read_consistency_interval` が未設定だと、他プロセスによる更新を取り込まない。worker はテーブルハンドルをキャッシュしているので、master 以外のプロセスは起動時に開いたバージョンを読み続ける。
+- そのバージョンが 10 分を過ぎると、master の `optimize` による cleanup が参照先のファイルを削除し、読み取りが `Not found` になる。
+
+ADR-020 は「リーダーは `read_consistency_interval` ごとに最新へ追従する」ことを前提としていたが、ADR-020 の時点ですでに `readOnly: false` の MCP ではこの前提が成立していなかった。
+
+### 古いバージョンを読み続けることの影響
+
+LanceDB は追記型であり、古いバージョンのファイルが消えるのは compaction / index 最適化で書き換えられたファイルが cleanup されたときだけである。
+
+| 更新の内容 | 起きること | 古いバージョンを読むプロセスへの影響 |
+|---|---|---|
+| 文書の追加 | 新しい fragment が追加される。既存の fragment は残る | 新しい文書が見えない。エラーにならない |
+| 文書の削除・再索引 | deletion ファイルと新しい fragment が追加される | 削除済みの section が検索に出続ける。エラーにならない |
+| compaction / index 最適化 + cleanup | 古いファイルが削除される | ここで初めて `Not found` |
+
+このため「`Not found` が出たらテーブルを開き直す」だけでは、エラーにならない古さ（新規文書が見えない、削除済み文書が見える）を解消できず、古さの上限も決まらない。
+
+### 決定
+
+1. **原則**: どのプロセスも、cleanup の猶予（ADR-020: 10 分）より古いバージョンを読み続けない。書き込みは master だけが行い、読み取りは全プロセスが最新に追従する。
+2. **`read_only` かどうかに関係なく、すべての LanceDB 接続で `read_consistency_interval` を設定する。** 値は既存の read-only モードと同じ 5 秒とする。
+   - この設定は、前回の確認から指定時間が経過していれば、次の読み取り時に最新の manifest を確認するものである。バックグラウンドでのポーリングは行わない。
+   - writer に昇格したプロセスでも、自身の書き込みは見えるため問題ない。
+3. **`read_consistency_interval` は cleanup の猶予より十分短く保つ。** 両者の値を変えるときはこの関係を確認する。
+4. **保険として、読み取りが `Not found` で失敗したときはテーブルを開き直して 1 回だけ再試行する。** 再試行時は warning を記録する。2 回目も失敗した場合は破損とみなし、空の結果を返さずにエラーとする。この保険が発動することは、原則 1 がどこかで破られていることを意味する。
+
+### 検討した代替案
+
+- **cleanup の猶予を延ばす**: 読み取り側はいつまでも古いバージョンに留まりうるため、解決にならない。
+- **`Not found` 時の開き直しだけで対応する**: 上表のとおり、エラーにならない古さが残る。
+- **読み取りのたびに `checkout_latest()` を呼ぶ**: 呼び出し箇所ごとの対応が必要で漏れやすい。接続時の設定で一括して扱える `read_consistency_interval` を採用する。
+
+### 結果
+
+**ポジティブ**:
+- master 以外のプロセスからの検索で `Not found` が起きなくなる。
+- 他プロセスで索引された文書が、最大でも約 5 秒の遅れで検索に反映される。
+- ADR-020 の前提が明文化され、全プロセスで成立する。
+
+**ネガティブ**:
+- 読み取り時に manifest の確認が最大 5 秒に 1 回発生する（ローカルファイルシステムでは軽微）。
+
+### 参考情報
+
+- LanceDB Consistency: https://lancedb.com/docs/tables/consistency/
+- 関連ADR: ADR-020（LanceDB最適化処理の安全な運用）
+- 関連Issue: #173
 
 
 ## Embedding provider の追加手順
