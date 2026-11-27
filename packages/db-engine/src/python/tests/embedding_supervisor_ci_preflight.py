@@ -202,7 +202,8 @@ def check_readonly_workspace_and_tmp():
             probe.unlink(missing_ok=True)
             raise RuntimeError('workspace unexpectedly allowed writes')
     finally:
-        probe.unlink(missing_ok=True)
+        if probe.exists():
+            probe.unlink()
 
     temporary_root = Path(required_environment('TMPDIR')).resolve()
     require(temporary_root == Path('/tmp'), f'unexpected temporary directory: {temporary_root}')
