@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { cp, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { stopProcessGroup, stopTrackedChildren, trackChild } from './harness-lifecycle.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const root = await mkdtemp(path.join(tmpdir(), 'issue183-stop-unconfirmed-'));
-const projectRoot = path.join(root, 'project');
-const serverCopy = path.join(root, 'server-copy');
-const serverDist = path.join(serverCopy, 'dist');
 const marker = 'ISSUE183_DIAGNOSTIC_PAUSED:';
 const dimension = 256;
 const model = 'issue183-shutdown-test';
@@ -19,11 +16,18 @@ const apiKey = 'issue183-test-key';
 const { DEFAULT_CONFIG } = await import(pathToFileURL(path.join(repo, 'packages/types/dist/index.js')).href);
 const { MaintenanceLock } = await import(pathToFileURL(path.join(repo, 'packages/db-engine/dist/index.js')).href);
 
+const root = await mkdtemp(path.join(tmpdir(), 'issue183-stop-unconfirmed-'));
+const children = new Set();
+const projectRoot = path.join(root, 'project');
+const serverCopy = path.join(root, 'server-copy');
+const serverDist = path.join(serverCopy, 'dist');
 let child;
 let diagnosticPid;
 let stderr = '';
 let stdout = '';
 let log = '';
+let result;
+let embeddingListening = false;
 const embedding = createServer((request, response) => {
   if (request.url === '/health' || request.url === '/ready') {
     response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
@@ -104,21 +108,50 @@ async function processGroupExists(pid) {
   catch (error) { if (error.code === 'ESRCH') return false; throw error; }
 }
 
-async function readSectionsCount() {
+function readSectionsCount() {
   const python = path.join(repo, 'packages/db-engine/.venv/bin/python');
   const database = path.join(projectRoot, '.search-docs/index');
   const code = "import sys,lancedb; db=lancedb.connect(sys.argv[1]); print(db.open_table('sections').count_rows())";
-  const output = execFileSync(python, ['-c', code, database], {
-    encoding: 'utf8',
+  const child = trackChild(children, spawn(python, ['-c', code, database], {
     env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }));
+  let output = '';
+  let errors = '';
+  let timedOut = false;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    }, 10000);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { errors += chunk; });
+    child.once('error', error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      if (timedOut || code !== 0) {
+        reject(new Error(timedOut
+          ? 'Timed out reading the disposable fixture database'
+          : `Could not read fixture sections (${code}/${signal}): ${errors}`));
+      } else {
+        resolve(Number(output.trim()));
+      }
+    });
   });
-  return Number(output.trim());
 }
 
 try {
   await new Promise((resolve, reject) => {
     embedding.once('error', reject);
-    embedding.listen(0, '127.0.0.1', resolve);
+    embedding.listen(0, '127.0.0.1', () => {
+      embeddingListening = true;
+      resolve();
+    });
   });
   const address = embedding.address();
   if (!address || typeof address === 'string') throw new Error('Could not start local embedding fixture');
@@ -186,8 +219,8 @@ export async function resolve(specifier, context, nextResolve) {
   await writeFile(preloadPath, `const originalKill = process.kill.bind(process);
 process.kill = function(pid, signal) {
   const faultPid = Number(process.env.ISSUE183_FAIL_PROCESS_GROUP);
-  if (faultPid > 1 && pid === -faultPid && signal === 0) {
-    const error = new Error('injected EPERM while checking the diagnostic process group');
+  if (faultPid > 1 && pid === -faultPid && signal === 'SIGTERM') {
+    const error = new Error('injected EPERM while sending SIGTERM to the diagnostic process group');
     error.code = 'EPERM';
     throw error;
   }
@@ -195,7 +228,7 @@ process.kill = function(pid, signal) {
 };
 `);
 
-  child = spawn(process.execPath, [path.join(repo, 'packages/mcp-server/dist/server.js'), '--project-dir', projectRoot], {
+  child = trackChild(children, spawn(process.execPath, [path.join(repo, 'packages/mcp-server/dist/server.js'), '--project-dir', projectRoot], {
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -211,8 +244,12 @@ process.kill = function(pid, signal) {
       ].join(' '),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
+  }));
+  child.stderr.on('data', data => {
+    stderr += data.toString();
+    const match = stderr.match(new RegExp(`${marker}(\\d+)`));
+    if (match) diagnosticPid = Number(match[1]);
   });
-  child.stderr.on('data', data => { stderr += data.toString(); });
   child.stdin.write(`${JSON.stringify({
     jsonrpc: '2.0',
     id: 1,
@@ -258,8 +295,8 @@ process.kill = function(pid, signal) {
   assert(!log.includes('[WatcherProcess] → WATCHING'), 'writer entered WATCHING after its pre-writer diagnostic failed');
   assert.equal(await readSectionsCount(), 0, 'source was indexed before the writer diagnostic passed');
 
-  const result = {
-    injectedFault: 'process.kill(-diagnosticPid, 0) throws EPERM inside the MCP process only',
+  result = {
+    injectedFault: 'process.kill(-diagnosticPid, SIGTERM) throws EPERM inside the MCP process only; signal-0 existence check succeeds',
     processGroupAliveBeforeResume: diagnosticAliveBeforeResume,
     processGroupAliveAfterShutdown: diagnosticAliveAfterShutdown,
     MCPShutdownExit: exit ? [exit[0], exit[1]] : 'did not settle within timeout; observed state before cleanup',
@@ -270,23 +307,26 @@ process.kill = function(pid, signal) {
     indexedSections: 0,
     stderrTail: stderr.slice(-1600),
   };
-  console.log(JSON.stringify(result, null, 2));
-
-  if (child.exitCode === null && child.signalCode === null) {
-    const parentExit = once(child, 'exit');
-    child.kill('SIGKILL');
-    await Promise.race([parentExit, new Promise(resolve => setTimeout(resolve, 3000))]);
-  }
-  try { process.kill(-diagnosticPid, 'SIGKILL'); } catch {}
 } finally {
-  if (child && child.exitCode === null && child.signalCode === null) {
-    const parentExit = once(child, 'exit');
-    child.kill('SIGKILL');
-    await Promise.race([parentExit, new Promise(resolve => setTimeout(resolve, 3000))]);
+  let cleanupFailure;
+  try { await stopTrackedChildren(children, root); }
+  catch (error) { cleanupFailure = error; }
+  try { if (diagnosticPid) await stopProcessGroup(diagnosticPid); }
+  catch (error) { cleanupFailure ??= error; }
+  if (embeddingListening) await new Promise(resolve => embedding.close(() => resolve()));
+  if (cleanupFailure) {
+    throw new Error(`Harness cleanup failed; preserving temporary data at ${root}`, { cause: cleanupFailure });
   }
-  if (diagnosticPid) {
-    try { process.kill(-diagnosticPid, 'SIGKILL'); } catch {}
-  }
-  await new Promise(resolve => embedding.close(() => resolve()));
   await rm(root, { recursive: true, force: true });
 }
+
+if (diagnosticPid) assert.equal(await processGroupExists(diagnosticPid), false,
+  'cleanup did not confirm termination of the diagnostic process group');
+await assert.rejects(stat(root), { code: 'ENOENT' });
+console.log(JSON.stringify({
+  ...result,
+  cleanup: {
+    diagnosticProcessGroupStopped: Boolean(diagnosticPid),
+    temporaryRootRemovedAfterChildClose: true,
+  },
+}, null, 2));

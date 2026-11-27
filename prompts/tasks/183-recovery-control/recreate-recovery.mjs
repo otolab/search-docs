@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFile as execFileCallback, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { promisify } from 'node:util';
-import { cp, mkdtemp, mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { stopProcessGroup, stopTrackedChildren, trackChild } from './harness-lifecycle.mjs';
 
-const execFile = promisify(execFileCallback);
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 process.env.VIRTUAL_ENV = path.join(repo, 'packages/db-engine/.venv');
 process.env.UV_PROJECT_ENVIRONMENT = process.env.VIRTUAL_ENV;
@@ -24,6 +23,12 @@ const { diagnoseStrictConfig } = await import(pathToFileURL(path.join(repo, 'pac
 const { MaintenanceLock } = await import(pathToFileURL(path.join(repo, 'packages/db-engine/dist/index.js')).href);
 
 const root = await mkdtemp(path.join(tmpdir(), 'issue183-recreate-recovery-'));
+const children = new Set();
+const trackedProcessGroups = new Set();
+const pendingGroupCleanup = new Set();
+let embeddingListening = false;
+let embedding;
+try {
 const pythonSource = path.join(repo, 'packages/db-engine/src/python');
 const instrumentedPython = path.join(root, 'instrumented-python');
 const dimension = 256;
@@ -31,7 +36,7 @@ const apiKey = 'issue183-test-key';
 const model = 'issue183-test-model';
 const embeddingRequests = [];
 
-const embedding = createServer((request, response) => {
+embedding = createServer((request, response) => {
   if (request.url === '/health' || request.url === '/ready') {
     response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
       status: 'ok',
@@ -59,7 +64,10 @@ const embedding = createServer((request, response) => {
 
 await new Promise((resolve, reject) => {
   embedding.once('error', reject);
-  embedding.listen(0, '127.0.0.1', resolve);
+  embedding.listen(0, '127.0.0.1', () => {
+    embeddingListening = true;
+    resolve();
+  });
 });
 const address = embedding.address();
 if (!address || typeof address === 'string') throw new Error('Could not start local embedding fixture');
@@ -76,6 +84,21 @@ process.env.VIRTUAL_ENV = runtimeEnvironment.VIRTUAL_ENV;
 process.env.UV_PROJECT_ENVIRONMENT = runtimeEnvironment.UV_PROJECT_ENVIRONMENT;
 process.env.UV_NO_SYNC = runtimeEnvironment.UV_NO_SYNC;
 const cliPath = path.join(repo, 'packages/cli/dist/index.js');
+const processGroupRegistry = path.join(root, 'spawned-process-groups.log');
+const spawnTrackerPath = path.join(root, 'track-spawned-process-groups.mjs');
+await writeFile(spawnTrackerPath, `import childProcess from 'node:child_process';
+import { appendFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const originalSpawn = childProcess.spawn;
+childProcess.spawn = function(command, args, options = {}) {
+  const child = originalSpawn.call(this, command, args, options);
+  if (options.detached && child.pid && process.env.ISSUE183_CHILD_GROUP_REGISTRY) {
+    appendFileSync(process.env.ISSUE183_CHILD_GROUP_REGISTRY, String(child.pid) + '\\n');
+  }
+  return child;
+};
+syncBuiltinESMExports();
+`);
 
 function fixtureConfig(projectRoot) {
   return {
@@ -104,11 +127,82 @@ async function createProject(projectRoot, withSource = true) {
 }
 
 async function runCli(projectRoot, ...args) {
-  return execFile(process.execPath, [cliPath, ...args], {
+  return runCommand(process.execPath, [cliPath, ...args], {
     cwd: projectRoot,
-    env: runtimeEnvironment,
-    timeout: 60000,
-    maxBuffer: 4 * 1024 * 1024,
+    env: {
+      ...runtimeEnvironment,
+      ISSUE183_CHILD_GROUP_REGISTRY: processGroupRegistry,
+      NODE_OPTIONS: [
+        runtimeEnvironment.NODE_OPTIONS,
+        `--import=${pathToFileURL(spawnTrackerPath).href}`,
+      ].filter(Boolean).join(' '),
+    },
+    timeoutMs: 60000,
+  });
+}
+
+async function runCommand(command, args, { cwd, env, timeoutMs = 30000 } = {}) {
+  const registryOffset = env?.ISSUE183_CHILD_GROUP_REGISTRY
+    ? await stat(env.ISSUE183_CHILD_GROUP_REGISTRY).then(info => info.size).catch(error => {
+      if (error.code === 'ENOENT') return 0;
+      throw error;
+    })
+    : undefined;
+  const child = trackChild(children, spawn(command, args, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }));
+  let stdout = '';
+  let stderr = '';
+  let timedOut = false;
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    }, timeoutMs);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.once('error', error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      const cleanup = (async () => {
+        if (env?.ISSUE183_CHILD_GROUP_REGISTRY) {
+          const registry = await readFile(env.ISSUE183_CHILD_GROUP_REGISTRY, 'utf8').catch(error => {
+            if (error.code === 'ENOENT') return '';
+            throw error;
+          });
+          const newPids = registry.slice(registryOffset).split(/\s+/).filter(Boolean).map(Number);
+          for (const pid of newPids) {
+            trackedProcessGroups.add(pid);
+            await stopProcessGroup(pid);
+            trackedProcessGroups.delete(pid);
+          }
+        }
+        if (timedOut || code !== 0) {
+          const error = new Error(timedOut
+            ? `command timed out after ${timeoutMs}ms: ${command} ${args.join(' ')}`
+            : `command failed (${code}/${signal}): ${command} ${args.join(' ')}`);
+          error.stdout = stdout;
+          error.stderr = stderr;
+          reject(error);
+        } else {
+          resolve({ stdout, stderr });
+        }
+      })();
+      pendingGroupCleanup.add(cleanup);
+      cleanup.then(
+        () => pendingGroupCleanup.delete(cleanup),
+        () => pendingGroupCleanup.delete(cleanup),
+      );
+      cleanup.then(resolve, reject);
+    });
   });
 }
 
@@ -131,9 +225,9 @@ async function quiet(action) {
 
 function pauseHelper() {
   return `
-def _issue183_pause_after_sections():
-    if os.environ.get('ISSUE183_PAUSE_AFTER') == 'sections':
-        sys.stderr.write('ISSUE183_PAUSED_AFTER:sections\\\\n')
+def _issue183_pause_after(point):
+    if os.environ.get('ISSUE183_PAUSE_AFTER') == point:
+        sys.stderr.write('ISSUE183_PAUSED_AFTER:' + point + '\\\\n')
         sys.stderr.flush()
         while True:
             time.sleep(1)
@@ -144,14 +238,49 @@ async function instrumentWorker() {
   await cp(pythonSource, instrumentedPython, { recursive: true });
   const workerFile = path.join(instrumentedPython, 'worker.py');
   const original = await readFile(workerFile, 'utf8');
+  const embeddingFile = path.join(instrumentedPython, 'embedding.py');
+  const originalEmbedding = await readFile(embeddingFile, 'utf8');
   const helperAnchor = 'from pathlib import Path';
-  const tableAnchor = 'self.db.create_table(SECTIONS_TABLE, schema=get_sections_schema(self.vector_dimension))';
+  const anchors = [
+    'self.db.create_table(SECTIONS_TABLE, schema=get_sections_schema(self.vector_dimension))',
+    'self.db.create_table(INDEX_REQUESTS_TABLE, schema=get_index_requests_schema())',
+    'self.db.create_table(WRITER_HEARTBEAT_TABLE, schema=get_writer_heartbeat_schema())',
+    'index_requests_table.wait_for_index(["status_idx"], timeout=timedelta(seconds=60))',
+  ];
+  const identityAnchor = "worker._check_embedding_identity('openai-compatible', model_name, digest)";
   assert(original.includes(helperAnchor), 'worker import anchor changed');
-  assert(original.includes(tableAnchor), 'sections creation anchor changed');
-  const instrumented = original
-    .replace(helperAnchor, `${helperAnchor}${pauseHelper()}`)
-    .replace(tableAnchor, `${tableAnchor}\n                    _issue183_pause_after_sections()`);
+  for (const anchor of anchors) assert(original.includes(anchor), `worker anchor changed: ${anchor}`);
+  assert(originalEmbedding.includes(identityAnchor), 'embedding identity anchor changed');
+  let instrumented = original.replace(helperAnchor, `${helperAnchor}${pauseHelper()}`);
+  const points = [
+    ['self.db.create_table(SECTIONS_TABLE, schema=get_sections_schema(self.vector_dimension))', 'sections', '                    '],
+    ['self.db.create_table(INDEX_REQUESTS_TABLE, schema=get_index_requests_schema())', 'index_requests', '                    '],
+    ['self.db.create_table(WRITER_HEARTBEAT_TABLE, schema=get_writer_heartbeat_schema())', 'writer_heartbeat', '                    '],
+    ['index_requests_table.wait_for_index(["status_idx"], timeout=timedelta(seconds=60))', 'index_requests.status_index', '                        '],
+  ];
+  for (const [anchor, point, indentation] of points) {
+    instrumented = instrumented.replace(anchor, `${anchor}\n${indentation}_issue183_pause_after('${point}')`);
+  }
+  assert.notEqual(instrumented, original, 'worker instrumentation did not match');
   await writeFile(workerFile, instrumented);
+  const embeddingPauseHelper = `
+def _issue183_pause_after(point):
+    import os, sys, time
+    if os.environ.get('ISSUE183_PAUSE_AFTER') == point:
+        sys.stderr.write('ISSUE183_PAUSED_AFTER:' + point + '\\\\n')
+        sys.stderr.flush()
+        while True:
+            time.sleep(1)
+`;
+  const instrumentedEmbedding = originalEmbedding.replace(
+    identityAnchor,
+    `${identityAnchor}\n    _issue183_pause_after('embedding_identity')`,
+  ).replace(
+    'def initialize_openai_provider(worker):',
+    `${embeddingPauseHelper}\ndef initialize_openai_provider(worker):`,
+  );
+  assert.notEqual(instrumentedEmbedding, originalEmbedding, 'embedding provider instrumentation did not match');
+  await writeFile(embeddingFile, instrumentedEmbedding);
   return workerFile;
 }
 
@@ -173,7 +302,7 @@ function waitForMarker(child, marker, timeoutMs = 30000) {
   ]);
 }
 
-async function crashAfterSections(projectRoot, workerFile) {
+async function crashAtInitialization(projectRoot, workerFile, point) {
   const indexPath = path.join(projectRoot, '.search-docs/index');
   const env = {
     ...runtimeEnvironment,
@@ -181,16 +310,16 @@ async function crashAfterSections(projectRoot, workerFile) {
     SEARCH_DOCS_EMBEDDING_MODEL: model,
     SEARCH_DOCS_EMBEDDING_API_KEY: apiKey,
     SEARCH_DOCS_EMBEDDING_OPTIONS: JSON.stringify(provider),
-    ISSUE183_PAUSE_AFTER: 'sections',
+    ISSUE183_PAUSE_AFTER: point,
   };
-  const child = spawn(python, [
+  const child = trackChild(children, spawn(python, [
     workerFile,
     `--embedding-url=${provider.baseUrl}`,
     `--embedding-dimension=${dimension}`,
     `--db-path=${indexPath}`,
-  ], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  ], { env, stdio: ['pipe', 'pipe', 'pipe'] }));
   child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initModel', params: {} })}\n`);
-  await waitForMarker(child, 'ISSUE183_PAUSED_AFTER:sections');
+  await waitForMarker(child, `ISSUE183_PAUSED_AFTER:${point}`);
   const exited = once(child, 'exit');
   child.kill('SIGKILL');
   const [code, signal] = await exited;
@@ -208,9 +337,9 @@ const lease = await lock.acquireExclusive();
 await lease.markIncomplete();
 process.stdout.write('EXCLUSIVE_AND_INCOMPLETE\\\\n');
 setInterval(() => {}, 1000);`;
-  const child = spawn(process.execPath, ['--input-type=module', '-e', script, managementPath], {
+  const child = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', script, managementPath], {
     stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  }));
   let output = '';
   child.stdout.on('data', data => { output += data.toString(); });
   await Promise.race([
@@ -267,9 +396,9 @@ async function listTables(indexPath) {
     ' out[name]={"rows":table.count_rows(),"indices":[getattr(i,"columns",None) for i in table.list_indices()]}',
     'print(json.dumps(out,sort_keys=True))',
   ].join('\n');
-  const { stdout } = await execFile(python, ['-c', source, indexPath], {
+  const { stdout } = await runCommand(python, ['-c', source, indexPath], {
     env: runtimeEnvironment,
-    timeout: 30000,
+    timeoutMs: 30000,
   });
   return JSON.parse(stdout.trim());
 }
@@ -280,9 +409,51 @@ async function manuallyRemoveOnlyKnownStaleExclusive(managementPath) {
   await rmdir(path.join(managementPath, 'exclusive'));
 }
 
+async function assertCrashMatrix(workerFile) {
+  const scenarios = [
+    { point: 'embedding_identity', tables: ['embedding_identity'], strictPasses: false },
+    { point: 'sections', tables: ['embedding_identity', 'sections'], strictPasses: false },
+    { point: 'index_requests', tables: ['embedding_identity', 'index_requests', 'sections'], strictPasses: false },
+    {
+      point: 'writer_heartbeat',
+      tables: ['embedding_identity', 'index_requests', 'sections', 'writer_heartbeat'],
+      strictPasses: true,
+    },
+    {
+      point: 'index_requests.status_index',
+      tables: ['embedding_identity', 'index_requests', 'sections', 'writer_heartbeat'],
+      strictPasses: true,
+    },
+  ];
+  const results = [];
+  for (const scenario of scenarios) {
+    const projectRoot = path.join(root, `matrix-${scenario.point.replaceAll('.', '-')}`);
+    await createProject(projectRoot);
+    const indexPath = await crashAtInitialization(projectRoot, workerFile, scenario.point);
+    const tables = await listTables(indexPath);
+    assert.deepEqual(Object.keys(tables).sort(), scenario.tables);
+    const beforeDiagnostic = await hashTree(indexPath);
+    let diagnosticFailure = '';
+    try { await quiet(() => diagnoseStrictConfig(fixtureConfig(projectRoot))); }
+    catch (error) { diagnosticFailure = error.message; }
+    assert.equal(!diagnosticFailure, scenario.strictPasses,
+      `unexpected strict diagnostic result after ${scenario.point}: ${diagnosticFailure}`);
+    if (!scenario.strictPasses) assert.match(diagnosticFailure, /writer_heartbeat/);
+    assert.deepEqual(await hashTree(indexPath), beforeDiagnostic,
+      `read-only diagnosis changed the database after ${scenario.point}`);
+    results.push({
+      point: scenario.point,
+      tables: Object.keys(tables).sort(),
+      strictDiagnostic: scenario.strictPasses ? 'passed' : `failed: ${diagnosticFailure}`,
+      readOnlySnapshotUnchanged: true,
+    });
+  }
+  return results;
+}
+
 async function assertRecreateRecovery(projectRoot, workerFile) {
   await createProject(projectRoot);
-  const indexPath = await crashAfterSections(projectRoot, workerFile);
+  const indexPath = await crashAtInitialization(projectRoot, workerFile, 'sections');
   const tablesAtCrash = await listTables(indexPath);
   assert.deepEqual(Object.keys(tablesAtCrash).sort(), ['embedding_identity', 'sections']);
 
@@ -368,7 +539,7 @@ async function assertBackupRestore(projectRoot, backupRoot, workerFile) {
   const healthyBackupDocumentsHash = await hashTree(backupDocuments);
 
   await rm(indexPath, { recursive: true });
-  await crashAfterSections(projectRoot, workerFile);
+  await crashAtInitialization(projectRoot, workerFile, 'sections');
   const managementPath = await crashMaintenanceAfterIncomplete(projectRoot);
   await manuallyRemoveOnlyKnownStaleExclusive(managementPath);
   const partialHash = await hashTree(indexPath);
@@ -403,8 +574,8 @@ async function assertBackupRestore(projectRoot, backupRoot, workerFile) {
   };
 }
 
-try {
   const workerFile = await instrumentWorker();
+  const crashMatrix = await assertCrashMatrix(workerFile);
   const recreate = await assertRecreateRecovery(path.join(root, 'recreate-project'), workerFile);
   const backupRestore = await assertBackupRestore(
     path.join(root, 'backup-restore-project'),
@@ -416,14 +587,29 @@ try {
     scope: {
       database: 'real LanceDB in disposable temporary projects',
       embedding: 'loopback fake OpenAI-compatible endpoint; fixed nonzero vectors, no model inference',
-      crash: 'SIGKILL after sections table creation and after exclusive+incomplete markers are durable',
+      crash: 'SIGKILL after identity/table/index completion boundaries and after exclusive+incomplete markers are durable',
       host: `${process.platform}; single host and local temporary filesystem`,
     },
+    crashMatrix,
     recreate,
     backupRestore,
     fakeEmbeddingRequests: embeddingRequests.length,
   }, null, 2));
 } finally {
-  await new Promise(resolve => embedding.close(() => resolve()));
+  let cleanupFailure;
+  try { await stopTrackedChildren(children, root); }
+  catch (error) { cleanupFailure = error; }
+  await Promise.allSettled([...pendingGroupCleanup]);
+  for (const pid of [...trackedProcessGroups]) {
+    try {
+      await stopProcessGroup(pid);
+      trackedProcessGroups.delete(pid);
+    }
+    catch (error) { cleanupFailure ??= error; }
+  }
+  if (embeddingListening) await new Promise(resolve => embedding.close(() => resolve()));
+  if (cleanupFailure) {
+    throw new Error(`Harness cleanup failed; preserving temporary data at ${root}`, { cause: cleanupFailure });
+  }
   await rm(root, { recursive: true, force: true });
 }

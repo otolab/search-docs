@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { stopTrackedChildren, trackChild } from './harness-lifecycle.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const require = createRequire(path.join(repo, 'package.json'));
@@ -30,6 +31,8 @@ assert.notEqual(injected, source, 'maintenance-lock instrumentation did not matc
 assert(injected.includes("await pauseAt('identity')"), 'identity pause was not injected');
 
 const root = await mkdtemp(path.join(tmpdir(), 'issue183-lock-control-'));
+const children = new Set();
+try {
 const modulePath = path.join(root, 'maintenance-lock.mjs');
 await writeFile(modulePath, ts.transpileModule(injected, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
@@ -79,14 +82,13 @@ await lock.acquireShared();
 process.stdout.write('ACQUIRED\\n');
 setInterval(() => {}, 1000);`;
 
-try {
   for (const point of ['gate', 'registration', 'identity']) {
     const directory = path.join(root, `shared-${point}`);
     const identity = 'same-project-config';
-    const child = spawn(process.execPath, ['--input-type=module', '-e', crashScript, directory, identity], {
+    const child = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', crashScript, directory, identity], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ISSUE183_PAUSE: point },
-    });
+    }));
     await waitForLine(child, new RegExp(`^PAUSED:${point}$`));
     await killChild(child);
 
@@ -138,9 +140,9 @@ const lease = await lock.acquireExclusive();
 ${point === 'exclusive-and-incomplete' ? 'await lease.markIncomplete();' : ''}
 process.stdout.write('HELD\\n');
 setInterval(() => {}, 1000);`;
-    const child = spawn(process.execPath, ['--input-type=module', '-e', script, directory], {
+    const child = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', script, directory], {
       stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    }));
     await waitForLine(child, /^HELD$/);
     await killChild(child);
     const { MaintenanceLock } = await import(moduleUrl);
@@ -197,12 +199,12 @@ try {
 }`;
   for (let i = 0; i < 20; i++) {
     const directory = path.join(root, `race-${i}`);
-    const shared = spawn(process.execPath, ['--input-type=module', '-e', contender, directory, 'shared'], {
+    const shared = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', contender, directory, 'shared'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const exclusive = spawn(process.execPath, ['--input-type=module', '-e', contender, directory, 'exclusive'], {
+    }));
+    const exclusive = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', contender, directory, 'exclusive'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    }));
     await Promise.all([waitForLine(shared, /^READY$/), waitForLine(exclusive, /^READY$/)]);
     shared.stdin.write('go');
     exclusive.stdin.write('go');
@@ -224,5 +226,6 @@ try {
     results,
   }, null, 2));
 } finally {
+  await stopTrackedChildren(children, root);
   await rm(root, { recursive: true, force: true });
 }
