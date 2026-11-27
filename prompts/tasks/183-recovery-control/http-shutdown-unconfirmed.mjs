@@ -29,7 +29,7 @@ const apiKey = 'issue183-http-test-key';
 const { DEFAULT_CONFIG } = await import(
   pathToFileURL(path.join(repo, 'packages/types/dist/index.js')).href
 );
-const { MaintenanceLock } = await import(
+const { DBEngine, MaintenanceLock } = await import(
   pathToFileURL(path.join(repo, 'packages/db-engine/dist/index.js')).href
 );
 
@@ -42,6 +42,15 @@ let stopCli;
 let serverClosed;
 let stopCliClosed;
 let diagnosticPid;
+let shutdownResponse;
+let heartbeatBeforeShutdown;
+let heartbeatAfterShutdown;
+let watcherLogBeforeShutdown = '';
+let diagnosticProcessBeforeShutdown = '';
+let diagnosticProcessAfterShutdown = '';
+let diagnosticAliveImmediatelyAfterShutdown;
+let diagnosticProcessImmediatelyAfterShutdown = '';
+let diagnosticGroupExitAfterShutdownMs;
 let stderr = '';
 let stdout = '';
 let embeddingListening = false;
@@ -132,6 +141,17 @@ async function processGroupExists(pid) {
   }
 }
 
+function processSnapshot(pid) {
+  const result = spawnSync('ps', [
+    '-o', 'pid=,ppid=,pgid=,stat=,command=',
+    '-p', String(pid),
+  ], { encoding: 'utf8' });
+  if (result.error || (result.status !== 0 && result.status !== 1)) {
+    throw new Error(`Could not inspect fixture process ${pid}`, { cause: result.error });
+  }
+  return result.stdout.trim();
+}
+
 async function stopDiagnosticGroup(pid, timeoutMs = 5000) {
   if (!pid) return;
   try {
@@ -158,6 +178,19 @@ async function reservePort() {
   if (!address || typeof address === 'string') throw new Error('Could not reserve a test port');
   await new Promise(resolve => server.close(resolve));
   return address.port;
+}
+
+async function readWriterHeartbeat() {
+  const diagnostic = new DBEngine({
+    dbPath: path.join(projectRoot, '.search-docs/index'),
+    readOnly: true,
+  });
+  await diagnostic.connect({ skipInitModel: true });
+  try {
+    return await diagnostic.getWriterHeartbeat();
+  } finally {
+    await diagnostic.disconnect();
+  }
 }
 
 try {
@@ -283,6 +316,24 @@ try {
   assert(Number.isInteger(diagnosticPid) && diagnosticPid > 1,
     `missing diagnostic worker PID: ${diagnosticPid}`);
 
+  heartbeatBeforeShutdown = await readWriterHeartbeat();
+  watcherLogBeforeShutdown = await readFile(
+    path.join(projectRoot, '.search-docs/server.log'),
+    'utf8',
+  );
+  assert(heartbeatBeforeShutdown.exists, 'writer claim heartbeat was not present');
+  assert.equal(heartbeatBeforeShutdown.heartbeat.pid, child.pid,
+    'heartbeat PID did not identify the HTTP server process');
+  assert.equal(heartbeatBeforeShutdown.heartbeat.state, 'claiming',
+    'writer was not directly observed in claiming state');
+  diagnosticProcessBeforeShutdown = processSnapshot(diagnosticPid);
+  assert(diagnosticProcessBeforeShutdown.includes(String(diagnosticPid)),
+    'paused diagnostic worker PID was not present before shutdown');
+  assert.match(watcherLogBeforeShutdown, /Claim won, transitioning to watching/,
+    'server log did not confirm the writer claim readback');
+  assert(!watcherLogBeforeShutdown.includes('→ WATCHING'),
+    'server entered WATCHING before the diagnostic pause');
+
   const baseUrl = `http://127.0.0.1:${port}`;
   const health = await withTimeout((async () => {
     for (;;) {
@@ -298,7 +349,23 @@ try {
   const stopModule = pathToFileURL(
     path.join(repo, 'packages/cli/dist/commands/server/stop.js'),
   ).href;
-  const stopScript = `import { stopServer } from ${JSON.stringify(stopModule)};
+  const shutdownObservationPath = path.join(root, 'shutdown-response.json');
+  const stopScript = `import { writeFile } from 'node:fs/promises';
+import { stopServer } from ${JSON.stringify(stopModule)};
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+  const response = await originalFetch(...args);
+  if (String(args[0]).endsWith('/shutdown')) {
+    await writeFile(${JSON.stringify(shutdownObservationPath)}, JSON.stringify({
+      url: String(args[0]),
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type'),
+      body: await response.clone().text(),
+    }));
+  }
+  return response;
+};
 await stopServer({ cwd: process.argv[1] });
 console.log('ISSUE183_CLI_STOP_RETURNED_SUCCESS');`;
   stopCli = trackChild(children, spawn(process.execPath, [
@@ -327,12 +394,28 @@ console.log('ISSUE183_CLI_STOP_RETURNED_SUCCESS');`;
   );
   assert.equal(stopCode, 0, `CLI server stop failed (${stopCode}/${stopSignal}): ${stopStderr}`);
   assert.match(stopStdout, /✓ Server stopped successfully/);
+  shutdownResponse = JSON.parse(await readFile(shutdownObservationPath, 'utf8'));
+  assert.equal(shutdownResponse.status, 200);
+  assert.equal(shutdownResponse.contentType, 'application/json; charset=utf-8');
+  assert.deepEqual(JSON.parse(shutdownResponse.body), { status: 'shutting down' });
 
   const [serverCode, serverSignal] = await withTimeout(
     serverClosed,
     'HTTP server did not exit after shutdown request',
   );
+  diagnosticAliveImmediatelyAfterShutdown = await processGroupExists(diagnosticPid);
+  diagnosticProcessImmediatelyAfterShutdown = processSnapshot(diagnosticPid);
+  const diagnosticGroupProbeStartedAt = Date.now();
+  while (await processGroupExists(diagnosticPid)
+    && Date.now() - diagnosticGroupProbeStartedAt < 5000) {
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  diagnosticGroupExitAfterShutdownMs = await processGroupExists(diagnosticPid)
+    ? null
+    : Date.now() - diagnosticGroupProbeStartedAt;
+  heartbeatAfterShutdown = await readWriterHeartbeat();
   const diagnosticAliveAfterShutdown = await processGroupExists(diagnosticPid);
+  diagnosticProcessAfterShutdown = processSnapshot(diagnosticPid);
   const managementPath = path.join(
     projectRoot,
     '.search-docs/.search-docs-maintenance',
@@ -351,7 +434,12 @@ console.log('ISSUE183_CLI_STOP_RETURNED_SUCCESS');`;
 
   assert.equal(serverCode, 0, `HTTP server exit was not successful: ${serverCode}/${serverSignal}`);
   assert.equal(serverSignal, null);
-  assert(diagnosticAliveAfterShutdown, 'the paused diagnostic worker stopped unexpectedly');
+  assert(heartbeatAfterShutdown.exists, 'writer claim heartbeat disappeared after HTTP shutdown');
+  assert.equal(heartbeatAfterShutdown.heartbeat.writerId,
+    heartbeatBeforeShutdown.heartbeat.writerId);
+  assert.equal(heartbeatAfterShutdown.heartbeat.pid, child.pid);
+  assert.equal(heartbeatAfterShutdown.heartbeat.state, 'claiming');
+  assert(!watcherLogBeforeShutdown.includes('→ WATCHING'));
   assert(usersAfterShutdown.length > 0, 'shared registration was unexpectedly released');
   assert.match(exclusiveFailure, /使用中/);
   assert(pidFileRemovedByCli, 'CLI did not remove the PID file after health disappeared');
@@ -359,14 +447,24 @@ console.log('ISSUE183_CLI_STOP_RETURNED_SUCCESS');`;
   const result = {
     testEnvironment: 'real HTTP server, DBEngine, maintenance registration, CLI stop; disposable project and fake embedding endpoint',
     injectedCondition: 'writer-before-start strict diagnostic worker is paused; HTTP route itself is unchanged',
-    httpShutdownResponse: '200 { status: "shutting down" } (accepted by actual CLI stop)',
+    httpShutdownResponse: shutdownResponse,
     serverExit: [serverCode, serverSignal],
     cliReportedSuccess: stopStdout.includes('✓ Server stopped successfully'),
     cliRemovedPidFile: pidFileRemovedByCli,
-    diagnosticWorkerGroupAliveAfterServerExit: diagnosticAliveAfterShutdown,
+    diagnosticWorkerGroupAliveImmediatelyAfterServerExit: diagnosticAliveImmediatelyAfterShutdown,
+    diagnosticWorkerGroupExitAfterShutdownMs: diagnosticGroupExitAfterShutdownMs,
+    diagnosticWorkerGroupAliveAfterObservationDelay: diagnosticAliveAfterShutdown,
+    diagnosticWorkerProcessImmediatelyAfterShutdown: diagnosticProcessImmediatelyAfterShutdown || null,
+    diagnosticWorkerProcessBeforeShutdown: diagnosticProcessBeforeShutdown,
+    diagnosticWorkerProcessAfterShutdown: diagnosticProcessAfterShutdown || null,
     sharedRegistrationsRemaining: usersAfterShutdown.length,
     exclusiveMaintenanceAttempt: exclusiveFailure,
-    writerStarted: false,
+    writerClaimBeforeShutdown: heartbeatBeforeShutdown.heartbeat,
+    writerClaimAfterShutdown: heartbeatAfterShutdown.heartbeat,
+    writerClaimReadbackObservedInServerLog: watcherLogBeforeShutdown.includes(
+      'Claim won, transitioning to watching',
+    ),
+    watchingTransitionObservedBeforeShutdown: watcherLogBeforeShutdown.includes('→ WATCHING'),
     serverStdoutTail: stdout.slice(-1000),
     serverStderrTail: stderr.slice(-1200),
   };

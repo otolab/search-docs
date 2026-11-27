@@ -20,6 +20,7 @@ node prompts/tasks/183-recovery-control/lock-control.mjs
 node prompts/tasks/183-recovery-control/recreate-recovery.mjs
 node prompts/tasks/183-recovery-control/writer-stop-unconfirmed.mjs
 node prompts/tasks/183-recovery-control/http-shutdown-unconfirmed.mjs
+node prompts/tasks/183-recovery-control/source-dist-check.mjs
 packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/scalar-index-failure.py
 node prompts/tasks/183-recovery-control/cleanup-failure.mjs
 pnpm --dir packages/db-engine exec vitest run --config vitest.config.maintenance.ts src/typescript/__tests__/process-tree.test.ts
@@ -28,23 +29,26 @@ pnpm --dir packages/mcp-server exec ../../node_modules/.bin/vitest run --config 
 
 実行環境が loopback bind を制限する場合は、承認された sandbox 外の環境から同じコマンドを実行してください。試験は `os.tmpdir()` 以下に一時 DB / project を作り、終了時に削除します。製品ソースを編集しません。DB 初期化と maintenance lock の SIGKILL 試験では、テスト専用の複製コードに pause point を挿入します。
 
-`recreate-recovery.mjs` は `embedding_identity`、各必須 table、`index_requests.status` index の作成完了境界で停止できます。既存の5 MCP integration test も package cwd と maintenance 用 config を指定して単独実行できます。通常の config は実モデル用 global setup を起動するため、このテストには使いません。テストは `dist/server.js` を実行するので、同じ checkout の `pnpm build` 後に実施し、実行時の HEAD / dist の対応を結果と一緒に記録してください。script 自身は dist と source の一致を証明しません。
+`recreate-recovery.mjs` は `embedding_identity`、各必須 table、`index_requests.status` index の作成完了境界で停止できます。既存の5 MCP integration test も package cwd と maintenance 用 config を指定して単独実行できます。通常の config は実モデル用 global setup を起動するため、このテストには使いません。テストは `dist/server.js` を実行します。実行時の HEAD / dist の対応は `source-dist-check.mjs` で確認できます。
+
+`source-dist-check.mjs` は HEAD の tracked source を一時 checkout に展開し、現在の dependency directories を symlink で参照して TypeScript project build を行います。生成物は一時 checkout にだけ書き、現在の `packages/*/dist` と SHA-256 で比較します。package source または build 設定が未 commit の場合は停止します。成功時だけ自分が作った一時 checkout を削除し、build に失敗した場合は調査用に残した場所を表示します。
 
 全 harness は起動した直接 child を追跡し、cleanup で終了イベントを確認してから一時 root を消します。writer harness は別 process group の診断 child も PID を stderr 到着時に記録し、終了を確認します。`cleanup-failure.mjs` は child 起動後に意図的な assertion failure を起こし、この cleanup 順序を確かめます。終了を確認できないときは DB 等の一時資材を残し、cleanup failure と一時 root の場所を報告します。
 
 `scalar-index-failure.py` は実 LanceDB の disposable DB に各5,000行を入れ、現行 `SearchDocsWorker.init_tables()` の `index_requests.status` scalar-index 作成時だけ例外を注入します。必須 table が揃った状態で read-only strict 診断を行い、filter 結果と論理行 hash を比較した後、次回初期化で index が作られることを確認します。実行時間は1回の小規模な観測値であり、性能ベンチマークではありません。LanceDB native API 呼び出し中のクラッシュは注入しません。
 
-`http-shutdown-unconfirmed.mjs` は実 HTTP server / DBEngine / CLI stop を disposable project で起動し、writer 前の strict 診断 subprocess を停止位置で止めてから実際の CLI stop を実行します。一時コピーの `strict-diagnostic.js` にだけ pause hook を追加します。Loopback bind が制限される環境では、承認された sandbox 外で実行してください。macOS で `kill(-PGID, 0)` が `EPERM` を返した場合は `ps` から同じ process group の有無を確認し、消失を確認できなければ一時 DB を残します。この試験は signal 送信の EPERM 注入ではなく、HTTP shutdown が停止中の診断 worker をどう扱うかを観測します。
+`http-shutdown-unconfirmed.mjs` は実 HTTP server / DBEngine / CLI stop を disposable project で起動し、writer 前の strict 診断を一時コピーの `strict-diagnostic.js` 内で pause させます。実 CLI process 内の `fetch` response を記録するため、server route を改変せず実際の status / headers / body を観測します。加えて read-only `DBEngine` で heartbeat row を前後に読み、server log の claim readback と `WATCHING` 行を確認します。shutdown 直後の診断 process group と、その後の短い継続観測を分けて記録します。Loopback bind が制限される環境では、承認された sandbox 外で実行してください。macOS で `kill(-PGID, 0)` が `EPERM` を返した場合は `ps` から同じ process group の有無を確認し、消失を確認できなければ一時 DB を残します。この試験は signal 送信の EPERM 注入ではありません。
 
 ## 試験範囲と限界
 
 - `lock-control.mjs`: 現行 lock の一時複製を使い、gate / users / exclusive / incomplete 作成点で SIGKILL。別 process の shared/exclusive 競合を20回実施します。
 - `recreate-recovery.mjs`: 実 LanceDB を使い、identity、各必須 table、`index_requests.status` index の作成完了直後に SIGKILL する matrix を作ります。各 DB の table 構成、strict 診断の成否、診断前後の tree hash を確認した後、`sections` 作成後の DB で `index recreate` と backup restore の条件を試します。現在の source がない場合に index tree が変わらず拒否されること、source が戻れば全再構築できること、known-good backup の復元後も `incomplete` が shared registration を止めることを確認します。Embedding endpoint は loopback fake で、固定ベクトルを返し、実モデル推論を行いません。
+- `recreate-recovery.mjs` の recovery fixture は、使い捨て project に `source.md` と LanceDB を作り、`sections` table 作成完了後に SIGKILL します。別の fixture child が `exclusive` と `incomplete` を作ってから SIGKILL された後、`users` が空であることを確認し、この fixture の `exclusive` directory だけを手動削除します。再構築試験では source を一時削除して preflight 拒否・index hash 不変を確認し、source を戻して全再構築します。backup 試験では正常完了した同一 fixture の `index` と `documents` をコピーして backup にし、partial DB と incomplete を作り、source を削除して recreate を拒否させます。その後、fixture の partial `index` と `documents` を削除し、known-good backup の2 directory をコピーで戻します。strict diagnosis は通りますが `incomplete` は残り、shared registration は拒否されます。これは fixture 上で明示的に行った手順であり、製品の stale lock 回収や backup restore 完了手順ではありません。
 - `scalar-index-failure.py`: 必須 table がある DB で1つの index 作成例外を注入し、残る index 作成・strict 診断・filter 結果・論理行 hash・次回再試行を確認します。DB worker 内の直接呼び出しなので TypeScript service の writer 開始や本番データ規模は対象外です。
 - `writer-stop-unconfirmed.mjs`: 実 MCP service / DBEngine を起動し、writer 前診断の停止を一時 bundle 内の hook で失敗させます。診断 process group の signal-0 存在確認は通し、SIGTERM 送信だけが EPERM になるよう注入します。子が生存したまま親へ SIGTERM を送り、shutdown 後の registration・exclusive・writer 起動を観測します。EPERM は harness の fault injection であり、OS 権限や実運用の process ownership 条件を再現したものではありません。
-- `http-shutdown-unconfirmed.mjs`: HTTP server と CLI stop を実際に動かし、診断 worker が停止位置で生きている状態で `/shutdown` を処理させます。HTTP応答、親 exit、CLIの成功報告、PID file、diagnostic child group、shared registration、exclusive取得の結果を記録します。pause した診断 worker に対して `/shutdown` route が signal を送る状況は作らず、コードが shutdown 中にその worker を待つかどうかを試します。
+- `http-shutdown-unconfirmed.mjs`: HTTP server と CLI stop を実際に動かし、diagnostic Python worker が pause 中に `/shutdown` を処理させます。実 HTTP status/body、親 exit、CLI 成功報告、PID file、diagnostic process group の即時状態と短時間後の状態、heartbeat claim、`WATCHING` log、shared registration、exclusive 取得結果を記録します。pause worker へ `/shutdown` route が signal を送る状況は作りません。
 - `process-tree.test.ts`: disposable process group に signal-0 / SIGTERM 送信時の EPERM を別々に注入し、停止未確認の rejection と shared registration が exclusive を止めることを確認します。通常 config は embedding server 用 global setup を起動するため、`vitest.config.maintenance.ts` を指定します。
 
 writer service harness は `shutdownFailureReported` と `selectedShutdownDirectionObserved` も出力します。これは operator が選んだ「停止未確認なら失敗を返し、共有登録を保持する」方向と現行挙動を比較する観測値です。テスト結果から仕様の実装承認を推定しません。
 
-この harness が扱うのは単一 host のローカル一時 filesystem と、identity/table/index の各操作が完了した境界での SIGKILL / fault injection です。native LanceDB create/index 操作の最中、OS crash・電源断、network/shared filesystem、multi-host、Windows の保証には一般化できません。backup restore 後に残る maintenance marker をどう解除するかは未承認の製品仕様であり、この試験は marker を消しません。
+この harness が扱うのは単一 host のローカル一時 filesystem と、identity/table/index の各操作が完了した境界での SIGKILL / fault injection です。LanceDB 0.30.2 の Python `create_scalar_index()` は Rust 側の async `create_index()` を待つ wrapper で、公開 Python API に native operation の内部 pause / progress hook はありません。時間を見計らって kill する方式では、API 呼出し前・処理中・完了後のどこで停止したかを決定的に識別できず、安全な crash-matrix 試験とはみなしません。native API 内部の停止を再現するには disposable DB 上で使える専用 failpoint が必要ですが、現状その機構はなく、OS crash・電源断、network/shared filesystem、multi-host、Windows の保証にも一般化できません。backup restore 後に残る maintenance marker をどう解除するかは未承認の製品仕様であり、この試験は marker を消しません。
