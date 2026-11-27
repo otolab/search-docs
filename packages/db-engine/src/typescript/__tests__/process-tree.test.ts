@@ -55,4 +55,51 @@ describe.skipIf(!posix)('DB ワーカーのプロセスグループ停止', () =
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    { deniedSignal: 0, stage: '生存確認' },
+    { deniedSignal: 'SIGTERM' as const, stage: '停止要求' },
+  ])('$stage で EPERM なら共有登録を維持し、停止未確認として返す', async ({ deniedSignal }) => {
+    const root = await mkdtemp(path.join(tmpdir(), 'worker-stop-eperm-'));
+    const lock = new MaintenanceLock(path.join(root, 'control'));
+    const release = await lock.acquireShared();
+    const worker = spawn(process.execPath, [
+      '-e',
+      "process.on('SIGTERM', () => {}); process.stdout.write('ready\\n'); setInterval(() => {}, 1000);",
+    ], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const closed = once(worker, 'close');
+    const pid = worker.pid;
+    const originalKill = process.kill.bind(process);
+    let sigtermAttempted = false;
+
+    try {
+      await once(worker.stdout!, 'data');
+      if (pid === undefined) throw new Error('worker did not receive a process ID');
+      process.kill = ((targetPid: number, signal?: number | NodeJS.Signals) => {
+        if (targetPid === -pid && signal === deniedSignal) {
+          if (signal === 'SIGTERM') sigtermAttempted = true;
+          throw Object.assign(new Error(`injected EPERM at ${String(signal)}`), { code: 'EPERM' });
+        }
+        return originalKill(targetPid, signal);
+      }) as typeof process.kill;
+
+      await expect(stopProcessTree(worker, 100)).rejects.toMatchObject({ code: 'EPERM' });
+      expect(sigtermAttempted).toBe(deniedSignal === 'SIGTERM');
+      expect(() => originalKill(-pid, 0)).not.toThrow();
+      await expect(lock.acquireExclusive()).rejects.toThrow(/使用中/);
+    } finally {
+      process.kill = originalKill;
+      if (pid !== undefined) {
+        try { originalKill(-pid, 'SIGKILL'); } catch { /* 終了済み */ }
+      }
+      if (worker.exitCode === null && worker.signalCode === null) {
+        await Promise.race([
+          closed,
+          new Promise((_, reject) => setTimeout(() => reject(new Error(`worker ${pid} did not close during cleanup`)), 5000)),
+        ]);
+      }
+      await release();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

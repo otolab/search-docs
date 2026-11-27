@@ -300,6 +300,8 @@ process.kill = function(pid, signal) {
     processGroupAliveBeforeResume: diagnosticAliveBeforeResume,
     processGroupAliveAfterShutdown: diagnosticAliveAfterShutdown,
     MCPShutdownExit: exit ? [exit[0], exit[1]] : 'did not settle within timeout; observed state before cleanup',
+    shutdownFailureReported: Boolean(exit && typeof exit[0] === 'number' && exit[0] !== 0),
+    selectedShutdownDirectionObserved: Boolean(exit && typeof exit[0] === 'number' && exit[0] !== 0 && usersAfterShutdown.length > 0),
     usersRetainedDuringShutdown: usersDuringShutdown.length,
     usersRetainedAfterUnconfirmedStop: usersAfterShutdown.length,
     exclusiveBlocked: exclusiveFailure,
