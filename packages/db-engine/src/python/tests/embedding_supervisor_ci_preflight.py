@@ -267,9 +267,18 @@ def check_container_os():
     )
 
 
+def check_container_system_libraries():
+    system_libraries = Path('/usr/lib/x86_64-linux-gnu')
+    for library in ('libcrypto.so.3', 'libffi.so.8', 'libssl.so.3'):
+        require((system_libraries / library).exists(), (
+            f'runner system library is unavailable in the container: {library}'
+        ))
+
+
 def private_container():
     require(sys.platform.startswith('linux'), 'Linux is required')
     check_container_os()
+    check_container_system_libraries()
     check_project_environment()
     subprocess.run(
         [sys.executable, str(Path(__file__).resolve()), 'pid-child'],

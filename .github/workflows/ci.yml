@@ -64,6 +64,11 @@ jobs:
           uv_directory="$(dirname "$uv_real")"
           node_real="$(readlink -f "$(command -v node)")"
           node_root="$(dirname "$(dirname "$node_real")")"
+          host_libffi="$(readlink -f /usr/lib/x86_64-linux-gnu/libffi.so.8)"
+          if [[ ! -f "$host_libffi" ]]; then
+            echo "The runner's libffi.so.8 could not be resolved." >&2
+            exit 1
+          fi
           host_pid_namespace_inode="$(stat -Lc '%i' /proc/self/ns/pid)"
 
           docker run --rm \
@@ -80,6 +85,7 @@ jobs:
             --mount "type=bind,src=$pythonLocation,dst=$pythonLocation,readonly" \
             --mount "type=bind,src=$uv_directory,dst=/ci-toolchain/uv,readonly" \
             --mount "type=bind,src=$node_root,dst=/ci-toolchain/node,readonly" \
+            --mount "type=bind,src=$host_libffi,dst=/usr/lib/x86_64-linux-gnu/libffi.so.8,readonly" \
             -e "PATH=/ci-toolchain/uv:/ci-toolchain/node/bin:$pythonLocation/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             -e "LD_LIBRARY_PATH=$pythonLocation/lib" \
             -e "HOME=/tmp/issue168-home" \
