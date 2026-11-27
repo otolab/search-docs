@@ -137,8 +137,24 @@ jobs:
               raise RuntimeError(f'unknown probe mode: {mode}')
           PY
 
+          cat > "$RUNNER_TEMP/issue168_drop_to_runner.py" <<'PY'
+          import os
+          import sys
+          uid = int(os.environ['ISSUE168_EXPECTED_UID'])
+          gid = int(os.environ['ISSUE168_EXPECTED_GID'])
+          if os.geteuid() != 0:
+              raise RuntimeError('isolated namespace setup did not start with root privilege')
+          os.setgroups([])
+          os.setgid(gid)
+          os.setuid(uid)
+          if os.getuid() != uid or os.geteuid() != uid:
+              raise RuntimeError('could not drop the isolated probe to the runner UID')
+          os.execvp(sys.argv[1], sys.argv[1:])
+          PY
+
           echo "Runner UID/GID: $(id -u):$(id -g)"
           export ISSUE168_EXPECTED_UID="$(id -u)"
+          export ISSUE168_EXPECTED_GID="$(id -g)"
           python3 "$RUNNER_TEMP/issue168_pidns_probe.py" host
 
           python3 - <<'PY'
@@ -155,9 +171,17 @@ jobs:
           PY
 
           echo "Testing a child PID namespace with the inherited parent procfs mount."
-          unshare --user --map-current-user --pid --fork -- \
+          sudo -n env \
+            "ISSUE168_EXPECTED_UID=$ISSUE168_EXPECTED_UID" \
+            "ISSUE168_EXPECTED_GID=$ISSUE168_EXPECTED_GID" \
+            unshare --pid --fork -- \
+            python3 "$RUNNER_TEMP/issue168_drop_to_runner.py" \
             python3 "$RUNNER_TEMP/issue168_pidns_probe.py" inherited-proc
 
           echo "Testing a private PID namespace with its own procfs mount."
-          unshare --user --map-current-user --mount --pid --fork --mount-proc -- \
+          sudo -n env \
+            "ISSUE168_EXPECTED_UID=$ISSUE168_EXPECTED_UID" \
+            "ISSUE168_EXPECTED_GID=$ISSUE168_EXPECTED_GID" \
+            unshare --pid --fork --mount-proc --propagation private -- \
+            python3 "$RUNNER_TEMP/issue168_drop_to_runner.py" \
             python3 "$RUNNER_TEMP/issue168_pidns_probe.py" private-proc
