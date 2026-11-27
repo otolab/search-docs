@@ -7,7 +7,7 @@ import os
 import select
 import signal
 import sys
-from typing import Callable
+from typing import Callable, Optional
 
 
 class TargetUnavailable(RuntimeError):
