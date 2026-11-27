@@ -88,7 +88,11 @@ describe('index deletion with LanceDB', () => {
       releaseAgain.resolve();
       await Promise.all([indexingAgain, stopping]);
       old = undefined;
-      expect((await db2.findIndexRequests({ status: 'processing' })).some(r => r.id === pending[0].id)).toBe(true);
+      // LanceDB may expose another process's update up to 5s later.
+      await expect.poll(
+        async () => (await db2.findIndexRequests({ status: 'processing' })).some(r => r.id === pending[0].id),
+        { timeout: 10_000, interval: 100 },
+      ).toBe(true);
       expect((await db2.getWriterHeartbeat()).exists).toBe(false);
       const config2 = { ...config, worker: { ...config.worker, enabled: false } };
       next = new WatcherProcess(config2, storage, db2);
@@ -100,7 +104,10 @@ describe('index deletion with LanceDB', () => {
       ni.startupSyncWorker = { startSync: () => {}, waitForSync: async () => {} };
       await db2.claimWriter({ writerId: ni.writerId, host: 'test', pid: process.pid });
       await ni.transitionToWatching();
-      expect((await db2.findIndexRequests({ status: 'pending' })).some(r => r.id === pending[0].id)).toBe(true);
+      await expect.poll(
+        async () => (await db2.findIndexRequests({ status: 'pending' })).some(r => r.id === pending[0].id),
+        { timeout: 10_000, interval: 100 },
+      ).toBe(true);
       const worker = new IndexWorker({ dbEngine: db2, storage, splitter: ni.splitter });
       await worker.processNextRequests();
       expect((await db2.findIndexRequests({ status: 'completed' })).some(r => r.id === pending[0].id)).toBe(true);
@@ -168,8 +175,14 @@ it('hands over between independent Node writers using the same LanceDB', async (
     await invoke(children[0], 'stop');
     await invoke(children[0], 'exit');
     await invoke(children[1], 'claim');
-    const recovered = await invoke(children[1], 'inspect');
-    expect(recovered.requests.find((r: { id: string }) => r.id === requestId).status).toBe('pending');
+    // The new writer's cached snapshot follows cross-process writes at the configured interval.
+    await expect.poll(
+      async () => {
+        const recovered = await invoke(children[1], 'inspect');
+        return recovered.requests.find((r: { id: string }) => r.id === requestId).status;
+      },
+      { timeout: 10_000, interval: 100 },
+    ).toBe('pending');
     await invoke(children[1], 'run');
     const result = await invoke(children[1], 'inspect');
     expect(result.requests.find((r: { id: string }) => r.id === requestId).status).toBe('completed');
