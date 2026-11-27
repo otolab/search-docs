@@ -42,8 +42,24 @@ listener that currently owns the requested port.
   only entry point that installs them.
 - `packages/cli/scripts/test-embedding-supervisor-prototype-cli.py` exercises
   only the experimental CLI against the supervisor and a prepared Python
-  runtime. CI runs it with `uv run --offline --no-sync` after the existing
-  dependency setup; the test itself does not fetch dependencies.
+  runtime. In the private-namespace container, CI runs both this driver and the
+  suite with the already-synchronized
+  `packages/db-engine/.venv/bin/python` mounted read-only. It invokes that
+  interpreter directly; `uv run` is not used inside the container and no
+  dependencies are fetched there. The separate host-negative preflight uses
+  `uv run --project packages/db-engine --offline --no-sync` to call this
+  prototype's procfs verifier.
+
+The container commands, from the repository root, are:
+
+```sh
+packages/db-engine/.venv/bin/python -m unittest discover \
+  -s packages/db-engine/src/python/tests \
+  -t packages/db-engine/src/python/tests \
+  -p test_embedding_supervisor_prototype_stdlib.py -v
+packages/db-engine/.venv/bin/python \
+  packages/cli/scripts/test-embedding-supervisor-prototype-cli.py
+```
 
 The package boundary is checked in CI: db-engine excludes `experiments/` and
 `tests/`, including `embedding_linux_pidfd.py`, while the CLI package ships

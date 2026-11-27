@@ -111,7 +111,7 @@ def check_actual_host_procfs():
         )
         print(
             'Host procfs access to /proc/1/ns/pid is denied; '
-            'the production check rejected it safely.'
+            'the prototype verifier rejected it safely.'
         )
     else:
         print(
