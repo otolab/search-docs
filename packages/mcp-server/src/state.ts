@@ -115,7 +115,6 @@ export async function createService(
   let storageStarted = false;
   let service: SearchDocsServer | undefined;
   let watcherProcess: WatcherProcess | undefined;
-  let admission: (() => Promise<void>) | undefined;
   let startupEngine: DBEngine | undefined;
   let checkingSafety = true;
   let diagnosticStopUnconfirmed = false;
@@ -130,7 +129,6 @@ export async function createService(
     dimension: config.indexing.vectorDimension,
   });
   try {
-    admission = await maintenanceLock.acquireAdmission();
     await diagnoseStrictConfig(config);
     await mkdir(path.resolve(projectRoot, config.storage.documentsPath), { recursive: true });
     checkingSafety = false;
@@ -156,18 +154,14 @@ export async function createService(
     });
     startupEngine = dbEngine;
     await dbEngine.connect();
-    await admission();
-    admission = undefined;
 
     // 4. SearchDocsServer初期化
     service = new SearchDocsServer(config, storage, dbEngine, version);
 
     // 5. WatcherProcess初期化・接続
     watcherProcess = new WatcherProcess(config, storage, dbEngine, async () => {
-      const releaseAdmission = await maintenanceLock.acquireAdmission();
       try { await diagnoseStrictConfig(config); }
       catch (error) { if (error instanceof UnconfirmedProcessStopError) diagnosticStopUnconfirmed = true; throw error; }
-      finally { if (!diagnosticStopUnconfirmed) await releaseAdmission(); }
     }, error => {
       console.error('安全性を確認できないためサービスを停止します:', error);
       void stopService({
@@ -194,7 +188,6 @@ export async function createService(
     if (!storageStarted && startupEngine) {
       try { await startupEngine.disconnect(); } catch { stopped = false; }
     }
-    if (stopped) await admission?.();
     if (storageStarted) {
       try {
         if (watcherProcess) await watcherProcess.stop();

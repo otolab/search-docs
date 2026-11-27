@@ -5,7 +5,6 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { FileStorage } from '@search-docs/storage';
-import { strictMaintenanceLock } from '@search-docs/db-engine';
 import { DEFAULT_CONFIG } from '@search-docs/types';
 
 interface Reply {
@@ -59,7 +58,7 @@ function service(config: unknown): {
 }
 
 describe.skipIf(process.platform === 'win32')('複数プロセスの strict サービス', () => {
-  it('初期診断と repair を調停し、writer 停止後に別プロセスが昇格する', async () => {
+  it('並行起動と repair を受け入れ、writer 停止後に別プロセスが昇格する', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'strict-multiprocess-'));
     await mkdir(path.join(root, 'docs'));
     await writeFile(path.join(root, 'docs/first.md'), '# first\n');
@@ -91,30 +90,15 @@ describe.skipIf(process.platform === 'win32')('複数プロセスの strict サ�
     };
     const previousEmbeddingUrl = process.env.EMBEDDING_URL;
     process.env.EMBEDDING_URL = url;
-    const lock = await strictMaintenanceLock({ projectRoot: root, indexPath: config.storage.indexPath, documentsPath: config.storage.documentsPath, files: config.files });
     const first = service(config);
     let second: ReturnType<typeof service> | undefined;
     try {
       await first.ready;
       await vi.waitFor(async () => expect((await first.request('status') as { writerState: string }).writerState).toBe('watching'), { timeout: 30000, interval: 250 });
-      const admission = await lock.acquireAdmission();
-      try {
-        second = service(config);
-        let started = false;
-        void second.ready.then(() => { started = true; }, () => {});
-        await new Promise(resolve => setTimeout(resolve, 500));
-        expect(started).toBe(false);
-      } finally { await admission(); }
+      second = service(config);
       await second!.ready;
       await vi.waitFor(async () => expect((await second!.request('status') as { writerState: string }).writerState).toBe('sleeping'), { timeout: 15000, interval: 250 });
-      const repairAdmission = await lock.acquireAdmission();
       const repair = second!.request('repair');
-      try {
-        let finished = false;
-        void repair.then(() => { finished = true; }, () => {});
-        await new Promise(resolve => setTimeout(resolve, 500));
-        expect(finished).toBe(false);
-      } finally { await repairAdmission(); }
       await expect(repair).resolves.toBeDefined();
       await first.request('stop');
       await vi.waitFor(async () => expect((await second!.request('status') as { writerState: string }).writerState).toBe('watching'), { timeout: 75000, interval: 250 });

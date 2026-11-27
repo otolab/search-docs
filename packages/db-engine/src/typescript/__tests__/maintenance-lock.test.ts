@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { MaintenanceLock } from '../maintenance-lock.js';
@@ -63,6 +63,15 @@ describe('MaintenanceLock', () => {
     await mkdir(path.join(directory, 'gate'), { recursive: true });
     await expect(lock.acquireExclusive()).rejects.toThrow(/残存ロック/);
     await expect(lock.acquireShared()).rejects.toThrow(/残存ロック/);
+  });
+
+  it('旧版が残した admission ディレクトリは通常利用を妨げない', async () => {
+    const { directory, lock } = await fixture();
+    await mkdir(directory, { recursive: true });
+    await mkdir(path.join(directory, 'admission'));
+    const release = await lock.acquireShared();
+    await release();
+    await expect(readdir(directory)).resolves.toContain('admission');
   });
 
   it('残った利用登録を自動解除しない', async () => {

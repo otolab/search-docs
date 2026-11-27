@@ -8,8 +8,29 @@ import { assertDocumentKey, assertRelativePattern, assertSourcePath } from './st
 
 export class StrictSafetyError extends Error {}
 
-/** 呼び出し元は共有登録と admission を保持する。DB と文書を変更しない。 */
+const REQUIRED_TABLES = ['sections', 'index_requests', 'writer_heartbeat'] as const;
+const MAX_MISSING_TABLE_ATTEMPTS = 5;
+const MISSING_TABLE_RETRY_DELAY_MS = 100;
+
+/** 呼び出し元は共有登録を保持する。DB と文書を変更しない。 */
 export async function diagnoseStrictConfig(config: SearchDocsConfig, options: { skipTable?: 'sections' | 'index_requests' | 'writer_heartbeat' } = {}): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await diagnoseStrictConfigOnce(config, options);
+      return;
+    } catch (error) {
+      if (!isMissingRequiredTable(error) || attempt >= MAX_MISSING_TABLE_ATTEMPTS) throw error;
+      await new Promise(resolve => setTimeout(resolve, MISSING_TABLE_RETRY_DELAY_MS));
+    }
+  }
+}
+
+function isMissingRequiredTable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return REQUIRED_TABLES.some(table => error.message === `Table '${table}' was not found`);
+}
+
+async function diagnoseStrictConfigOnce(config: SearchDocsConfig, options: { skipTable?: 'sections' | 'index_requests' | 'writer_heartbeat' }): Promise<void> {
   const root = config.project.root;
   for (const pattern of [...config.files.sources, ...config.files.exclude]) assertRelativePattern(pattern);
   const storagePath = path.resolve(root, config.storage.documentsPath);

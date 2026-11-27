@@ -9,38 +9,12 @@ export class MaintenanceLock {
   private readonly users: string;
   private readonly exclusive: string;
   private readonly incomplete: string;
-  private readonly admission: string;
 
   constructor(private readonly directory: string, private readonly identity?: string) {
     this.gate = path.join(directory, 'gate');
     this.users = path.join(directory, 'users');
     this.exclusive = path.join(directory, 'exclusive');
     this.incomplete = path.join(directory, 'incomplete');
-    this.admission = path.join(directory, 'admission');
-  }
-
-  /** 共有登録の保持中に、診断・初期化・repair を直列化する。 */
-  async acquireAdmission(options: { timeoutMs?: number } = {}): Promise<() => Promise<void>> {
-    await this.initialize();
-    const deadline = Date.now() + (options.timeoutMs ?? 30000);
-    while (true) {
-      try {
-        await mkdir(this.admission);
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        if (Date.now() >= deadline) {
-          throw new Error('診断または修復の待機がタイムアウトしました。残存ロックの場合は全利用者の停止を確認してください');
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-    }
-    let released = false;
-    return async () => {
-      if (released) return;
-      await rmdir(this.admission);
-      released = true;
-    };
   }
 
   private async initialize(): Promise<void> {

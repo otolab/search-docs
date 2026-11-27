@@ -33,7 +33,6 @@ export async function main(): Promise<void> {
   let startupComplete = false;
   let releaseStorageRegistration: (() => Promise<void>) | null = null;
   let diagnosticStopUnconfirmed = false;
-  let releaseAdmission: (() => Promise<void>) | undefined;
   let startupEngine: DBEngine | undefined;
 
   const ensureStartupNotInterrupted = () => {
@@ -63,7 +62,6 @@ export async function main(): Promise<void> {
       else if (startupEngine) await attempt(() => startupEngine!.disconnect());
       if (embeddingServer) await attempt(() => embeddingServer!.stop());
 
-      if (errors.length === 0 && !diagnosticStopUnconfirmed && releaseAdmission) await attempt(() => releaseAdmission!());
       if (errors.length === 0 && !diagnosticStopUnconfirmed && releaseStorageRegistration) {
         await attempt(() => releaseStorageRegistration!());
       }
@@ -103,7 +101,6 @@ export async function main(): Promise<void> {
       files: config.files,
     });
     releaseStorageRegistration = await maintenanceLock.acquireShared();
-    releaseAdmission = await maintenanceLock.acquireAdmission();
     await diagnoseStrictConfig(config);
     await mkdir(path.resolve(projectRoot, config.storage.documentsPath), { recursive: true });
     ensureStartupNotInterrupted();
@@ -231,8 +228,6 @@ export async function main(): Promise<void> {
     });
     startupEngine = dbEngine;
     await dbEngine.connect();
-    await releaseAdmission!();
-    releaseAdmission = undefined;
 
     // SearchDocsサーバ初期化
     const searchDocsServer = new SearchDocsServer(config, storage, dbEngine, packageJson.version);
@@ -250,10 +245,8 @@ export async function main(): Promise<void> {
 
     // WatcherProcess 生成・接続
     const localWatcherProcess = new WatcherProcess(config, storage, dbEngine, async () => {
-      const release = await maintenanceLock.acquireAdmission();
       try { await diagnoseStrictConfig(config); }
       catch (error) { if (error instanceof UnconfirmedProcessStopError) diagnosticStopUnconfirmed = true; throw error; }
-      finally { if (!diagnosticStopUnconfirmed) await release(); }
     }, error => {
       console.error('安全性を確認できないためサービスを停止します:', error);
       shutdownRequested = true;
