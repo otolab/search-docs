@@ -86,6 +86,9 @@ jobs:
       - name: Heartbeat timezone tests
         run: uv run --project packages/db-engine python -m pytest packages/db-engine/src/python/__tests__/test_heartbeat_timezone.py packages/db-engine/src/python/__tests__/test_duplicate_diagnostics.py -q
 
+      - name: LanceDB read consistency tests
+        run: uv run --project packages/db-engine python -m pytest packages/db-engine/src/python/__tests__/test_lancedb_utils.py packages/db-engine/src/python/__tests__/test_lancedb_stale_snapshot.py -q
+
       - name: Heartbeat integration test
         run: pnpm --filter @search-docs/server test:heartbeat-integration
 

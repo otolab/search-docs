@@ -1,15 +1,15 @@
 """Read-only, conservative detection of repeated section trees."""
 from collections import defaultdict
 
+from lancedb_utils import connect_lancedb, read_table_with_retry
+
 MAX_ROWS = 50000
 MAX_BYTES = 64 * 1024 * 1024
 MAX_RESULTS = 100
 COLUMNS = ["id", "document_path", "document_hash", "parent_id", "heading", "depth", "content", "order", "start_line", "end_line", "section_number"]
 
 
-def diagnose(db, max_rows=MAX_ROWS, max_bytes=MAX_BYTES):
-    # A separate handle avoids changing the version used by the worker's other calls.
-    table = db.open_table("sections")
+def _diagnose_table(table, max_rows=MAX_ROWS, max_bytes=MAX_BYTES):
     version = table.version
     table.checkout(version)
     groups = defaultdict(list)
@@ -80,11 +80,16 @@ def diagnose(db, max_rows=MAX_ROWS, max_bytes=MAX_BYTES):
             "omitted": max(0, len(candidates) - MAX_RESULTS)}
 
 
+def diagnose(db, max_rows=MAX_ROWS, max_bytes=MAX_BYTES):
+    return read_table_with_retry(
+        db, "sections", lambda table: _diagnose_table(table, max_rows, max_bytes)
+    )
+
+
 if __name__ == '__main__':
     import json
     import sys
-    import lancedb
 
     if len(sys.argv) != 2:
         raise SystemExit('usage: duplicate_diagnostics.py DB_PATH')
-    print(json.dumps(diagnose(lancedb.connect(sys.argv[1])), ensure_ascii=False))
+    print(json.dumps(diagnose(connect_lancedb(sys.argv[1])), ensure_ascii=False))
