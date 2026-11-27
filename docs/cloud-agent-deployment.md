@@ -56,7 +56,7 @@ Cloud Agent で「ワークツリー外にドキュメントと索引を置く�
 | `start` | Agent run 開始時に `npx -y @search-docs/cli@… server start`（embedding は server が子プロセス起動） |
 | `egressAllowlist` | npm / uv / **Hugging Face Hub + LFS + CDN (`*.hf.co` 系)** |
 
-外部 embedding を使う場合は [外部 embedding provider](user-guide.md#外部-embedding-provider) を設定し、Cloud Secrets で API キーを渡してください。Build 時に `EMBEDDING_PROVIDER=openai-compatible` または `ollama-compat` を設定すると Ruri の prefetch を省略できます。外部 API のホストを egress allowlist に追加してください。
+外部 embedding を使う場合は [外部 embedding provider](user-guide.md#外部-embedding-provider) を設定し、Cloud Secrets で API キーを渡してください。索引対象 section の見出し・本文と検索語は設定した embedding 接続先へ送られるため、対象文書と provider の取り扱い条件を確認してください。Build 時に `EMBEDDING_PROVIDER=openai-compatible` または `ollama-compat` を設定すると Ruri の prefetch を省略できます。外部 API のホストを egress allowlist に追加してください。
 
 CLI バージョンは `SEARCH_DOCS_CLI`（例: `@search-docs/cli@1.3.1`）で揃える。
 
