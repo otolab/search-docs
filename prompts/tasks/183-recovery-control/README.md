@@ -25,6 +25,7 @@ packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/scalar-in
 node prompts/tasks/183-recovery-control/cleanup-failure.mjs
 pnpm --dir packages/db-engine exec vitest run --config vitest.config.maintenance.ts src/typescript/__tests__/process-tree.test.ts
 pnpm --dir packages/mcp-server exec ../../node_modules/.bin/vitest run --config vitest.config.maintenance.ts src/maintenance/__tests__/parallel-mcp-startup.test.ts
+pnpm --dir packages/server exec vitest run --config vitest.config.heartbeat.ts src/__tests__/writer-heartbeat-integration.test.ts -t 'keeps a fresh writer and automatically takes over after expiry across timezones'
 ```
 
 実行環境が loopback bind を制限する場合は、承認された sandbox 外の環境から同じコマンドを実行してください。試験は `os.tmpdir()` 以下に一時 DB / project を作り、終了時に削除します。製品ソースを編集しません。DB 初期化と maintenance lock の SIGKILL 試験では、テスト専用の複製コードに pause point を挿入します。
@@ -48,7 +49,11 @@ pnpm --dir packages/mcp-server exec ../../node_modules/.bin/vitest run --config 
 - `writer-stop-unconfirmed.mjs`: 実 MCP service / DBEngine を起動し、writer 前診断の停止を一時 bundle 内の hook で失敗させます。診断 process group の signal-0 存在確認は通し、SIGTERM 送信だけが EPERM になるよう注入します。子が生存したまま親へ SIGTERM を送り、shutdown 後の registration・exclusive・writer 起動を観測します。EPERM は harness の fault injection であり、OS 権限や実運用の process ownership 条件を再現したものではありません。
 - `http-shutdown-unconfirmed.mjs`: HTTP server と CLI stop を実際に動かし、diagnostic Python worker が pause 中に `/shutdown` を処理させます。実 HTTP status/body、親 exit、CLI 成功報告、PID file、diagnostic process group の即時状態と短時間後の状態、heartbeat claim、`WATCHING` log、shared registration、exclusive 取得結果を記録します。pause worker へ `/shutdown` route が signal を送る状況は作りません。
 - `process-tree.test.ts`: disposable process group に signal-0 / SIGTERM 送信時の EPERM を別々に注入し、停止未確認の rejection と shared registration が exclusive を止めることを確認します。通常 config は embedding server 用 global setup を起動するため、`vitest.config.maintenance.ts` を指定します。
+- `parallel-mcp-startup.test.ts`: 同一 project の5 MCP process を同時起動し、shared 利用中の exclusive が拒否されること、別の起動途中 process を SIGKILL した後も既存利用者を残したまま同一 identity で再接続できることを確認します。SIGKILL 時点は external fake embedding endpoint の health probe 中で、local embedding child / writer の停止未確認を試していません。`worker.enabled` と `watcher.enabled` は無効です。
+- `writer-heartbeat-integration.test.ts` の上記単独 case: disposable LanceDB と fake embedding endpoint で別 process の DBEngine worker が接続中のまま heartbeat lease を期限切れにし、新 Watcher が claim / `WATCHING` に進む既存挙動を確認します。旧 process は継続 heartbeat / indexing を行わず、二重の active writer を試すものではありません。sandbox の loopback 制限時は同じ許可済み sandbox 外の実行環境が必要です。
 
 writer service harness は `shutdownFailureReported` と `selectedShutdownDirectionObserved` も出力します。これは operator が選んだ「停止未確認なら失敗を報告し、親を終了しても共有登録は保持する」方向と現行挙動を比較する観測値です。inq-10 はこの no-auto 方針をサービスが起動した local embedding child にも適用します。既存 harness は embedding child の停止失敗や親終了後の再利用をまだ試していません。テスト結果から仕様の実装承認を推定しません。
+
+inq-11 の確認では、同一 identity の stale registration を残す lock-control fixture、5 MCP 並列・再接続試験、期限切れ heartbeat takeover 試験を組み合わせます。これらは shared admission / maintenance exclusion / lease takeover の現行境界を示しますが、停止未確認 child を残した実サービス再起動や、同時 active writer の安全性をまとめて証明するものではありません。strict diagnosis は maintenance registration と child owner を調べません。
 
 この harness が扱うのは単一 host のローカル一時 filesystem と、identity/table/index の各操作が完了した境界での SIGKILL / fault injection です。LanceDB 0.30.2 の Python `create_scalar_index()` は Rust 側の async `create_index()` を待つ wrapper で、公開 Python API に native operation の内部 pause / progress hook はありません。時間を見計らって kill する方式では、API 呼出し前・処理中・完了後のどこで停止したかを決定的に識別できず、安全な crash-matrix 試験とはみなしません。native API 内部の停止を再現するには disposable DB 上で使える専用 failpoint が必要ですが、現状その機構はなく、OS crash・電源断、network/shared filesystem、multi-host、Windows の保証にも一般化できません。backup restore 後に残る maintenance marker をどう解除するかは未承認の製品仕様であり、この試験は marker を消しません。
