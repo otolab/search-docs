@@ -18,6 +18,7 @@ Issue #183 の現行挙動を、専用の一時ディレクトリと実プロセ
 ```sh
 node prompts/tasks/183-recovery-control/lock-control.mjs
 node prompts/tasks/183-recovery-control/bootstrap-recheck-control.mjs
+node prompts/tasks/183-recovery-control/shared-holder-liveness.mjs
 node prompts/tasks/183-recovery-control/manual-registration-removal.mjs
 node prompts/tasks/183-recovery-control/recreate-recovery.mjs
 node prompts/tasks/183-recovery-control/writer-stop-unconfirmed.mjs
@@ -45,6 +46,8 @@ pnpm --dir packages/server exec vitest run --config vitest.config.heartbeat.ts s
 全 harness は起動した直接 child を追跡し、cleanup で終了イベントを確認してから一時 root を消します。writer harness は別 process group の診断 child も PID を stderr 到着時に記録し、終了を確認します。`cleanup-failure.mjs` は child 起動後に意図的な assertion failure を起こし、この cleanup 順序を確かめます。終了を確認できないときは DB 等の一時資材を残し、cleanup failure と一時 root の場所を報告します。
 
 `bootstrap-recheck-control.mjs` は二つの独立した local process が空の disposable DB を read-only の directory observation で同時に確認した後、同じ既存 `MaintenanceLock` API で初期 exclusive を競います。勝者だけが fixture table を作り、待機側は exclusive を取得してから table directory を再読し、作成を重ねず shared 利用へ進むことを確認します。table schema は必要 table 名だけを模した単純な fixture で、実 `SearchDocsWorker` の identity / schema / scalar-index 初期化ではありません。lock source は一時 ESM に transpile し、DB と lock は一時 root に閉じます。失敗時は harness が起動した専用 process group の停止を確認し、確認できない場合は root を残します。この試験は提案する wait/recheck 順序の制御例であり、現行 MCP / HTTP startup がこの順序で動くこと、durable transition state、SIGKILL 後 recovery、fsync / 電源断を証明しません。
+
+`shared-holder-liveness.mjs` は、初期化候補が空 DB を read-only で観測した後、先行側が排他下で fixture table を作り、排他を解放して長期 shared 利用に入った状況を作ります。待機側が stale preflight のまま exclusive だけを再試行すると、shared 利用が続く間は毎回拒否され、shared を解放して初めて排他取得後の再確認に進めることを別 process で確認します。既存 `MaintenanceLock` source の一時 ESM copy と synthetic table directory のみを使い、実 service / worker / LanceDB initialization は行いません。これは進行性の反例を示す制御試験であり、どの製品 admission / handoff を採用するかは決めません。
 
 `scalar-index-failure.py` は実 LanceDB の disposable DB に各5,000行を入れ、現行 `SearchDocsWorker.init_tables()` の `index_requests.status` scalar-index 作成時だけ例外を注入します。必須 table が揃った状態で read-only strict 診断を行い、filter 結果と論理行 hash を比較した後、次回初期化で index が作られることを確認します。実行時間は1回の小規模な観測値であり、性能ベンチマークではありません。LanceDB native API 呼び出し中のクラッシュは注入しません。
 
