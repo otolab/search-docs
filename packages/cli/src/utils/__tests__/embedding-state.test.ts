@@ -147,4 +147,24 @@ describe('evaluateEmbeddingStatus', () => {
     expect(snapshot.overallState).toBe('healthy');
     expect(snapshot.checks.every((check) => check.status === 'ok' || check.check === 'metadata_match')).toBe(true);
   });
+
+  it('does not report a managed server healthy when its launch identity cannot be verified', async () => {
+    const value = pidFile().value!;
+    const withLaunchId = {
+      exists: true,
+      value: { ...value, launchId: '01234567-89ab-cdef-0123-456789abcdef' },
+    } satisfies EmbeddingPidFileState;
+    processMocks.getListeningProcess.mockReturnValue({
+      pid: value.pid,
+      command: 'embedding_server.py --different-launch',
+    });
+
+    const mismatch = await evaluateEmbeddingStatus(snapshotOptions({ pidFile: withLaunchId }));
+    expect(mismatch.overallState).toBe('orphan_process');
+    expect(mismatch.suggestions[0]).toContain('照合できません');
+
+    processMocks.getListeningProcess.mockReturnValue(null);
+    const unavailable = await evaluateEmbeddingStatus(snapshotOptions({ pidFile: withLaunchId }));
+    expect(unavailable.overallState).toBe('orphan_process');
+  });
 });

@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as net from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { killProcessTree } from '../process.js';
+import { isProcessAlive, killProcessTree, killProcessTreeWithCommandMarker } from '../process.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -25,6 +29,20 @@ describe('killProcessTree', () => {
     expect(kill).toHaveBeenCalledWith(-54321, 'SIGTERM');
     expect(kill).toHaveBeenCalledWith(-54321, 'SIGKILL');
     expect(groupAlive).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32')('does not signal a numeric PID when its process group is gone', async () => {
+    const kill = vi.spyOn(process, 'kill').mockImplementation(((pid: number) => {
+      if (pid === -54321) {
+        throw Object.assign(new Error('no such process group'), { code: 'ESRCH' });
+      }
+      throw new Error(`unexpected signal target ${pid}`);
+    }) as typeof process.kill);
+
+    await killProcessTree(54321, 0);
+
+    expect(kill).toHaveBeenCalledWith(-54321, 'SIGTERM');
+    expect(kill).not.toHaveBeenCalledWith(54321, expect.anything());
   });
 
   it('releases the listener port before resolving', async () => {
@@ -70,6 +88,29 @@ describe('killProcessTree', () => {
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
         await killProcessTree(child.pid!);
+      }
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('refuses cleanup when the launcher marker does not match', async () => {
+    const marker = `--search-docs-startup-id=${randomUUID()}`;
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'search-docs-process-marker-'));
+    const script = path.join(directory, `${marker}.cjs`);
+    await writeFile(script, 'setInterval(() => {}, 1000);');
+    const child = spawn(process.execPath, [script], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    try {
+      await vi.waitFor(() => expect(isProcessAlive(child.pid!)).toBe(true));
+      await expect(killProcessTreeWithCommandMarker(child.pid!, '--search-docs-startup-id=other'))
+        .rejects.toThrow(/refusing to kill its process tree/);
+      expect(isProcessAlive(child.pid!)).toBe(true);
+    } finally {
+      try {
+        await killProcessTreeWithCommandMarker(child.pid!, marker);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
       }
     }
   });

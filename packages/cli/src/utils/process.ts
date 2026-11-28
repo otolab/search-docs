@@ -113,11 +113,8 @@ function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
     process.kill(-pid, signal);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
-      // The group leader can exit before its child. Fall back to the leader
-      // only when there is no group left to signal.
-      if (isProcessAlive(pid)) {
-        process.kill(pid, signal);
-      }
+      // Never fall back to the numeric leader PID here: it may already have
+      // been reused for an unrelated process after the original group ended.
       return;
     }
     throw error;
@@ -287,9 +284,42 @@ function execText(command: string, args: string[]): string | null {
   }
 }
 
-function commandForProcess(pid: number): string | undefined {
-  const command = execText('ps', ['-p', String(pid), '-o', 'command=']);
+export function getProcessCommand(pid: number): string | undefined {
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+
+  if (process.platform === 'win32') {
+    const command = execText('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`,
+    ]);
+    return command || undefined;
+  }
+
+  // -ww prevents ps from trimming long Python argument lists, including the
+  // per-launch identity used to verify which process owns the listener.
+  const command = execText('ps', ['-ww', '-p', String(pid), '-o', 'command=']);
   return command || undefined;
+}
+
+/**
+ * Cleanup only a process tree whose current leader still carries the caller's
+ * launch marker. This is used for failed embedding startups, where a port
+ * owner discovered later may be an unrelated server.
+ */
+export async function killProcessTreeWithCommandMarker(
+  pid: number,
+  marker: string,
+  timeout: number = 5000,
+): Promise<void> {
+  const command = getProcessCommand(pid);
+  if (!marker || !command?.includes(marker)) {
+    throw new Error(
+      `Cannot verify that PID ${pid} is still the spawned launcher; refusing to kill its process tree.`,
+    );
+  }
+  await killProcessTree(pid, timeout);
 }
 
 /**
@@ -310,7 +340,7 @@ export function getListeningProcess(port: number): ListeningProcess | null {
       const state = columns[3].toUpperCase();
       if (state !== 'LISTENING' || !localAddress.endsWith(`:${port}`)) continue;
       const pid = Number(columns[4]);
-      if (Number.isInteger(pid) && pid > 0) return { pid, command: commandForProcess(pid) };
+      if (Number.isInteger(pid) && pid > 0) return { pid, command: getProcessCommand(pid) };
     }
     return null;
   }
@@ -318,7 +348,7 @@ export function getListeningProcess(port: number): ListeningProcess | null {
   const lsof = execText('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
   if (lsof) {
     const pid = Number(lsof.split(/\s+/)[0]);
-    if (Number.isInteger(pid) && pid > 0) return { pid, command: commandForProcess(pid) };
+    if (Number.isInteger(pid) && pid > 0) return { pid, command: getProcessCommand(pid) };
   }
 
   const ss = execText('ss', ['-ltnp']);
@@ -328,7 +358,7 @@ export function getListeningProcess(port: number): ListeningProcess | null {
       const match = line.match(/pid=(\d+)/);
       if (match) {
         const pid = Number(match[1]);
-        return { pid, command: commandForProcess(pid) };
+        return { pid, command: getProcessCommand(pid) };
       }
     }
   }
@@ -340,7 +370,7 @@ export function getListeningProcess(port: number): ListeningProcess | null {
       const match = line.match(/\s(\d+)\/[^\s]+\s*$/);
       if (match) {
         const pid = Number(match[1]);
-        return { pid, command: commandForProcess(pid) };
+        return { pid, command: getProcessCommand(pid) };
       }
     }
   }

@@ -1,4 +1,4 @@
-import os, subprocess, tempfile, time, signal, pathlib, socket
+import os, shlex, subprocess, tempfile, time, signal, pathlib, socket
 
 # Run after `pnpm run build:fast`; uses only isolated processes and temporary state.
 node = subprocess.check_output(['node','-p','process.execPath'], text=True).strip()
@@ -6,8 +6,22 @@ cli = str(pathlib.Path(__file__).resolve().parents[1] / 'dist' / 'index.js')
 with tempfile.TemporaryDirectory(prefix='issue165-') as tmp:
     root = pathlib.Path(tmp)
     (root/'bin').mkdir()
+    fake = root/'fake-launcher.cjs'
+    fake.write_text('setInterval(() => {}, 1000);')
     uv = root/'bin'/'uv'
-    uv.write_text('#!/bin/sh\necho $$ > "$HOME/launcher-pid"\nexec /bin/sleep 60\n')
+    uv.write_text(
+        '#!/bin/sh\n'
+        'echo $$ > "$HOME/launcher-pid"\n'
+        'for arg do\n'
+        '  case "$arg" in\n'
+        '    --search-docs-startup-id=*)\n'
+        f'      cp {shlex.quote(str(fake))} "$HOME/$arg.cjs"\n'
+        f'      exec {shlex.quote(node)} "$HOME/$arg.cjs"\n'
+        '      ;;\n'
+        '  esac\n'
+        'done\n'
+        'exit 2\n'
+    )
     uv.chmod(0o755)
     other = subprocess.Popen([node, '-e', "require('http').createServer((q,r)=>r.end('ok')).listen(0,'127.0.0.1',function(){console.log(this.address().port)})"], start_new_session=True, stdout=subprocess.PIPE, text=True)
     other_port = int(other.stdout.readline())

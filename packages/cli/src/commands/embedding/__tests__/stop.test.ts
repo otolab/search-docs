@@ -7,7 +7,8 @@ const processMocks = vi.hoisted(() => ({
   killProcess: vi.fn(),
 }));
 const embeddingMocks = vi.hoisted(() => ({
-  readEmbeddingPidFile: vi.fn(),
+  readEmbeddingPidFileForPort: vi.fn(),
+  readUniqueEmbeddingPidFile: vi.fn(),
   isPortAvailable: vi.fn(),
   removeEmbeddingPidFile: vi.fn(),
   verifyEmbeddingStopped: vi.fn(),
@@ -22,12 +23,24 @@ vi.mock('../../../utils/embedding.js', async () => {
   return { ...actual, ...embeddingMocks };
 });
 
+const launchId = 'launch-token-123';
+const managedPidFile = {
+  pid: 4321,
+  port: 24281,
+  startedAt: new Date().toISOString(),
+  launchId,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   processMocks.isProcessAlive.mockReturnValue(true);
   processMocks.getListeningProcess.mockReturnValue({ pid: 4321, command: 'external-server' });
   processMocks.killProcess.mockResolvedValue(undefined);
-  embeddingMocks.readEmbeddingPidFile.mockResolvedValue({ exists: false, value: null });
+  embeddingMocks.readEmbeddingPidFileForPort.mockResolvedValue({ exists: false, value: null });
+  embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+    state: { exists: false, value: null },
+    ambiguousPorts: [],
+  });
   embeddingMocks.isPortAvailable.mockResolvedValue(true);
   embeddingMocks.verifyEmbeddingStopped.mockResolvedValue({
     processExited: true,
@@ -37,6 +50,14 @@ beforeEach(() => {
 });
 
 describe('stopEmbeddingServer', () => {
+  it('requires an explicit port to stop an external server when no PID file exists', async () => {
+    await expect(stopEmbeddingServer()).rejects.toThrow(
+      /No embedding server PID file found\. Specify --port <port> to stop an externally managed server/,
+    );
+
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
   it('stops an external server by port without a PID file', async () => {
     await stopEmbeddingServer({ port: 24281 });
 
@@ -52,14 +73,115 @@ describe('stopEmbeddingServer', () => {
   });
 
   it('refuses to kill a live PID file process when the port owner is unknown', async () => {
-    embeddingMocks.readEmbeddingPidFile.mockResolvedValue({
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: {
       exists: true,
-      value: { pid: 9876, port: 24281, startedAt: new Date().toISOString() },
+      value: { ...managedPidFile, pid: 9876 },
+      },
+      port: 24281,
+      ambiguousPorts: [],
     });
     processMocks.isProcessAlive.mockReturnValue(true);
     processMocks.getListeningProcess.mockReturnValue(null);
 
-    await expect(stopEmbeddingServer()).rejects.toThrow(/Refusing to kill a possibly reused PID/);
+    await expect(stopEmbeddingServer({ force: true })).rejects.toThrow(/Refusing to kill a possibly reused PID/);
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
+  it('refuses a legacy PID record during ordinary stop even when its PID owns the port', async () => {
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: {
+        exists: true,
+        path: '/tmp/embedding.pid',
+        legacy: true,
+        value: { pid: 4321, port: 24281, startedAt: new Date().toISOString() },
+      },
+      port: 24281,
+      ambiguousPorts: [],
+    });
+    processMocks.getListeningProcess.mockReturnValue({ pid: 4321, command: 'python embedding_server.py' });
+
+    await expect(stopEmbeddingServer()).rejects.toThrow(/legacy records cannot prove ownership/);
+
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
+  it('preserves explicit --port as an intentional external stop for a legacy record', async () => {
+    embeddingMocks.readEmbeddingPidFileForPort.mockResolvedValue({
+      exists: true,
+      path: '/tmp/embedding.pid',
+      legacy: true,
+      value: { pid: 4321, port: 24281, startedAt: new Date().toISOString() },
+    });
+    processMocks.getListeningProcess.mockReturnValue({ pid: 4321, command: 'python embedding_server.py' });
+
+    await stopEmbeddingServer({ port: 24281 });
+
+    expect(processMocks.killProcess).toHaveBeenCalledWith(4321, 5000, false);
+    expect(embeddingMocks.removeEmbeddingPidFile).toHaveBeenCalledWith('/tmp/embedding.pid');
+  });
+
+  it('refuses a PID reused by a different process identity', async () => {
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: { exists: true, value: managedPidFile },
+      port: 24281,
+      ambiguousPorts: [],
+    });
+    processMocks.getListeningProcess.mockReturnValue({
+      pid: 4321,
+      command: 'unrelated-process --pid-was-reused',
+    });
+
+    await expect(stopEmbeddingServer()).rejects.toThrow(/process identity.*does not match/);
+
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit port when multiple managed servers are recorded', async () => {
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: { exists: false, value: null },
+      ambiguousPorts: [24281, 24282],
+    });
+
+    await expect(stopEmbeddingServer()).rejects.toThrow(/Specify --port <port>/);
+
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
+  it('removes only the selected stale per-port record when its process and listener are gone', async () => {
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: {
+        exists: true,
+        path: '/tmp/embedding-24281.pid',
+        value: managedPidFile,
+      },
+      port: 24281,
+      ambiguousPorts: [],
+    });
+    processMocks.isProcessAlive.mockReturnValue(false);
+    processMocks.getListeningProcess.mockReturnValue(null);
+
+    await stopEmbeddingServer();
+
+    expect(embeddingMocks.removeEmbeddingPidFile).toHaveBeenCalledWith('/tmp/embedding-24281.pid');
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the listener before signaling a managed process', async () => {
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: { exists: true, value: managedPidFile },
+      port: 24281,
+      ambiguousPorts: [],
+    });
+    processMocks.getListeningProcess
+      .mockReturnValueOnce({
+        pid: 4321,
+        command: `python embedding_server.py --search-docs-startup-id=${launchId}`,
+      })
+      .mockReturnValueOnce({ pid: 9999, command: 'replacement-server' });
+
+    await expect(stopEmbeddingServer()).rejects.toThrow(/no longer owned by PID 4321/);
+
     expect(processMocks.killProcess).not.toHaveBeenCalled();
   });
 });

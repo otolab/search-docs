@@ -6,8 +6,10 @@ import { startExternalEmbedding } from '@search-docs/server';
 
 import {
   DEFAULT_EMBEDDING_PORT,
+  embeddingPidPathForPort,
   formatEmbeddingUrl,
-  readEmbeddingPidFile,
+  readEmbeddingPidFileForPort,
+  readUniqueEmbeddingPidFile,
   removeEmbeddingPidFile,
 } from '../../utils/embedding.js';
 import {
@@ -90,6 +92,13 @@ function printStatus(snapshot: EmbeddingStatusSnapshot, options: EmbeddingStatus
     if (snapshot.pidFile.value.startedAt) {
       console.log(`  Started: ${new Date(snapshot.pidFile.value.startedAt).toLocaleString()}`);
     }
+    if (!snapshot.pidFile.value.launchId) {
+      console.log(
+        `  Ownership: unverified${snapshot.pidFile.legacy
+          ? ' legacy PID record'
+          : ' (launch identity missing or invalid)'}`,
+      );
+    }
     if (snapshot.pidFile.value.logPath) console.log(`  Log: ${snapshot.pidFile.value.logPath}`);
   } else if (!snapshot.pidFile.exists) {
     console.log('  PID: not recorded (external server may be running)');
@@ -117,9 +126,20 @@ function printStatus(snapshot: EmbeddingStatusSnapshot, options: EmbeddingStatus
 export async function showEmbeddingStatus(
   options: EmbeddingStatusOptions = {},
 ): Promise<EmbeddingStatusResult> {
-  let pidFile = await readEmbeddingPidFile();
   const explicitPort = options.port !== undefined;
-  const port = explicitPort ? parsePort(options.port) : pidFile.value?.port ?? DEFAULT_EMBEDDING_PORT;
+  const requestedPort = explicitPort ? parsePort(options.port) : undefined;
+  const selection = explicitPort
+    ? { state: await readEmbeddingPidFileForPort(requestedPort!), port: requestedPort, ambiguousPorts: [] }
+    : await readUniqueEmbeddingPidFile();
+  if (selection.ambiguousPorts.length > 0) {
+    const ports = selection.ambiguousPorts.filter((value) => value > 0);
+    throw new Error(
+      `Multiple or invalid embedding PID files make the target ambiguous` +
+      `${ports.length ? ` (ports: ${ports.join(', ')})` : ''}. Specify --port <port>.`,
+    );
+  }
+  let pidFile = selection.state;
+  const port = parsePort(requestedPort ?? selection.port ?? pidFile.value?.port ?? DEFAULT_EMBEDDING_PORT);
   const timeoutMs = parseTimeout(options.timeout);
   let snapshot = await evaluateEmbeddingStatus({
     port,
@@ -130,9 +150,9 @@ export async function showEmbeddingStatus(
   let repaired = false;
 
   if (options.repair && snapshot.overallState === 'stale_pid' && pidFile.exists) {
-    await removeEmbeddingPidFile();
+    await removeEmbeddingPidFile(pidFile.path ?? embeddingPidPathForPort(port));
     repaired = true;
-    pidFile = { exists: false, value: null };
+    pidFile = { exists: false, value: null, path: embeddingPidPathForPort(port), legacy: false };
     snapshot = await evaluateEmbeddingStatus({
       port,
       pidFile,

@@ -121,6 +121,11 @@ function suggestionsFor(
         `再起動を試すには search-docs embedding stop --port ${port} && search-docs embedding start --port ${port} を実行してください。`,
       ];
     case 'orphan_process':
+      if (pidFile.value?.launchId) {
+        return [
+          `PIDファイルの起動識別子とポート ${port} の owner を照合できません。通常 stop は停止を拒否するため、対象を確認してください。`,
+        ];
+      }
       return [
         'PIDファイルのない外部起動サーバです。停止する場合は `embedding stop --port` を明示してください。',
       ];
@@ -172,6 +177,12 @@ function determineState(args: {
   if (!pidAlive) return 'stale_pid';
 
   if (owner && owner.pid !== pid) return 'orphan_process';
+  if (
+    pidFile.value.launchId &&
+    (!owner || !owner.command?.includes(`--search-docs-startup-id=${pidFile.value.launchId}`))
+  ) {
+    return 'orphan_process';
+  }
 
   if (!health) {
     return isRecentStart(pidFile.value.startedAt, now, startupGraceMs)

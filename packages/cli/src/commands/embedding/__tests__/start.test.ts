@@ -20,13 +20,15 @@ const fsMocks = vi.hoisted(() => ({
 }));
 const embeddingMocks = vi.hoisted(() => ({
   readEmbeddingPidFile: vi.fn(),
+  readEmbeddingPidFileForPort: vi.fn(),
+  readUniqueEmbeddingPidFile: vi.fn(),
   findEmbeddingHealth: vi.fn(),
   waitForEmbeddingReady: vi.fn(),
   isPortAvailable: vi.fn(),
   removeEmbeddingPidFile: vi.fn(),
   verifyEmbeddingStopped: vi.fn(),
   embeddingDir: vi.fn(),
-  embeddingPidPath: vi.fn(),
+  embeddingPidPathForPort: vi.fn(),
   embeddingLogPath: vi.fn(),
 }));
 const processMocks = vi.hoisted(() => ({
@@ -34,6 +36,7 @@ const processMocks = vi.hoisted(() => ({
   isProcessAlive: vi.fn(),
   killProcess: vi.fn(),
   killProcessTree: vi.fn(),
+  killProcessTreeWithCommandMarker: vi.fn(),
 }));
 const stateMocks = vi.hoisted(() => ({
   evaluateEmbeddingStatus: vi.fn(),
@@ -83,6 +86,11 @@ function health() {
   };
 }
 
+function currentLaunchId(): string | undefined {
+  const args = childMocks.spawn.mock.calls.at(-1)?.[1] as string[] | undefined;
+  return args?.find((arg) => arg.startsWith('--search-docs-startup-id='))?.split('=')[1];
+}
+
 function statusSnapshot(pidFile: { pid: number; port: number; startedAt: string }) {
   return {
     overallState: 'healthy' as const,
@@ -109,6 +117,21 @@ beforeEach(() => {
   embeddingMocks.readEmbeddingPidFile.mockImplementation(async () => storedPidFile
     ? { exists: true, value: storedPidFile }
     : { exists: false, value: null });
+  embeddingMocks.readEmbeddingPidFileForPort.mockImplementation(async (requestedPort: number) =>
+    storedPidFile?.port === requestedPort
+      ? { exists: true, value: storedPidFile, path: `/tmp/search-docs-embedding/embedding-${requestedPort}.pid` }
+      : { exists: false, value: null, path: `/tmp/search-docs-embedding/embedding-${requestedPort}.pid` });
+  embeddingMocks.readUniqueEmbeddingPidFile.mockImplementation(async () => storedPidFile
+    ? {
+      state: {
+        exists: true,
+        value: storedPidFile,
+        path: `/tmp/search-docs-embedding/embedding-${storedPidFile.port}.pid`,
+      },
+      port: storedPidFile.port,
+      ambiguousPorts: [],
+    }
+    : { state: { exists: false, value: null }, ambiguousPorts: [] });
   embeddingMocks.findEmbeddingHealth
     .mockResolvedValueOnce(null)
     .mockResolvedValue({ host: '127.0.0.1', health: health() });
@@ -121,7 +144,8 @@ beforeEach(() => {
     healthUnreachable: true,
   });
   embeddingMocks.embeddingDir.mockReturnValue('/tmp/search-docs-embedding');
-  embeddingMocks.embeddingPidPath.mockReturnValue('/tmp/search-docs-embedding/embedding.pid');
+  embeddingMocks.embeddingPidPathForPort.mockImplementation((requestedPort: number) =>
+    `/tmp/search-docs-embedding/embedding-${requestedPort}.pid`);
   embeddingMocks.embeddingLogPath.mockReturnValue('/tmp/search-docs-embedding/embedding.log');
   fsMocks.openSync.mockReturnValue(42);
   fsMocks.mkdir.mockResolvedValue(undefined);
@@ -136,10 +160,16 @@ beforeEach(() => {
     signalCode: null,
     unref: vi.fn(),
   }));
-  processMocks.getListeningProcess.mockReturnValue({ pid, command: 'embedding_server.py' });
+  processMocks.getListeningProcess.mockImplementation(() => ({
+    pid,
+    command: `embedding_server.py --search-docs-startup-id=${currentLaunchId() ?? ''}`,
+  }));
   processMocks.isProcessAlive.mockReturnValue(true);
   processMocks.killProcess.mockResolvedValue(undefined);
   processMocks.killProcessTree.mockResolvedValue(undefined);
+  processMocks.killProcessTreeWithCommandMarker.mockImplementation(
+    (processId: number) => processMocks.killProcessTree(processId),
+  );
   stateMocks.evaluateEmbeddingStatus.mockImplementation(async ({ pidFile }) =>
     statusSnapshot(pidFile.value));
 });
@@ -154,7 +184,7 @@ describe('embedding lifecycle', () => {
     expect(childMocks.spawn.mock.calls[0][1]).toEqual(expect.arrayContaining(['--extra', 'torch', '--runtime=torch']));
   });
 
-  it('reaps descendants after a foreground launcher exits', async () => {
+  it('does not signal a foreground process tree after its launcher has exited', async () => {
     const startPromise = startEmbeddingServer({
       port,
       dimension: 3,
@@ -166,7 +196,7 @@ describe('embedding lifecycle', () => {
 
     await startPromise;
 
-    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(processMocks.killProcessTree).not.toHaveBeenCalled();
   });
 
   it('passes an explicit readiness timeout to the readiness wait', async () => {
@@ -284,7 +314,7 @@ describe('embedding lifecycle', () => {
     finishWrite();
     await starting;
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
-    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding-24281\.pid\..*\.tmp$/));
     expect(process.exitCode).toBe(143);
   });
 
@@ -292,14 +322,14 @@ describe('embedding lifecycle', () => {
     fsMocks.writeFile.mockRejectedValueOnce(new Error('disk full'));
     await expect(startEmbeddingServer({ port })).rejects.toThrow('disk full');
     expect(fsMocks.link).not.toHaveBeenCalled();
-    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding-24281\.pid\..*\.tmp$/));
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
   });
 
   it('removes a real partially written temporary PID file and can retry', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'embedding-pid-'));
-    const pidPath = join(directory, 'embedding.pid');
-    embeddingMocks.embeddingPidPath.mockReturnValue(pidPath);
+    const pidPath = join(directory, `embedding-${port}.pid`);
+    embeddingMocks.embeddingPidPathForPort.mockReturnValue(pidPath);
     const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
     fsMocks.unlink.mockImplementation(actualFs.unlink);
     fsMocks.link.mockImplementation(actualFs.link);
@@ -313,7 +343,7 @@ describe('embedding lifecycle', () => {
       embeddingMocks.findEmbeddingHealth.mockReset().mockResolvedValueOnce(null)
         .mockResolvedValue({ host: '127.0.0.1', health: health() });
       await startEmbeddingServer({ port });
-      expect(await readdir(directory)).toEqual(['embedding.pid']);
+      expect(await readdir(directory)).toEqual([`embedding-${port}.pid`]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -378,7 +408,7 @@ describe('embedding lifecycle', () => {
   it('does not overwrite a concurrently created PID file', async () => {
     fsMocks.link.mockRejectedValueOnce(Object.assign(new Error('already exists'), { code: 'EEXIST' }));
     await expect(startEmbeddingServer({ port })).rejects.toThrow('already exists');
-    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith(`/tmp/search-docs-embedding/embedding-${port}.pid`);
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
   });
 
@@ -420,7 +450,7 @@ describe('embedding lifecycle', () => {
     finishWrite();
     await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
-    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding\.pid\..*\.tmp$/));
+    expect(fsMocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/embedding-24281\.pid\..*\.tmp$/));
   });
 
   it.each(['SIGINT', 'SIGTERM'] as const)('transfers ownership if %s arrives while publication succeeds', async (signal) => {
@@ -433,7 +463,7 @@ describe('embedding lifecycle', () => {
     finishLink();
     await starting;
     expect(processMocks.killProcessTree).not.toHaveBeenCalled();
-    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith(`/tmp/search-docs-embedding/embedding-${port}.pid`);
     expect(process.exitCode).toBeUndefined();
   });
 
@@ -448,10 +478,10 @@ describe('embedding lifecycle', () => {
     await starting;
     expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
     expect(process.exitCode).toBe(143);
-    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith(`/tmp/search-docs-embedding/embedding-${port}.pid`);
   });
 
-  it('reports launcher failure after publication even if interrupted during publication', async () => {
+  it('keeps the published process untouched if the launcher exits after publication', async () => {
     let finishLink!: () => void;
     fsMocks.link.mockImplementation(() => new Promise<void>((resolve) => { finishLink = resolve; }));
     const before = process.listeners('SIGTERM');
@@ -463,48 +493,49 @@ describe('embedding lifecycle', () => {
     child.emit('exit', 1, null);
     finishLink();
     await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
-    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
-    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    expect(processMocks.killProcessTree).not.toHaveBeenCalled();
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith(`/tmp/search-docs-embedding/embedding-${port}.pid`);
   });
 
-  it('reports possible PID file retention if post-publication reaping fails', async () => {
+  it('reports a published PID file without killing the process tree on late launcher failure', async () => {
     fsMocks.link.mockImplementation(async () => {
       const child = childMocks.spawn.mock.results[0].value;
       child.exitCode = 1;
       child.emit('exit', 1, null);
     });
-    processMocks.killProcessTree.mockRejectedValue(new Error('reap failed'));
-    await expect(startEmbeddingServer({ port })).rejects.toThrow('A PID file may remain');
-    expect(fsMocks.unlink).not.toHaveBeenCalledWith('/tmp/search-docs-embedding/embedding.pid');
+    await expect(startEmbeddingServer({ port })).rejects.toThrow(/PID file .* was published/);
+    expect(processMocks.killProcessTree).not.toHaveBeenCalled();
+    expect(fsMocks.unlink).not.toHaveBeenCalledWith(`/tmp/search-docs-embedding/embedding-${port}.pid`);
   });
 
-  it('preserves a replacement PID file when a failed launcher is reaped', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'embedding-race-'));
-    const target = join(directory, 'embedding.pid');
-    const actual = await vi.importActual<typeof import('fs/promises')>('fs/promises');
-    embeddingMocks.embeddingPidPath.mockReturnValue(target);
-    fsMocks.writeFile.mockImplementation(actual.writeFile);
-    fsMocks.unlink.mockImplementation(actual.unlink);
-    fsMocks.link.mockImplementation(async (source: string, destination: string) => {
-      await actual.link(source, destination);
-      const child = childMocks.spawn.mock.results[0].value;
-      child.exitCode = 1;
-      child.emit('exit', 1, null);
+  it('does not register a competing server that wins the port after the preflight check', async () => {
+    processMocks.getListeningProcess.mockReturnValue({
+      pid: 8100,
+      command: 'unrelated-embedding-server',
     });
-    let finishReap!: () => void;
-    processMocks.killProcessTree.mockImplementation(() => new Promise<void>((resolve) => { finishReap = resolve; }));
-    try {
-      const starting = startEmbeddingServer({ port });
-      await vi.waitFor(() => expect(finishReap).toBeDefined());
-      await actual.unlink(target);
-      const replacement = JSON.stringify({ pid: 9999, port, startedAt: 'replacement' });
-      await actual.writeFile(target, replacement);
-      finishReap();
-      await expect(starting).rejects.toThrow('Embedding launcher exited with code 1');
-      expect(await actual.readFile(target, 'utf8')).toBe(replacement);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+
+    await expect(startEmbeddingServer({ port })).rejects.toThrow(/could not be verified as this launch/);
+
+    expect(fsMocks.writeFile).not.toHaveBeenCalled();
+    expect(fsMocks.link).not.toHaveBeenCalled();
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
+  it('does not publish if the listener changes after identity verification', async () => {
+    processMocks.getListeningProcess
+      .mockImplementationOnce(() => ({
+        pid,
+        command: `embedding_server.py --search-docs-startup-id=${currentLaunchId() ?? ''}`,
+      }))
+      .mockReturnValueOnce({ pid: 8100, command: 'unrelated-embedding-server' });
+
+    await expect(startEmbeddingServer({ port })).rejects.toThrow(/changed before PID publication/);
+
+    expect(fsMocks.writeFile).toHaveBeenCalledOnce();
+    expect(fsMocks.link).not.toHaveBeenCalled();
+    expect(processMocks.killProcessTree).toHaveBeenCalledWith(launcherPid);
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
   });
 
   it('persists the listener PID and passes it through status and stop', async () => {
@@ -514,8 +545,9 @@ describe('embedding lifecycle', () => {
     const writtenPidFile = JSON.parse(fsMocks.writeFile.mock.calls[0][1] as string) as {
       pid: number;
       port: number;
+      launchId: string;
     };
-    expect(writtenPidFile).toMatchObject({ pid, port });
+    expect(writtenPidFile).toMatchObject({ pid, port, launchId: currentLaunchId() });
     expect(writtenPidFile.pid).not.toBe(launcherPid);
 
     await showEmbeddingStatus({});
