@@ -161,6 +161,9 @@ try {
     matching: differences.length === 0,
     differences,
   }, null, 2));
+  if (differences.length > 0) {
+    throw new Error('generated dist differs from a clean build of HEAD');
+  }
   completed = true;
 } catch (error) {
   console.error(`Source/dist check failed; its isolated build is preserved at ${tempRoot}`);
