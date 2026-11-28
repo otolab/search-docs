@@ -1,5 +1,11 @@
 # @search-docs/db-engine
 
+## 1.6.2
+
+### Patch Changes
+
+- c4e1082: Keep every LanceDB connection in sync with the latest table version (5s read consistency interval) and retry once after reopening the table when a read hits a file removed by cleanup, so non-writer processes no longer fail with `lance error: Not found` (#173).
+
 ## 1.6.1
 
 ### Patch Changes

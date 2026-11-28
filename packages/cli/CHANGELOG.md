@@ -1,5 +1,15 @@
 # @search-docs/cli
 
+## 1.4.2
+
+### Patch Changes
+
+- c4e1082: Verify embedding server process ownership before `embedding status` / `embedding stop` act on it, and clean up correctly when the launcher is interrupted (#167).
+- c4e1082: Keep every LanceDB connection in sync with the latest table version (5s read consistency interval) and retry once after reopening the table when a read hits a file removed by cleanup, so non-writer processes no longer fail with `lance error: Not found` (#173).
+- Updated dependencies [c4e1082]
+  - @search-docs/db-engine@1.6.2
+  - @search-docs/server@1.6.2
+
 ## 1.4.1
 
 ### Patch Changes
