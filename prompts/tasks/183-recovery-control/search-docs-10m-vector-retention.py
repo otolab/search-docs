@@ -402,13 +402,23 @@ def main() -> int:
         pinned_version_present_after = any(
             item.get("version") == pinned_version for item in post_cleanup_versions
         )
-        age_seconds = (time.monotonic_ns() - pinned_since_ns) / 1_000_000_000
+        age_at_cleanup_start_seconds = (
+            cleanup_started_ns - pinned_since_ns
+        ) / 1_000_000_000
+        age_at_report_seconds = (
+            time.monotonic_ns() - pinned_since_ns
+        ) / 1_000_000_000
         result.update({
             "status": "error" if errors else "completed",
             "pinned_reader_ready": reader_ready,
             "pinned_version": pinned_version,
             "pinned_version_started_utc": pinned_since_utc,
-            "pinned_version_age_seconds_at_cleanup": round(age_seconds, 3),
+            "pinned_version_age_seconds_at_cleanup_start": round(
+                age_at_cleanup_start_seconds, 3
+            ),
+            "pinned_version_age_seconds_at_report": round(
+                age_at_report_seconds, 3
+            ),
             "versions_at_pin": initial_versions,
             "add_sections_calls": worker._add_count,
             "periodic_optimize_call_count": len(periodic_events),
