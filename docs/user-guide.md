@@ -498,7 +498,7 @@ EMBEDDING_URL=http://127.0.0.1:24282 search-docs server start
 `EMBEDDING_URL` は接続できなければ起動を中止します。Docker コンテナからホストのサーバへ接続する場合は、`127.0.0.1` の代わりに `host.docker.internal` を使用してください。
 
 MCP / HTTPサーバが利用可能な既存のembeddingサーバに接続する場合、そのサーバのPIDファイルを使って所有権を確認するわけではありません。別のMCP / HTTPサーバが起動した子に接続することもあり、その起動元が終了すると、利用中でも子が停止される場合があります。長く共有したい場合は `embedding start` や Docker Compose で独立して起動する方法があります。独立起動したサーバの停止は、それを管理する利用者が行います。検出順序と終了処理の詳細は [Embeddingの共有と寿命](architecture.md#embeddingの共有と寿命) を参照してください。
-CLI はポートごとに Embedding サーバを管理します。異なるポートなら複数のサーバを同時に起動できます。複数の管理記録がある場合は、`embedding stop` と `embedding status` に `--port` を指定して対象を選んでください。
+CLI はポートごとに Embedding サーバを管理します。異なるポートなら複数のサーバを同時に起動できます。複数の管理記録がある場合は、`embedding stop` と `embedding status` に `--port` を指定して対象を選んでください。PID 記録がない外部サーバを停止する場合も、`embedding stop --port <port>` のように対象ポートを明示します。
 
 明示的な外部 provider は `vectorDimension` をリクエストの `dimensions` に渡し、返却ベクトルが同じ次元でなければエラーになります。API とモデルがその次元指定に対応している必要があります。従来の builtin は互換性のため `/health` が返す次元を優先します。provider、モデル、次元、接続先を変更する場合は、稼働中のサーバを停止して索引を再構築してください。OpenAI 互換では接続先のハッシュを索引 identity に記録し、変更を検出すると再構築を要求します。接続先を記録していない旧形式の OpenAI 互換索引も、安全のため再構築が必要です。`search-docs embedding status` は明示的な外部 provider へ推論リクエストを送り、接続と次元を確認します。
 
@@ -637,7 +637,10 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 | `embedding status [options]` | Embeddingサーバの状態を確認 |
 
 **主なオプション**:
-- `--port <port>`: ポート番号（startは24281、status/stopは管理対象が一つならそのport、なければ24281）
+- `--port <port>`: 対象ポートを指定します。省略時の扱いはコマンドごとに異なります。
+  - `embedding start`: `24281`
+  - `embedding status`: PID 記録が一意ならその port、複数または判別不能な記録があれば指定必須、記録がなければ `24281`
+  - `embedding stop`: 管理記録が一意ならその port、複数または判別不能な記録があれば指定必須。PID 記録のない外部サーバを停止する場合も明示指定が必要です
 - `-f, --foreground`: フォアグラウンドで起動
 - `--runtime <runtime>`: `onnx`（デフォルト、GPU/CoreML対応）または `torch`
 - `--dimension <dim>`: ベクトル次元数（デフォルト: 256）

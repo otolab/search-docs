@@ -50,6 +50,14 @@ beforeEach(() => {
 });
 
 describe('stopEmbeddingServer', () => {
+  it('requires an explicit port to stop an external server when no PID file exists', async () => {
+    await expect(stopEmbeddingServer()).rejects.toThrow(
+      /No embedding server PID file found\. Specify --port <port> to stop an externally managed server/,
+    );
+
+    expect(processMocks.killProcess).not.toHaveBeenCalled();
+  });
+
   it('stops an external server by port without a PID file', async () => {
     await stopEmbeddingServer({ port: 24281 });
 

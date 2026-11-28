@@ -259,7 +259,7 @@ embeddingCmd
 embeddingCmd
   .command('status')
   .description('Embeddingサーバのステータスを確認')
-  .option('--port <port>', 'ポート番号（省略時はPIDファイルのport、なければ24281）')
+  .option('--port <port>', '確認するポート番号（省略時: 一意なPID記録のport。複数/判別不能なら指定必須。記録なしは24281）')
   .option('--verbose', '各チェック結果と診断情報を表示')
   .option('--repair', 'stale PIDファイルを削除して再確認')
   .option('--probe', '実際の推論パスをプローブ')
