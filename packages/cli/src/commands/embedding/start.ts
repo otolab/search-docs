@@ -204,12 +204,12 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
         proc.once('error', reject);
         proc.once('exit', () => resolve());
       });
-      if (cleanupPromise) await cleanupPromise;
+      await Promise.resolve(cleanupPromise);
       if (interruptedBy) {
         process.exitCode = interruptedBy === 'SIGINT' ? 130 : 143;
       }
     } catch (error) {
-      if (cleanupPromise) await cleanupPromise;
+      await Promise.resolve(cleanupPromise);
       throw error;
     } finally {
       process.removeListener('SIGINT', onSigint);
