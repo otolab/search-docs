@@ -1,5 +1,16 @@
 # @search-docs/mcp-server
 
+## 1.10.4
+
+### Patch Changes
+
+- c4e1082: Keep every LanceDB connection in sync with the latest table version (5s read consistency interval) and retry once after reopening the table when a read hits a file removed by cleanup, so non-writer processes no longer fail with `lance error: Not found` (#173).
+- Updated dependencies [c4e1082]
+- Updated dependencies [c4e1082]
+  - @search-docs/cli@1.4.2
+  - @search-docs/db-engine@1.6.2
+  - @search-docs/server@1.6.2
+
 ## 1.10.3
 
 ### Patch Changes
