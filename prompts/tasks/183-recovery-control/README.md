@@ -23,6 +23,7 @@ node prompts/tasks/183-recovery-control/manual-registration-removal.mjs
 node prompts/tasks/183-recovery-control/recreate-recovery.mjs
 node prompts/tasks/183-recovery-control/writer-stop-unconfirmed.mjs
 node prompts/tasks/183-recovery-control/http-shutdown-unconfirmed.mjs
+node prompts/tasks/183-recovery-control/service-partial-crash.mjs
 node prompts/tasks/183-recovery-control/embedding-identity-mismatch-cleanup.mjs
 node prompts/tasks/183-recovery-control/heartbeat-stale-writer-write.mjs
 node prompts/tasks/183-recovery-control/source-dist-check.mjs
@@ -66,7 +67,9 @@ ISSUE183_PIN_READER=0 ISSUE183_QUERY_POLL_SECONDS=0.05 \
 
 この no-checkout 経路では固定 snapshot を使わず、read-only worker の通常の consistency refresh を残します。短時間の harness smoke check では `ISSUE183_MINIMUM_SEED_VERSION_AGE_SECONDS=2` を使えます。既定の610秒以外での実行は10分 retention の結果として扱いません。直近の no-checkout 長時間 run は全期間の成功数のみ保存し、cleanup 後観測窓の内訳は未保存でした。追加した phase 別カウンタは短時間 smoke でのみ確認済みで、10分試験では未実測です。version pruning と file 数・hash の差分は別の観測として記録します。embedding は fixture vector で代替します。いずれの経路も `DBEngine` 経由のMCP/HTTP実サービス、実 embedding provider、native API 内の正確な同時実行、複数 writer、他 filesystem / host、OS crash / 電源断の安全性を証明しません。子 process 終了を確認できない場合は一時 DB を残します。
 
-`http-shutdown-unconfirmed.mjs` は実 HTTP server / DBEngine / CLI stop を disposable project で起動し、writer 前の strict 診断を一時コピーの `strict-diagnostic.js` 内で pause させます。実 CLI process 内の `fetch` response を記録するため、server route を改変せず実際の status / headers / body を観測します。加えて read-only `DBEngine` で heartbeat row を前後に読み、server log の claim readback と `WATCHING` 行を確認します。shutdown 直後の診断 process group と、その後の短い継続観測を分けて記録します。Loopback bind が制限される環境では、承認された sandbox 外で実行してください。macOS で `kill(-PGID, 0)` が `EPERM` を返した場合は `ps` から同じ process group の有無を確認し、消失を確認できなければ一時 DB を残します。この試験は signal 送信の EPERM 注入ではありません。
+`http-shutdown-unconfirmed.mjs` は実 HTTP server / DBEngine / CLI stop を disposable project で起動し、writer 前の strict 診断を一時コピーの `strict-diagnostic.js` 内で pause させます。その read-only 診断中に同じ storage identity の exclusive maintenance を試み、shared registration により拒否されることも確認します。これは初回 `DBEngine.connect()` 前の診断ではなく、writer claim 後・`WATCHING` 前の診断です。実 CLI process 内の `fetch` response を記録するため、server route を改変せず実際の status / headers / body を観測します。加えて read-only `DBEngine` で heartbeat row を前後に読み、server log の claim readback と `WATCHING` 行を確認します。shutdown 直後の診断 process group と、その後の短い継続観測を分けて記録します。Loopback bind が制限される環境では、承認された sandbox 外で実行してください。macOS で `kill(-PGID, 0)` が `EPERM` を返した場合は `ps` から同じ process group の有無を確認し、消失を確認できなければ一時 DB を残します。この試験は signal 送信の EPERM 注入ではありません。
+
+`service-partial-crash.mjs` は実 MCP server が実 `SearchDocsWorker` を起動し、LanceDB の `sections` 作成 API が戻った直後の一時 Python barrier で停止させます。共有登録を保持した親 MCP を SIGKILL し、子 worker group の残存・登録・DB tree を観測します。確認済みの fixture worker group だけを停止してから、同一 partial DB へ実 MCP / HTTP の起動入口を順に向け、read-only strict diagnosis の結果、DB tree hash、users、writable worker の再起動有無を測ります。embedding は loopback fake で、要求には固定 vector を返します。MCP 固定 debug log は temp root 内のログへ redirect します。native LanceDB API の内部停止、OS crash / 電源断、filesystem durability を示す試験ではありません。barrier と process cleanup が成功した場合だけ temp root を削除します。
 
 ## 試験範囲と限界
 

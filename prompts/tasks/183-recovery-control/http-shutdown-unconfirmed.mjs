@@ -316,6 +316,21 @@ try {
   assert(Number.isInteger(diagnosticPid) && diagnosticPid > 1,
     `missing diagnostic worker PID: ${diagnosticPid}`);
 
+  const managementPath = path.join(
+    projectRoot,
+    '.search-docs/.search-docs-maintenance',
+  );
+  let exclusiveFailureDuringDiagnostic = '';
+  try {
+    const lease = await new MaintenanceLock(managementPath).acquireExclusive();
+    await lease.release();
+    exclusiveFailureDuringDiagnostic = 'acquired';
+  } catch (error) {
+    exclusiveFailureDuringDiagnostic = error.message;
+  }
+  assert.match(exclusiveFailureDuringDiagnostic, /使用中/,
+    'exclusive maintenance should be blocked by the HTTP service registration during read-only diagnosis');
+
   heartbeatBeforeShutdown = await readWriterHeartbeat();
   watcherLogBeforeShutdown = await readFile(
     path.join(projectRoot, '.search-docs/server.log'),
@@ -416,10 +431,6 @@ console.log('ISSUE183_CLI_STOP_RETURNED_SUCCESS');`;
   heartbeatAfterShutdown = await readWriterHeartbeat();
   const diagnosticAliveAfterShutdown = await processGroupExists(diagnosticPid);
   diagnosticProcessAfterShutdown = processSnapshot(diagnosticPid);
-  const managementPath = path.join(
-    projectRoot,
-    '.search-docs/.search-docs-maintenance',
-  );
   const usersAfterShutdown = await readdir(path.join(managementPath, 'users'));
   let exclusiveFailure = '';
   try {
@@ -458,6 +469,7 @@ console.log('ISSUE183_CLI_STOP_RETURNED_SUCCESS');`;
     diagnosticWorkerProcessBeforeShutdown: diagnosticProcessBeforeShutdown,
     diagnosticWorkerProcessAfterShutdown: diagnosticProcessAfterShutdown || null,
     sharedRegistrationsRemaining: usersAfterShutdown.length,
+    exclusiveMaintenanceAttemptDuringPreWriterReadOnlyDiagnosis: exclusiveFailureDuringDiagnostic,
     exclusiveMaintenanceAttempt: exclusiveFailure,
     writerClaimBeforeShutdown: heartbeatBeforeShutdown.heartbeat,
     writerClaimAfterShutdown: heartbeatAfterShutdown.heartbeat,
