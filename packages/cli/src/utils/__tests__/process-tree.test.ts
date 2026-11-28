@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as net from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isProcessAlive, killProcessTree, killProcessTreeWithCommandMarker } from '../process.js';
 
@@ -91,22 +94,24 @@ describe('killProcessTree', () => {
 
   it.skipIf(process.platform === 'win32')('refuses cleanup when the launcher marker does not match', async () => {
     const marker = `--search-docs-startup-id=${randomUUID()}`;
-    const child = spawn(process.execPath, [
-      '-e',
-      'setInterval(() => {}, 1000)',
-      marker,
-    ], {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'search-docs-process-marker-'));
+    const script = path.join(directory, `${marker}.cjs`);
+    await writeFile(script, 'setInterval(() => {}, 1000);');
+    const child = spawn(process.execPath, [script], {
       detached: true,
       stdio: 'ignore',
     });
-    await vi.waitFor(() => expect(isProcessAlive(child.pid!)).toBe(true));
-
     try {
+      await vi.waitFor(() => expect(isProcessAlive(child.pid!)).toBe(true));
       await expect(killProcessTreeWithCommandMarker(child.pid!, '--search-docs-startup-id=other'))
         .rejects.toThrow(/refusing to kill its process tree/);
       expect(isProcessAlive(child.pid!)).toBe(true);
     } finally {
-      await killProcessTreeWithCommandMarker(child.pid!, marker);
+      try {
+        await killProcessTreeWithCommandMarker(child.pid!, marker);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
     }
   });
 });
