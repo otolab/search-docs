@@ -250,7 +250,10 @@ embeddingCmd
 embeddingCmd
   .command('stop')
   .description('Embeddingサーバを停止')
-  .option('--port <port>', '停止対象のポート番号（PIDファイルがない外部サーバにも使用）')
+  .option(
+    '--port <port>',
+    '停止対象のポート番号（管理記録が一意なら省略可。複数/判別不能なら --port を指定。PID 記録のない外部サーバを止める場合も --port が必要）',
+  )
   .option('--force', 'SIGKILL/taskkill /Fで直ちに停止')
   .action((options: EmbeddingStopOptions) => {
     void executeEmbeddingStop(options);
