@@ -90,7 +90,7 @@ setInterval(() => {}, 1000);`;
 
   for (const point of ['gate', 'registration', 'identity']) {
     const directory = path.join(root, `shared-${point}`);
-    const identity = 'same-project-config';
+    const identity = 'same-lock-identity';
     const child = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', crashScript, directory, identity], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ISSUE183_PAUSE: point },
@@ -140,7 +140,7 @@ setInterval(() => {}, 1000);`;
 
   {
     const directory = path.join(root, 'shared-completed-owner');
-    const identity = 'same-project-config';
+    const identity = 'same-lock-identity';
     const child = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', crashScript, directory, identity], {
       stdio: ['ignore', 'pipe', 'pipe'],
     }));
@@ -231,7 +231,7 @@ setInterval(() => {}, 1000);`;
 
   const contender = `import { MaintenanceLock } from ${JSON.stringify(moduleUrl)};
 const [directory, mode] = process.argv.slice(1);
-const lock = new MaintenanceLock(directory, 'same-project-config');
+const lock = new MaintenanceLock(directory, 'same-lock-identity');
 process.stdout.write('READY\\n');
 await new Promise(resolve => process.stdin.once('data', resolve));
 try {
