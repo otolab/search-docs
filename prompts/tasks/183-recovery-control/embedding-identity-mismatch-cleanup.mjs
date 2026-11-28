@@ -22,6 +22,7 @@ const embeddingPidPath = path.join(root, 'embedding-child.pid');
 const embeddingReadyPath = path.join(root, 'embedding-ready');
 const stopFaultPath = path.join(root, 'stop-fault.json');
 const startupFailurePath = path.join(root, 'startup-failure.log');
+const debugLogRedirectPath = path.join(root, 'debug-log-redirects.jsonl');
 let seedEmbedding;
 let seedEmbeddingListening = false;
 let seedEngine;
@@ -256,6 +257,7 @@ await writeFile(preloadPath, `import { createRequire } from 'node:module';
 import { appendFileSync, readFileSync } from 'node:fs';
 const require = createRequire(import.meta.url);
 const fs = require('node:fs');
+const path = require('node:path');
 const originalStringify = JSON.stringify.bind(JSON);
 JSON.stringify = function(value, ...args) {
   const isMcpServer = process.argv.some(item => item.endsWith('/packages/mcp-server/dist/server.js'));
@@ -268,7 +270,23 @@ const originalAppendFileSync = fs.appendFileSync.bind(fs);
 fs.appendFileSync = function(file, data, ...args) {
   const isMcpServer = process.argv.some(value => value.endsWith('/packages/mcp-server/dist/server.js'));
   if (isMcpServer && file === '/tmp/mcp-server-debug.log') {
-    originalAppendFileSync(process.env.ISSUE183_STARTUP_FAILURE_FILE, data);
+    const destination = process.env.ISSUE183_STARTUP_FAILURE_FILE;
+    const redirectAuditPath = process.env.ISSUE183_DEBUG_LOG_REDIRECT_FILE;
+    const fixtureRoot = process.env.ISSUE183_FIXTURE_ROOT;
+    const isInsideFixture = target => {
+      if (!fixtureRoot || !target) return false;
+      const relative = path.relative(fixtureRoot, path.resolve(target));
+      return relative !== '' && relative !== '..'
+        && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+    };
+    if (destination === file || !isInsideFixture(destination) || !isInsideFixture(redirectAuditPath)) {
+      throw new Error('Refusing to append MCP debug output without an isolated destination');
+    }
+    originalAppendFileSync(redirectAuditPath, JSON.stringify({
+      requestedPath: file,
+      redirectedPath: destination,
+    }) + '\\n');
+    return originalAppendFileSync(destination, data, ...args);
   }
   return originalAppendFileSync(file, data, ...args);
 };
@@ -305,6 +323,8 @@ process.kill = function(pid, signal) {
     ISSUE183_SERVER_WRAPPER: serverWrapperPath,
     ISSUE183_STOP_FAULT_FILE: stopFaultPath,
     ISSUE183_STARTUP_FAILURE_FILE: startupFailurePath,
+    ISSUE183_DEBUG_LOG_REDIRECT_FILE: debugLogRedirectPath,
+    ISSUE183_FIXTURE_ROOT: root,
     NODE_OPTIONS: [
       `--experimental-loader=${pathToFileURL(loaderPath).href}`,
       `--import=${pathToFileURL(preloadPath).href}`,
@@ -396,9 +416,21 @@ process.kill = function(pid, signal) {
   const log = await readFile(path.join(projectRoot, '.search-docs/server.log'), 'utf8');
   const workerExitLines = log.split('\n').filter(line => line.includes('Python worker exited'));
   const registeredUsersAfter = await readUsers();
+  const debugRedirectRecords = (await readFile(debugLogRedirectPath, 'utf8'))
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map(line => JSON.parse(line));
+  assert(debugRedirectRecords.length > 0, 'MCP did not exercise the isolated debug-log redirect');
+  assert(debugRedirectRecords.every(record =>
+    record.requestedPath === '/tmp/mcp-server-debug.log'
+      && record.redirectedPath === startupFailurePath),
+  'MCP debug output was not routed exclusively to the fixture log');
   result = {
     injectedFailure: JSON.parse(await readFile(stopFaultPath, 'utf8')),
     embeddingIdentityMismatchObserved: true,
+    debugLogRedirectCount: debugRedirectRecords.length,
+    debugLogRedirectedToFixtureOnly: true,
     sharedUsersBeforeFailure: usersBeforeFailure.length,
     sharedUsersAfterFailure: registeredUsersAfter.length,
     exclusiveGrant: grant,
