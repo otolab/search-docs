@@ -51,6 +51,8 @@ WORKDIR /app
 # pnpm依存関係のインストール（各パッケージのpackage.jsonを先にコピーしてキャッシュ活用）
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/types/package.json packages/types/
+COPY packages/common/package.json packages/common/
+COPY packages/config/package.json packages/config/
 COPY packages/storage/package.json packages/storage/
 COPY packages/db-engine/package.json packages/db-engine/
 COPY packages/server/package.json packages/server/

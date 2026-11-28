@@ -6,6 +6,7 @@
 
 search-docsは、GitHub Actionsによる**完全自動化されたリリースフロー**を採用しています。
 手動でバージョン更新コマンドを実行する必要はありません。
+ただし、Dockerイメージの公開は手動で行います（[6. Dockerイメージの公開](#6-dockerイメージの公開手動)）。
 
 ## リリースフロー
 
@@ -83,6 +84,56 @@ GitHub上で自動作成されたリリースPRをレビューし、マージし
    - その他のパッケージを公開
    - npm Trusted Publishing（provenance）を使用
 
+### 6. Dockerイメージの公開（手動）
+
+npm公開が完了したら、Docker Hub の `otolab/search-docs-mcp` に同じバージョンのイメージを公開します。この手順は自動化されていません。
+
+1. **リリースタグから clean な作業ツリーを作る**
+
+   作業中のリポジトリには未追跡ファイルが含まれることがあり、`COPY packages/` でイメージに混入します。タグから worktree を作成してビルドしてください。
+
+   ```bash
+   git fetch --tags origin
+   git worktree add --detach /tmp/search-docs-vX.Y.Z vX.Y.Z
+   cd /tmp/search-docs-vX.Y.Z
+   ```
+
+2. **ビルドしてバージョンタグと `latest` を付ける**
+
+   ```bash
+   docker build -t otolab/search-docs-mcp:X.Y.Z -t otolab/search-docs-mcp:latest .
+   ```
+
+   パッケージを追加した場合は、`Dockerfile` の依存インストール段（`COPY packages/<name>/package.json`）にも追加が必要です。漏れているとビルド時の型解決に失敗します。
+
+3. **スモークテスト**
+
+   ```bash
+   # 同梱パッケージのバージョンを確認
+   docker run --rm --entrypoint sh otolab/search-docs-mcp:X.Y.Z \
+     -c 'grep -h "\"version\"" /app/package.json /app/node_modules/@search-docs/*/package.json'
+
+   # Embeddingサーバモードで起動し、deep health を確認
+   docker run -d --rm --name sd-smoke -p 18080:24281 otolab/search-docs-mcp:X.Y.Z --mode=embedding-server
+   curl -s "http://127.0.0.1:18080/health?deep=1"   # status: ok, deepProbe.success: true
+   docker stop sd-smoke
+   ```
+
+4. **push する**
+
+   ```bash
+   docker push otolab/search-docs-mcp:X.Y.Z
+   docker push otolab/search-docs-mcp:latest
+   ```
+
+   両タグの digest が一致することを確認します。
+
+5. **worktree を片付ける**
+
+   ```bash
+   git worktree remove /tmp/search-docs-vX.Y.Z
+   ```
+
 ## ⚠️ 重要な注意事項
 
 ### やってはいけないこと
@@ -132,6 +183,7 @@ GitHub上で自動作成されたリリースPRをレビューし、マージし
 
 ### changesetが反映されない
 
+- changesetファイルが1つもない場合、リリースPRにバージョン更新が含まれず、npmにも何も公開されない
 - `.changeset/` ディレクトリにchangesetファイルが存在するか確認
 - ファイルのフォーマットが正しいか確認
 - mainブランチに最新の変更がマージされているか確認
@@ -164,3 +216,4 @@ GitHub上で自動作成されたリリースPRをレビューし、マージし
 - [.github/workflows/release-prepare.yml](../.github/workflows/release-prepare.yml)
 - [.github/workflows/release-publish.yml](../.github/workflows/release-publish.yml)
 - [.changeset/config.json](../.changeset/config.json)
+- [docker-deployment.md](./docker-deployment.md) - Dockerイメージの利用方法
