@@ -498,7 +498,7 @@ EMBEDDING_URL=http://127.0.0.1:24282 search-docs server start
 `EMBEDDING_URL` は接続できなければ起動を中止します。Docker コンテナからホストのサーバへ接続する場合は、`127.0.0.1` の代わりに `host.docker.internal` を使用してください。
 
 MCP / HTTPサーバが利用可能な既存のembeddingサーバに接続する場合、そのサーバのPIDファイルを使って所有権を確認するわけではありません。別のMCP / HTTPサーバが起動した子に接続することもあり、その起動元が終了すると、利用中でも子が停止される場合があります。長く共有したい場合は `embedding start` や Docker Compose で独立して起動する方法があります。独立起動したサーバの停止は、それを管理する利用者が行います。検出順序と終了処理の詳細は [Embeddingの共有と寿命](architecture.md#embeddingの共有と寿命) を参照してください。
-CLI は同時に複数の Embedding サーバを管理できません。すでに CLI 管理下のサーバが稼働している場合は、別ホストやコンテナなどで torch サーバを起動して、その URL を指定してください。
+CLI はポートごとに Embedding サーバを管理します。異なるポートなら複数のサーバを同時に起動できます。複数の管理記録がある場合は、`embedding stop` と `embedding status` に `--port` を指定して対象を選んでください。
 
 明示的な外部 provider は `vectorDimension` をリクエストの `dimensions` に渡し、返却ベクトルが同じ次元でなければエラーになります。API とモデルがその次元指定に対応している必要があります。従来の builtin は互換性のため `/health` が返す次元を優先します。provider、モデル、次元、接続先を変更する場合は、稼働中のサーバを停止して索引を再構築してください。OpenAI 互換では接続先のハッシュを索引 identity に記録し、変更を検出すると再構築を要求します。接続先を記録していない旧形式の OpenAI 互換索引も、安全のため再構築が必要です。`search-docs embedding status` は明示的な外部 provider へ推論リクエストを送り、接続と次元を確認します。
 
@@ -637,7 +637,7 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 | `embedding status [options]` | Embeddingサーバの状態を確認 |
 
 **主なオプション**:
-- `--port <port>`: ポート番号（startは24281、status/stopはPIDファイルのport、なければ24281）
+- `--port <port>`: ポート番号（startは24281、status/stopは管理対象が一つならそのport、なければ24281）
 - `-f, --foreground`: フォアグラウンドで起動
 - `--runtime <runtime>`: `onnx`（デフォルト、GPU/CoreML対応）または `torch`
 - `--dimension <dim>`: ベクトル次元数（デフォルト: 256）
@@ -651,6 +651,8 @@ Embeddingサーバの起動・停止・状態確認を行います。プロジ�
 - `embedding status --probe`: 実際の推論パスを確認（`--timeout <ms>`でタイムアウト指定）
 
 詳細は [CLIリファレンス - embedding コマンド](./cli-reference.md#embedding-コマンド) を参照してください。
+
+デーモン起動の管理記録は `~/.search-docs/embedding-<port>.pid` に保存されます。旧 `embedding.pid` は状態確認用に読み取れますが、過去のポート競合で別プロセスを記録している可能性があるため、通常の `embedding stop` ではその PID を停止しません。停止対象を確認したうえで `embedding stop --port <port>` を実行してください。起動識別子は起動元との対応を確かめる目印であり、同一ユーザーの悪意あるプロセスに対する認証情報ではありません。通常停止はポート所有者と起動識別子を確認できない場合も拒否されます。確認と signal の間に起きる極小のプロセス入れ替わりまでは OS 共通に防げないため、完全な原子性は保証しません。
 
 初回起動時は Hugging Face からモデルを取得するため、ネットワーク速度に応じて数分かかることがあります。起動前にダウンロードしておく場合:
 

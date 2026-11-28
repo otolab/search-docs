@@ -373,6 +373,14 @@ def main():
     parser.add_argument('--runtime', type=str, choices=['onnx', 'torch'], default='onnx', help='Runtime (default: onnx)')
     parser.add_argument('--model-path', type=str, default=None, help='ONNX model path')
     parser.add_argument('--dimension', type=int, default=256, help='Vector dimension (default: 256)')
+    # The CLI checks this private argv marker against the LISTEN process before
+    # registering or stopping it. It associates a launch; it is not a credential.
+    parser.add_argument(
+        '--search-docs-startup-id',
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         '--download-only',
         action='store_true',

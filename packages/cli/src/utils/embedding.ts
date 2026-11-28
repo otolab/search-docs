@@ -70,6 +70,7 @@ export interface EmbeddingPidFile {
   pid: number;
   port: number;
   startedAt: string;
+  launchId?: string;
   model?: string;
   dimension?: number;
   logPath?: string;
@@ -78,6 +79,9 @@ export interface EmbeddingPidFile {
 export interface EmbeddingPidFileState {
   exists: boolean;
   value: EmbeddingPidFile | null;
+  path?: string;
+  legacy?: boolean;
+  portHint?: number;
   error?: string;
 }
 
@@ -446,6 +450,10 @@ export function embeddingPidPath(): string {
   return path.join(embeddingDir(), 'embedding.pid');
 }
 
+export function embeddingPidPathForPort(port: number): string {
+  return path.join(embeddingDir(), `embedding-${port}.pid`);
+}
+
 export function embeddingLogPath(): string {
   return path.join(embeddingDir(), 'embedding.log');
 }
@@ -453,6 +461,7 @@ export function embeddingLogPath(): string {
 export async function readEmbeddingPidFile(
   pidPath: string = embeddingPidPath(),
 ): Promise<EmbeddingPidFileState> {
+  const legacy = path.basename(pidPath) === 'embedding.pid';
   try {
     const { readFile } = await import('fs/promises');
     const content = await readFile(pidPath, 'utf-8');
@@ -462,14 +471,20 @@ export async function readEmbeddingPidFile(
       typeof parsed.port !== 'number' || !Number.isInteger(parsed.port) || parsed.port < 1 || parsed.port > 65535 ||
       typeof parsed.startedAt !== 'string'
     ) {
-      return { exists: true, value: null, error: 'PID file has an invalid schema' };
+      return { exists: true, value: null, path: pidPath, legacy, error: 'PID file has an invalid schema' };
     }
     return {
       exists: true,
+      path: pidPath,
+      legacy,
       value: {
         pid: parsed.pid,
         port: parsed.port,
         startedAt: parsed.startedAt,
+        launchId: typeof parsed.launchId === 'string' &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.launchId)
+          ? parsed.launchId
+          : undefined,
         model: parsed.model,
         dimension: parsed.dimension,
         logPath: parsed.logPath,
@@ -477,12 +492,100 @@ export async function readEmbeddingPidFile(
     };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return { exists: false, value: null };
+    if (code === 'ENOENT') return { exists: false, value: null, path: pidPath, legacy };
     if (error instanceof SyntaxError) {
-      return { exists: true, value: null, error: 'PID file contains invalid JSON' };
+      return { exists: true, value: null, path: pidPath, legacy, error: 'PID file contains invalid JSON' };
     }
-    return { exists: true, value: null, error: (error as Error).message };
+    return { exists: true, value: null, path: pidPath, legacy, error: (error as Error).message };
   }
+}
+
+/**
+ * 指定ポートの管理記録を読む。新形式を優先し、該当ポートの旧形式も読む。
+ * 旧ファイルの記録が別ポートを指す場合は、そのポートの選択を邪魔しない。
+ */
+export async function readEmbeddingPidFileForPort(port: number): Promise<EmbeddingPidFileState> {
+  const portPath = embeddingPidPathForPort(port);
+  const portState = await readEmbeddingPidFile(portPath);
+  if (portState.exists) {
+    if (portState.value && portState.value.port !== port) {
+      return {
+        ...portState,
+        value: null,
+        portHint: port,
+        error: `PID file port does not match its name (${port})`,
+      };
+    }
+    return { ...portState, portHint: port };
+  }
+
+  const legacyState = await readEmbeddingPidFile();
+  if (legacyState.value?.port === port) return legacyState;
+  return { exists: false, value: null, path: portPath, legacy: false };
+}
+
+/**
+ * ポート指定のない status/stop 用に管理記録を選ぶ。
+ * 複数ポートがあれば呼び出し側に明示指定を求める。
+ */
+export async function readUniqueEmbeddingPidFile(): Promise<{
+  state: EmbeddingPidFileState;
+  port?: number;
+  ambiguousPorts: number[];
+}> {
+  const { readdir } = await import('fs/promises');
+  let names: string[];
+  try {
+    names = await readdir(embeddingDir());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { state: await readEmbeddingPidFile(), ambiguousPorts: [] };
+    }
+    throw error;
+  }
+
+  const portNames = names
+    .map((name) => ({ name, match: /^embedding-(\d+)\.pid$/.exec(name) }))
+    .filter((item): item is { name: string; match: RegExpExecArray } => item.match !== null);
+  const portStates = await Promise.all(portNames.map(({ name, match }) => {
+    const port = Number(match[1]);
+    return readEmbeddingPidFile(path.join(embeddingDir(), name)).then((state) => {
+      if (state.value && state.value.port !== port) {
+        return {
+          ...state,
+          value: null,
+          portHint: port,
+          error: `PID file port does not match its name (${port})`,
+        };
+      }
+      return { ...state, portHint: port };
+    });
+  }));
+  const legacyState = await readEmbeddingPidFile();
+  const states = [...portStates.filter((state) => state.exists), ...(legacyState.exists ? [legacyState] : [])];
+
+  const byPort = new Map<number, EmbeddingPidFileState>();
+  const unknown: EmbeddingPidFileState[] = [];
+  for (const state of states) {
+    const port = state.value?.port ?? state.portHint;
+    if (port === undefined) {
+      unknown.push(state);
+      continue;
+    }
+    const current = byPort.get(port);
+    if (!current || current.legacy) byPort.set(port, state);
+  }
+  const ambiguousPorts = [...byPort.keys()].sort((a, b) => a - b);
+  if (ambiguousPorts.length > 1 || unknown.length > 0) {
+    return {
+      state: { exists: false, value: null },
+      ambiguousPorts: ambiguousPorts.length > 0 ? ambiguousPorts : [-1],
+    };
+  }
+  if (ambiguousPorts.length === 1) {
+    return { state: byPort.get(ambiguousPorts[0])!, port: ambiguousPorts[0], ambiguousPorts: [] };
+  }
+  return { state: legacyState, port: legacyState.value?.port, ambiguousPorts: [] };
 }
 
 export async function removeEmbeddingPidFile(

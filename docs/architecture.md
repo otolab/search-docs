@@ -87,7 +87,7 @@ builtin providerの場合、設定の `indexing.embedding.url` があれば、�
 
 ローカル起動後の準備確認もポートへの応答に基づき、その応答元が今回起動した子自身であることまでは確認しません。起動時のポート競合は [Issue #167](https://github.com/otolab/search-docs/issues/167) で追跡しています。
 
-`embedding start` による独立起動は別の経路です。デーモン起動時は `~/.search-docs/embedding.pid` に管理情報を保存し、起動したCLIの終了後も動作します。foreground起動ではPIDファイルを公開しません。MCP / HTTPサーバによる既存サーバの検出はこのファイルを参照せず、逆に自動起動した子をこのファイルに登録しません。独立起動の停止と診断は [CLIリファレンス](cli-reference.md#embedding-コマンド) を参照してください。PID再利用時の停止対象の安全性は [Issue #168](https://github.com/otolab/search-docs/issues/168) で検討中です。
+`embedding start` による独立起動は別の経路です。デーモン起動時は `~/.search-docs/embedding-<port>.pid` にポート別の管理情報を保存し、起動したCLIの終了後も動作します。PIDの公開前に、LISTEN owner のコマンドラインに今回の起動識別子があることを照合します。通常停止でも記録された PID・現在のポート所有者・起動識別子を照合し、旧形式の `embedding.pid` や確認不能なプロセスは所有者とみなして停止しません。foreground起動ではPIDファイルを公開しません。MCP / HTTPサーバによる既存サーバの検出はこのファイルを参照せず、逆に自動起動した子をこのファイルに登録しません。独立起動の停止と診断は [CLIリファレンス](cli-reference.md#embedding-コマンド) を参照してください。PID確認後から signal までの競合を完全に閉じる原子的な OS 共通手段は使っていないため、その短い時間帯の入れ替わりまでは保証しません。
 
 **SearchDocsServiceインターフェイス**:
 

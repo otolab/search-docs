@@ -6,7 +6,8 @@ import type { EmbeddingPidFileState } from '../../../utils/embedding.js';
 import type { EmbeddingStatusSnapshot } from '../../../utils/embedding-state.js';
 
 const embeddingMocks = vi.hoisted(() => ({
-  readEmbeddingPidFile: vi.fn(),
+  readEmbeddingPidFileForPort: vi.fn(),
+  readUniqueEmbeddingPidFile: vi.fn(),
   removeEmbeddingPidFile: vi.fn(),
 }));
 const stateMocks = vi.hoisted(() => ({
@@ -43,10 +44,20 @@ function snapshot(overallState: EmbeddingStatusSnapshot['overallState']): Embedd
 beforeEach(() => {
   vi.clearAllMocks();
   process.exitCode = undefined;
-  embeddingMocks.readEmbeddingPidFile.mockResolvedValue({
+  embeddingMocks.readEmbeddingPidFileForPort.mockResolvedValue({
     exists: true,
     value: { pid: 1234, port: 31337, startedAt: new Date().toISOString() },
+    path: '/tmp/embedding-31337.pid',
   } satisfies EmbeddingPidFileState);
+  embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+    state: {
+      exists: true,
+      value: { pid: 1234, port: 31337, startedAt: new Date().toISOString() },
+      path: '/tmp/embedding-31337.pid',
+    },
+    port: 31337,
+    ambiguousPorts: [],
+  });
   stateMocks.evaluateEmbeddingStatus.mockResolvedValue(snapshot('healthy'));
 });
 
@@ -64,8 +75,18 @@ describe('showEmbeddingStatus', () => {
 
     const result = await showEmbeddingStatus({ repair: true });
 
-    expect(embeddingMocks.removeEmbeddingPidFile).toHaveBeenCalledOnce();
+    expect(embeddingMocks.removeEmbeddingPidFile).toHaveBeenCalledWith('/tmp/embedding-31337.pid');
     expect(result.repaired).toBe(true);
     expect(result.snapshot.overallState).toBe('not_running');
+  });
+
+  it('requires an explicit port when multiple PID files are present', async () => {
+    embeddingMocks.readUniqueEmbeddingPidFile.mockResolvedValue({
+      state: { exists: false, value: null },
+      ambiguousPorts: [24281, 24282],
+    });
+
+    await expect(showEmbeddingStatus()).rejects.toThrow(/Specify --port <port>/);
+    expect(stateMocks.evaluateEmbeddingStatus).not.toHaveBeenCalled();
   });
 });

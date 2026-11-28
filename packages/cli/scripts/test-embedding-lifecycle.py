@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='issue165-life-') as d:
  try:
   for iteration in range(2):
    p=run('start','--port',str(port),'--ready-timeout','10000'); assert p.returncode==0
-   state=json.loads((home/'.search-docs'/'embedding.pid').read_text());pid=state['pid']; os.kill(pid,0); print('running pid',pid,flush=True)
+   state=json.loads((home/'.search-docs'/f'embedding-{port}.pid').read_text());pid=state['pid']; assert state['launchId']; os.kill(pid,0); print('running pid',pid,flush=True)
    p=run('stop'); assert p.returncode==0; pid=None
  finally:
   marker=home/'launcher-pid'

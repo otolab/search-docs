@@ -18,15 +18,15 @@ import {
   isPortAvailable,
   waitForEmbeddingReady,
   embeddingDir,
-  embeddingPidPath,
+  embeddingPidPathForPort,
   embeddingLogPath,
-  readEmbeddingPidFile,
+  readEmbeddingPidFileForPort,
 } from '../../utils/embedding.js';
 import { resolveDbEngineRoot } from '../../utils/db-engine-path.js';
 import {
   getListeningProcess,
   isProcessAlive,
-  killProcessTree,
+  killProcessTreeWithCommandMarker,
 } from '../../utils/process.js';
 
 export interface EmbeddingStartOptions {
@@ -67,8 +67,8 @@ function formatOwner(owner: { pid: number; command?: string } | null): string {
   return `PID ${owner.pid}${owner.command ? ` (${owner.command})` : ''}`;
 }
 
-async function removeStalePidFile(): Promise<void> {
-  await unlink(embeddingPidPath()).catch((error: NodeJS.ErrnoException) => {
+async function removeStalePidFile(pidPath: string): Promise<void> {
+  await unlink(pidPath).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error;
   });
 }
@@ -78,38 +78,52 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
   const runtime = options.runtime ?? 'onnx';
   const dimension = parseDimension(options.dimension);
   const readyTimeoutMs = getEmbeddingReadyTimeoutMs(options.readyTimeout);
-  const pidState = await readEmbeddingPidFile();
+  const launchId = randomUUID();
+  const targetPidPath = embeddingPidPathForPort(port);
+  const pidState = await readEmbeddingPidFileForPort(port);
 
   // 起動前診断: PIDファイルがあってもプロセスが死んでいれば先に修復する。
   if (pidState.error) {
-    console.warn(`Warning: ${pidState.error}. Removing unusable PID file.`);
-    await removeStalePidFile();
+    throw new Error(
+      `${pidState.error} (${pidState.path ?? targetPidPath}). ` +
+      'Inspect or remove the unusable PID file before starting another server.',
+    );
   } else if (pidState.value && !isProcessAlive(pidState.value.pid)) {
     console.log(`Removing stale embedding PID file (PID: ${pidState.value.pid}).`);
-    await removeStalePidFile();
+    await removeStalePidFile(pidState.path ?? targetPidPath);
   } else if (pidState.value) {
     const managedHealthLocation = await findEmbeddingHealth(pidState.value.port, 1000);
     const managedHealth = managedHealthLocation?.health;
     const managedOwner = getListeningProcess(pidState.value.port);
-    if (managedHealth && managedOwner && managedOwner.pid !== pidState.value.pid) {
-      throw new Error(
-        `PID file points to PID ${pidState.value.pid}, but port ${pidState.value.port} ` +
-        `is owned by external ${formatOwner(managedOwner)}. ` +
-        `Use embedding stop --port ${pidState.value.port} only after confirming the target.`,
-      );
-    }
-    if (managedHealth) {
+    const verifiedManagedOwner = Boolean(
+      pidState.value.launchId &&
+      managedOwner?.pid === pidState.value.pid &&
+      managedOwner.command?.includes(`--search-docs-startup-id=${pidState.value.launchId}`),
+    );
+    if (verifiedManagedOwner && managedHealth) {
       throw new Error(
         `Embedding server is already managed (PID: ${pidState.value.pid}, port: ${pidState.value.port}). ` +
         `Stop it before starting another server.`,
       );
     }
-
-    throw new Error(
-      `PID file points to live PID ${pidState.value.pid}, but the embedding server is not healthy ` +
-      `(port ${pidState.value.port}, ${formatOwner(managedOwner)}). ` +
-      'Inspect the process or use embedding stop --port after confirming the target.',
-    );
+    if (managedHealth) {
+      console.warn(
+        `Warning: an embedding PID record for port ${pidState.value.port} cannot prove ownership; ` +
+        'the responding server will be treated as external.',
+      );
+    } else if (managedOwner && managedOwner.pid !== pidState.value.pid) {
+      throw new Error(
+        `PID file points to PID ${pidState.value.pid}, but port ${pidState.value.port} ` +
+        `is owned by external ${formatOwner(managedOwner)}. ` +
+        `Use embedding stop --port ${pidState.value.port} only after confirming the target.`,
+      );
+    } else if (!managedHealth) {
+      throw new Error(
+        `PID file points to live PID ${pidState.value.pid}, but the embedding server is not healthy ` +
+        `(port ${pidState.value.port}, ${formatOwner(managedOwner)}). ` +
+        'Inspect the process or use embedding stop --port after confirming the target.',
+      );
+    }
   }
 
   // PIDファイルの診断で外部サーバを見つけた場合は、PIDファイルを上書きしない。
@@ -148,6 +162,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     `--port=${port}`,
     `--runtime=${runtime}`,
     `--dimension=${dimension}`,
+    `--search-docs-startup-id=${launchId}`,
   ];
 
   console.log(`Starting embedding server (runtime: ${runtime}, port: ${port})...`);
@@ -160,7 +175,12 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       env: { ...process.env, PYTHONUNBUFFERED: '1' },
     });
 
-    const cleanup = proc.pid ? () => killProcessTree(proc.pid!) : async () => {};
+    const cleanup = proc.pid
+      ? () => killProcessTreeWithCommandMarker(
+        proc.pid!,
+        `--search-docs-startup-id=${launchId}`,
+      )
+      : async () => {};
     let cleanupPromise: Promise<void> | null = null;
     const reap = () => {
       cleanupPromise ??= cleanup();
@@ -184,12 +204,12 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
         proc.once('error', reject);
         proc.once('exit', () => resolve());
       });
-      await reap();
+      if (cleanupPromise) await cleanupPromise;
       if (interruptedBy) {
         process.exitCode = interruptedBy === 'SIGINT' ? 130 : 143;
       }
     } catch (error) {
-      await reap();
+      if (cleanupPromise) await cleanupPromise;
       throw error;
     } finally {
       process.removeListener('SIGINT', onSigint);
@@ -227,7 +247,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
 
   let interruptedBy: 'SIGINT' | 'SIGTERM' | null = null;
   let published = false;
-  const temporaryPidPath = `${embeddingPidPath()}.${randomUUID()}.tmp`;
+  const temporaryPidPath = `${targetPidPath}.${randomUUID()}.tmp`;
   const readinessController = new AbortController();
   const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
     interruptedBy ??= signal;
@@ -289,13 +309,13 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     }
     throwIfLauncherExited();
 
-    // PIDファイル保存。uvは親プロセスを返すことがあるため、実際にポートを
-    // LISTENしているEmbeddingプロセスのPIDを保存する。
+    // readiness は別プロセスの応答でも成立し得る。LISTEN PID とその
+    // コマンドラインの起動識別子が今回の spawn に結び付くことを確認する。
     const owner = getListeningProcess(port);
-    if (!owner) {
+    if (!owner || !owner.command?.includes(`--search-docs-startup-id=${launchId}`)) {
       throw new Error(
-        `Embedding server became ready on port ${port}, but the LISTEN owner PID could not be determined. ` +
-        'No PID file was written; check the server manually before retrying.',
+        `Embedding server became ready on port ${port}, but its LISTEN owner could not be verified as this launch. ` +
+        'No PID file was written; the responding server was left untouched.',
       );
     }
     const healthLocation = await findEmbeddingHealth(port);
@@ -306,6 +326,7 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
       pid: owner.pid,
       port,
       startedAt: new Date().toISOString(),
+      launchId,
       model: health?.model ?? 'unknown',
       dimension: health?.vectorDimension ?? dimension,
       logPath,
@@ -319,7 +340,17 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
 
     throwIfInterrupted();
     throwIfLauncherExited();
-    await link(temporaryPidPath, embeddingPidPath());
+    const currentOwner = getListeningProcess(port);
+    if (
+      currentOwner?.pid !== owner.pid ||
+      !currentOwner.command?.includes(`--search-docs-startup-id=${launchId}`)
+    ) {
+      throw new Error(
+        `LISTEN owner for port ${port} changed before PID publication. ` +
+        'No PID file was written; the current server was left untouched.',
+      );
+    }
+    await link(temporaryPidPath, targetPidPath);
     // Publication transfers ownership to the PID file. A signal received while
     // link was pending must not retract the published server.
     published = true;
@@ -337,21 +368,23 @@ export async function startEmbeddingServer(options: EmbeddingStartOptions): Prom
     }
   } catch (error) {
     const wasInterrupted = interruptedBy;
+    if (published) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}. ` +
+        `The PID file ${targetPidPath} was published; inspect the server before stopping it.`,
+        { cause: error },
+      );
+    }
     try {
-      await killProcessTree(proc.pid);
+      await killProcessTreeWithCommandMarker(
+        proc.pid,
+        `--search-docs-startup-id=${launchId}`,
+      );
     } catch (cleanupError) {
       const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
       throw new Error(
         `${error instanceof Error ? error.message : String(error)}. ` +
-        `Failed to reap the embedding process: ${message}` +
-        (published ? '. A PID file may remain; inspect it and the server before retrying or stopping.' : ''),
-        { cause: error },
-      );
-    }
-    if (published) {
-      throw new Error(
-        `${error instanceof Error ? error.message : String(error)}. ` +
-        'A PID file may remain; inspect it and the server before retrying or stopping.',
+        `Failed to reap the embedding process: ${message}`,
         { cause: error },
       );
     }
