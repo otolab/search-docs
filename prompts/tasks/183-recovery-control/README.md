@@ -61,3 +61,11 @@ pnpm --dir packages/server exec vitest run --config vitest.config.heartbeat.ts s
 inq-11 の確認では、同一 identity の stale registration、5 MCP 並列・再接続、停止失敗を注入した identity mismatch 起動、期限切れ heartbeat takeover と takeover 後の単発旧 DBEngine write を組み合わせます。これにより shared admission / maintenance exclusion / lease takeover と startup cleanup の境界を個別に観測しますが、停止未確認 child を伴う実 embedding runtime の再起動や、二つの active Watcher が同時に native write する場合の safety は証明しません。strict diagnosis は maintenance registration と child owner を調べません。
 
 この harness が扱うのは単一 host のローカル一時 filesystem と、identity/table/index の各操作が完了した境界での SIGKILL / fault injection です。LanceDB 0.30.2 の Python `create_scalar_index()` は Rust 側の async `create_index()` を待つ wrapper で、公開 Python API に native operation の内部 pause / progress hook はありません。時間を見計らって kill する方式では、API 呼出し前・処理中・完了後のどこで停止したかを決定的に識別できず、安全な crash-matrix 試験とはみなしません。native API 内部の停止を再現するには disposable DB 上で使える専用 failpoint が必要ですが、現状その機構はなく、OS crash・電源断、network/shared filesystem、multi-host、Windows の保証にも一般化できません。backup restore 後に残る maintenance marker をどう解除するかは未承認の製品仕様であり、この試験は marker を消しません。
+
+## inq-12: 起動失敗 rollback の停止未確認
+
+operator は、MCP / HTTP の起動失敗時に、その起動試行が開始した child の停止を確認できなければ、親 process は失敗終了し shared registration を保持する方向を選びました。inq-10 の「service-owned local embedding child に自動 SIGKILL しない」、inq-11 の同一 lock identity 通常起動許可も併せて扱います。registration の保持は同一 identity の shared 起動を止める保証ではなく、stale 判定・回収にも使いません。新 lock、復旧手順、通知方式、製品実装は未承認です。
+
+実装前の試験対象は MCP の初回 `createService()`、MCP `init` 後の `refreshServiceState()`、HTTP server の直接起動と起動中 SIGINT/SIGTERM、HTTP の非同期 `WatcherProcess.start()` failure、CLI daemon の readiness timeout、CLI `server restart` とします。child stop 成功時は通常 rollback、停止未確認時は終了コード非0・shared entry 保持・exclusive maintenance 拒否を照合します。同一 identity shared 起動は inq-11 どおり許可されることを別の観測として扱い、child が stale / 安全と断定しません。local embedding / DBEngine / strict diagnostic worker ごとに専用 fixture child を使い、実利用 DB は使いません。
+
+現状は `embedding-identity-mismatch-cleanup.mjs` で、MCP の identity mismatch 中に child の SIGTERM 失敗を注入すると、shared entry が解放され親 MCP が残る経路を確認済みです。HTTP の `server-startup-cleanup.test.ts` は stop error 時の registration 保持を mock で確認しますが、実 child・親 process exit・起動中 signal は確認しません。現行実装の read-through と次に必要な試験条件は `prompts/tasks/183.maintenance-recovery-investigation.v1.md` の inq-12 記録を参照してください。ここに記した受け入れ方向は設計記録であり、現行製品挙動を変更した結果ではありません。
