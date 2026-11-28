@@ -8,6 +8,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readlink,
   readdir,
   rm,
   writeFile,
@@ -25,6 +26,7 @@ const indexPath = path.join(root, 'project/.search-docs/index');
 const projectRoot = path.dirname(path.dirname(indexPath));
 const managementPath = path.join(projectRoot, '.search-docs/.search-docs-maintenance');
 const childRegistry = path.join(root, 'service-child-groups.jsonl');
+const barrierTableListPath = path.join(root, 'tables-at-barrier.json');
 const runtimeEnv = {
   ...process.env,
   VIRTUAL_ENV: path.join(repo, 'packages/db-engine/.venv'),
@@ -102,7 +104,7 @@ async function hashTree(directory) {
         entries.push([key, 'directory']);
         await visit(file, key);
       } else if (entry.isSymbolicLink()) {
-        entries.push([key, `symlink:${await readFile(file).catch(() => '')}`]);
+        entries.push([key, `symlink:${await readlink(file)}`]);
       } else {
         entries.push([
           key,
@@ -306,9 +308,13 @@ try {
   const instrumentedWorker = originalWorker
     .replace(importAnchor, `${importAnchor}
 
-def _issue183_pause_after_sections():
+def _issue183_pause_after_sections(db):
     import os, sys, time
     if os.environ.get('ISSUE183_PAUSE_AFTER_SECTIONS') == '1':
+        table_list_path = os.environ.get('ISSUE183_TABLES_AT_BARRIER_FILE')
+        if not table_list_path:
+            raise RuntimeError('ISSUE183_TABLES_AT_BARRIER_FILE is required')
+        Path(table_list_path).write_text(json.dumps(sorted(db.table_names())))
         sys.stderr.write('ISSUE183_PAUSED_AFTER_SECTIONS\\n')
         sys.stderr.flush()
         while True:
@@ -317,7 +323,7 @@ def _issue183_pause_after_sections():
     .replace(
       sectionCreate,
       `${sectionCreate}
-                    _issue183_pause_after_sections()`,
+                    _issue183_pause_after_sections(self.db)`,
     );
   assert.notEqual(instrumentedWorker, originalWorker, 'worker barrier instrumentation did not apply');
   await writeFile(workerPath, instrumentedWorker);
@@ -383,6 +389,7 @@ syncBuiltinESMExports();
   const mcpEnv = {
     ...env,
     ISSUE183_PAUSE_AFTER_SECTIONS: '1',
+    ISSUE183_TABLES_AT_BARRIER_FILE: barrierTableListPath,
   };
   const mcp = trackChild(children, spawn(process.execPath, [
     path.join(repo, 'packages/mcp-server/dist/server.js'),
@@ -426,7 +433,12 @@ syncBuiltinESMExports();
     };
     void check();
   });
-  const tablesAtBarrier = ['embedding_identity', 'sections'];
+  const tablesAtBarrier = JSON.parse(await readFile(barrierTableListPath, 'utf8'));
+  assert.deepEqual(
+    tablesAtBarrier,
+    ['embedding_identity', 'sections'],
+    'the worker DB table listing at the barrier did not match the expected partial initialization state',
+  );
   const databaseAtBarrier = await hashTree(indexPath);
   const firstWorkerGroup = (await readChildGroups()).find(item =>
     item.args.some(value => typeof value === 'string' && value.includes(path.resolve(indexPath)))
@@ -442,6 +454,20 @@ syncBuiltinESMExports();
   assert.equal(parentSignal, 'SIGKILL');
   const workerGroupAliveAfterParentCrash = await processGroupExists(firstWorkerGroup.pid);
   const workerGroupProcessesAfterParentCrash = processGroupSnapshot(firstWorkerGroup.pid);
+  assert.equal(
+    workerGroupAliveAfterParentCrash,
+    true,
+    'expected the known detached DB worker group to survive the MCP parent SIGKILL',
+  );
+  assert(
+    workerGroupProcessesAfterParentCrash.length > 0,
+    'the surviving worker group had no observable process entries',
+  );
+  assert(
+    workerGroupProcessesAfterParentCrash.every(line =>
+      line.includes(path.resolve(indexPath)) && line.includes('worker.py')),
+    `surviving process group did not identify only the fixture DB worker:\n${workerGroupProcessesAfterParentCrash.join('\n')}`,
+  );
   const workerStoppedByHarness = await stopKnownWorkerGroup(firstWorkerGroup.pid);
   assert.equal(await processGroupExists(firstWorkerGroup.pid), false,
     'could not confirm the known fixture DB worker group stopped');
@@ -516,6 +542,7 @@ syncBuiltinESMExports();
     process: 'real MCP server and real SearchDocsWorker',
     database: 'new disposable LanceDB under a temporary project',
     fixtureCrashPoint: 'real MCP parent SIGKILL while its real writable SearchDocsWorker was paused after creating embedding_identity and sections, before index_requests and writer_heartbeat',
+    databaseSnapshotDefinition: 'sorted relative paths, directory entries, symlink target strings, and SHA-256 of regular-file contents; filesystem metadata such as timestamps, ownership, and mode is not compared',
     parentExit: [parentCode, parentSignal],
     observedTablesAtBarrier: tablesAtBarrier,
     usersBeforeParentCrash: usersBeforeParentCrash.length,
