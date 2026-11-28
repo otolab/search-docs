@@ -25,10 +25,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages/db-engine
 
 DIMENSION = 256
 QUERY = "disposable retention fixture"
-POLL_SECONDS = 0.25
-MINIMUM_PIN_AGE_SECONDS = int(
-    os.environ.get("ISSUE183_MINIMUM_PIN_AGE_SECONDS", "610")
+POLL_SECONDS = float(os.environ.get("ISSUE183_QUERY_POLL_SECONDS", "0.25"))
+MINIMUM_SEED_VERSION_AGE_SECONDS = int(
+    os.environ.get(
+        "ISSUE183_MINIMUM_SEED_VERSION_AGE_SECONDS",
+        os.environ.get("ISSUE183_MINIMUM_PIN_AGE_SECONDS", "610"),
+    )
 )
+PIN_READER = os.environ.get("ISSUE183_PIN_READER", "1") != "0"
 INTERVAL_CAPACITY = 20_000
 
 
@@ -123,6 +127,7 @@ def worker_reader(
     ready_queue,
     result_queue,
     query_intervals,
+    query_success_flags,
     query_count,
     success_count,
     failure_count,
@@ -165,6 +170,7 @@ def worker_reader(
                 if slot < len(query_intervals) // 2:
                     query_intervals[slot * 2] = started_ns
                     query_intervals[slot * 2 + 1] = ended_ns
+                    query_success_flags[slot] = 1 if error is None else 0
                     query_count.value = slot + 1
                     if error is None:
                         success_count.value += 1
@@ -209,6 +215,7 @@ def run() -> int:
     ready_queue = context.Queue()
     result_queue = context.Queue()
     query_intervals = context.Array("q", INTERVAL_CAPACITY * 2)
+    query_success_flags = context.Array("b", INTERVAL_CAPACITY)
     query_count = context.Value("i", 0)
     success_count = context.Value("i", 0)
     failure_count = context.Value("i", 0)
@@ -223,9 +230,14 @@ def run() -> int:
         "fixture_root": str(root),
         "fixture": "fresh disposable LanceDB index under the system temporary directory",
         "lancedb_version": getattr(lancedb, "__version__", "unknown"),
-        "minimum_pinned_age_before_periodic_optimize_seconds": MINIMUM_PIN_AGE_SECONDS,
+        "minimum_seed_version_age_before_periodic_optimize_seconds": MINIMUM_SEED_VERSION_AGE_SECONDS,
         "reader_operation": "SearchDocsWorker.search(query, limit=1)",
-        "reader_mode": "SearchDocsWorker(read_only=True); fixture embedding avoids model/network access",
+        "reader_mode": (
+            "SearchDocsWorker(read_only=True); checkout(version) snapshot"
+            if PIN_READER else
+            "SearchDocsWorker(read_only=True); no checkout; default read_consistency_interval=5s"
+        ),
+        "reader_poll_seconds": POLL_SECONDS,
         "writer_operation": "SearchDocsWorker.add_sections; its unmodified 20-write _maybe_optimize path",
     }
 
@@ -240,22 +252,24 @@ def run() -> int:
 
         writer.add_sections({"sections": [make_section(0)]})
         table = writer._get_sections_table()
-        pinned_version = table.version
-        pinned_since_ns = time.monotonic_ns()
-        pinned_since_utc = datetime.now(timezone.utc).isoformat()
-        versions_at_pin = [item["version"] for item in table.list_versions()]
+        seed_version = table.version
+        seed_version_created_ns = time.monotonic_ns()
+        seed_version_created_utc = datetime.now(timezone.utc).isoformat()
+        versions_at_seed = [item["version"] for item in table.list_versions()]
         optimize_events = events
         writer._sections_table = ObservedTable(table, index_root, optimize_events)
+        reader_version = seed_version if PIN_READER else None
 
         reader = context.Process(
             target=worker_reader,
             args=(
                 str(index_root),
-                pinned_version,
+                reader_version,
                 stop_reader,
                 ready_queue,
                 result_queue,
                 query_intervals,
+                query_success_flags,
                 query_count,
                 success_count,
                 failure_count,
@@ -268,15 +282,15 @@ def run() -> int:
         if reader_ready.get("status") != "ready":
             raise RuntimeError(f"read-only SearchDocsWorker reader not ready: {reader_ready}")
 
-        deadline = pinned_since_ns + MINIMUM_PIN_AGE_SECONDS * 1_000_000_000
+        deadline = seed_version_created_ns + MINIMUM_SEED_VERSION_AGE_SECONDS * 1_000_000_000
         last_progress = 0
         while time.monotonic_ns() < deadline:
             if reader.exitcode is not None:
                 raise RuntimeError("SearchDocsWorker reader exited before the aged periodic optimize")
-            elapsed = (time.monotonic_ns() - pinned_since_ns) / 1_000_000_000
+            elapsed = (time.monotonic_ns() - seed_version_created_ns) / 1_000_000_000
             if elapsed - last_progress >= 60:
                 print(
-                    f"waiting for pinned version age: {elapsed:.0f}/{MINIMUM_PIN_AGE_SECONDS}s "
+                    f"waiting for seed version age: {elapsed:.0f}/{MINIMUM_SEED_VERSION_AGE_SECONDS}s "
                     f"(successful searches={success_count.value})",
                     file=sys.stderr,
                     flush=True,
@@ -285,7 +299,7 @@ def run() -> int:
             time.sleep(min(5, max(0.05, (deadline - time.monotonic_ns()) / 1_000_000_000)))
 
         before_trigger_ns = time.monotonic_ns()
-        before_trigger_age = (before_trigger_ns - pinned_since_ns) / 1_000_000_000
+        before_trigger_age = (before_trigger_ns - seed_version_created_ns) / 1_000_000_000
         calls_to_boundary = 20 - (writer._write_counts.get("sections", 0) % 20)
         for number in range(1, calls_to_boundary + 1):
             writer.add_sections({"sections": [make_section(number)]})
@@ -295,34 +309,34 @@ def run() -> int:
         if optimize["error"] is not None:
             errors.append(f"periodic optimize failed: {optimize['error']}")
         age_at_optimize_start = (
-            optimize["started_ns"] - pinned_since_ns
+            optimize["started_ns"] - seed_version_created_ns
         ) / 1_000_000_000
         versions_after = [item["version"] for item in table.list_versions()]
-        pinned_version_present = pinned_version in versions_after
+        seed_version_present = seed_version in versions_after
 
-        # Allow the pinned reader to make a post-cleanup search and observe its
-        # own result before asking it to stop.
+        # Let the reader continue for a bounded post-cleanup observation window.
         post_cleanup_observation_started_ns = time.monotonic_ns()
         if reader.is_alive():
             reader.join(timeout=10)
-        pinned_reader_alive_after_observation = reader.is_alive()
+        reader_alive_after_observation = reader.is_alive()
         post_cleanup_observation_ended_ns = time.monotonic_ns()
         if reader.is_alive():
             stop_reader.set()
             reader.join(timeout=15)
         if reader.is_alive():
             cleanup_safe = False
-            errors.append("pinned SearchDocsWorker process did not stop; fixture retained")
-            pinned_reader_result = {"status": "unknown", "reason": "process remains alive"}
+            errors.append("SearchDocsWorker process did not stop; fixture retained")
+            reader_result = {"status": "unknown", "reason": "process remains alive"}
         else:
-            pinned_reader_result = result_queue.get(timeout=10)
+            reader_result = result_queue.get(timeout=10)
             if reader.exitcode != 0:
-                errors.append(f"pinned SearchDocsWorker exited with code {reader.exitcode}")
+                errors.append(f"SearchDocsWorker reader exited with code {reader.exitcode}")
 
         latest_reader_queue = context.Queue()
         latest_reader_stop = context.Event()
         latest_reader_stop.set()
         latest_reader_intervals = context.Array("q", 4)
+        latest_reader_success_flags = context.Array("b", 2)
         latest_reader_query_count = context.Value("i", 0)
         latest_reader_success_count = context.Value("i", 0)
         latest_reader_failure_count = context.Value("i", 0)
@@ -336,6 +350,7 @@ def run() -> int:
                 ready_queue,
                 latest_reader_queue,
                 latest_reader_intervals,
+                latest_reader_success_flags,
                 latest_reader_query_count,
                 latest_reader_success_count,
                 latest_reader_failure_count,
@@ -359,23 +374,34 @@ def run() -> int:
                 errors.append("latest SearchDocsWorker process did not stop; fixture retained")
 
         intervals = []
+        post_cleanup_query_successes = 0
+        post_cleanup_query_failures = 0
         with shared_lock:
             for slot in range(query_count.value):
-                intervals.append([
-                    query_intervals[slot * 2],
-                    query_intervals[slot * 2 + 1],
-                ])
+                query_started_ns = query_intervals[slot * 2]
+                query_ended_ns = query_intervals[slot * 2 + 1]
+                query_succeeded = bool(query_success_flags[slot])
+                intervals.append([query_started_ns, query_ended_ns])
+                if (
+                    query_started_ns >= optimize["ended_ns"]
+                    and query_ended_ns <= post_cleanup_observation_ended_ns
+                ):
+                    if query_succeeded:
+                        post_cleanup_query_successes += 1
+                    else:
+                        post_cleanup_query_failures += 1
         overlaps = sum(
             query_end >= optimize["started_ns"] and query_start <= optimize["ended_ns"]
             for query_start, query_end in intervals
         )
         result.update({
             "status": "error" if errors else "completed",
-            "pinned_version": pinned_version,
-            "pinned_version_started_utc": pinned_since_utc,
-            "versions_at_pin": versions_at_pin,
-            "pinned_version_age_seconds_before_trigger_writes": round(before_trigger_age, 3),
-            "pinned_version_age_seconds_at_periodic_optimize_start": round(age_at_optimize_start, 3),
+            "seed_version": seed_version,
+            "reader_checked_out_version": reader_version,
+            "seed_version_created_utc": seed_version_created_utc,
+            "versions_at_seed": versions_at_seed,
+            "seed_version_age_seconds_before_trigger_writes": round(before_trigger_age, 3),
+            "seed_version_age_seconds_at_periodic_optimize_start": round(age_at_optimize_start, 3),
             "write_count_before_trigger": writer._write_counts.get("sections", 0) - calls_to_boundary,
             "write_count_after_trigger": writer._write_counts.get("sections", 0),
             "add_sections_calls": writer._add_count,
@@ -384,7 +410,12 @@ def run() -> int:
                 (post_cleanup_observation_ended_ns - optimize["ended_ns"]) / 1_000_000_000,
                 3,
             ),
-            "pinned_reader_alive_after_post_cleanup_observation": pinned_reader_alive_after_observation,
+            "reader_alive_after_post_cleanup_observation": reader_alive_after_observation,
+            "post_cleanup_query_count": (
+                post_cleanup_query_successes + post_cleanup_query_failures
+            ),
+            "post_cleanup_successful_searches": post_cleanup_query_successes,
+            "post_cleanup_failed_searches": post_cleanup_query_failures,
             "periodic_optimize": {
                 "started_utc": optimize["started_utc"],
                 "ended_utc": optimize["ended_utc"],
@@ -392,11 +423,11 @@ def run() -> int:
                 "error": optimize["error"],
                 "file_delta_during_call": optimize["file_delta"],
                 "versions_after": versions_after,
-                "pinned_version_present_after": pinned_version_present,
+                "seed_version_present_after": seed_version_present,
                 "reader_search_calls_overlapping_optimize_wall_clock_interval": overlaps,
                 "overlap_measurement": "whole Python SearchDocsWorker.search and optimize call intervals, not native LanceDB execution",
             },
-            "pinned_read_only_worker_after_optimize": pinned_reader_result,
+            "reader_after_optimize": reader_result,
             "new_read_only_worker_ready_after_optimize": latest_ready,
             "new_read_only_worker_after_optimize": latest_reader_result,
             "query_count": query_count.value,
@@ -406,7 +437,7 @@ def run() -> int:
                 "one disposable database, one local host, one writer and one reader",
                 "SearchDocsWorker(read_only=True) path is exercised directly; no TypeScript DBEngine, MCP/HTTP transport, or external embedding model",
                 "fixture vectors and a fixed fixture query are used",
-                "the reader pins a LanceDB table version explicitly; this does not establish every service reader's snapshot behavior",
+                "the reader behavior is indicated by reader_mode; it does not establish every service reader's snapshot behavior",
                 "wall-clock Python-call overlap does not prove native LanceDB operations overlapped",
                 "no competing writer, alternate filesystem/host, native API failpoint, OS crash, or power loss",
             ],
