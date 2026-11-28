@@ -17,6 +17,7 @@ Issue #183 の現行挙動を、専用の一時ディレクトリと実プロセ
 
 ```sh
 node prompts/tasks/183-recovery-control/lock-control.mjs
+node prompts/tasks/183-recovery-control/manual-registration-removal.mjs
 node prompts/tasks/183-recovery-control/recreate-recovery.mjs
 node prompts/tasks/183-recovery-control/writer-stop-unconfirmed.mjs
 node prompts/tasks/183-recovery-control/http-shutdown-unconfirmed.mjs
@@ -45,6 +46,7 @@ pnpm --dir packages/server exec vitest run --config vitest.config.heartbeat.ts s
 ## 試験範囲と限界
 
 - `lock-control.mjs`: 現行 lock の一時複製を使い、gate / users / exclusive / incomplete 作成点で SIGKILL。別 process の shared/exclusive 競合を20回実施します。さらに、shared registration 完了後に owner process を SIGKILL し、残った entry が exclusive maintenance を拒否する一方、同じ identity の shared process は参加できること、別 identity は拒否されること、自動回収されないことを確認します。
+- `manual-registration-removal.mjs`: 現行 lock source を一時 module に transpile し、専用 project の identity と管理領域を確認します。process owner の情報が登録にないこと、`gate` が存在しても直接の registration 削除は実行できること、その間 lock API の exclusive 取得は拒否されることを使い捨て fixture で確認します。実 DB・既存管理領域・子プロセスは使いません。この試験は利用者の停止確認や新規起動の抑止を実証しません。
 - `recreate-recovery.mjs`: 実 LanceDB を使い、identity、各必須 table、`index_requests.status` index の作成完了直後に SIGKILL する matrix を作ります。各 DB の table 構成、strict 診断の成否、診断前後の tree hash を確認した後、`sections` 作成後の DB で `index recreate` と backup restore の条件を試します。現在の source がない場合に index tree が変わらず拒否されること、source が戻れば全再構築できること、known-good backup の復元後も `incomplete` が shared registration を止めることを確認します。Embedding endpoint は loopback fake で、固定ベクトルを返し、実モデル推論を行いません。
 - `recreate-recovery.mjs` の recovery fixture は、使い捨て project に `source.md` と LanceDB を作り、`sections` table 作成完了後に SIGKILL します。別の fixture child が `exclusive` と `incomplete` を作ってから SIGKILL された後、`users` が空であることを確認し、この fixture の `exclusive` directory だけを手動削除します。再構築試験では source を一時削除して preflight 拒否・index hash 不変を確認し、source を戻して全再構築します。backup 試験では正常完了した同一 fixture の `index` と `documents` をコピーして backup にし、partial DB と incomplete を作り、source を削除して recreate を拒否させます。その後、fixture の partial `index` と `documents` を削除し、known-good backup の2 directory をコピーで戻します。strict diagnosis は通りますが `incomplete` は残り、shared registration は拒否されます。これは fixture 上で明示的に行った手順であり、製品の stale lock 回収や backup restore 完了手順ではありません。
 - `scalar-index-failure.py`: 必須 table がある DB で1つの index 作成例外を注入し、残る index 作成・strict 診断・filter 結果・論理行 hash・次回再試行を確認します。DB worker 内の直接呼び出しなので TypeScript service の writer 開始や本番データ規模は対象外です。
