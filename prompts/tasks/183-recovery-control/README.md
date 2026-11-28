@@ -26,6 +26,7 @@ node prompts/tasks/183-recovery-control/heartbeat-stale-writer-write.mjs
 node prompts/tasks/183-recovery-control/source-dist-check.mjs
 packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/scalar-index-failure.py
 packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/lancedb-read-write-control.py
+packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/search-docs-periodic-maintenance-reader.py
 node prompts/tasks/183-recovery-control/cleanup-failure.mjs
 pnpm --dir packages/db-engine exec vitest run --config vitest.config.maintenance.ts src/typescript/__tests__/process-tree.test.ts
 pnpm --dir packages/mcp-server exec ../../node_modules/.bin/vitest run --config vitest.config.maintenance.ts src/maintenance/__tests__/parallel-mcp-startup.test.ts
@@ -43,6 +44,8 @@ pnpm --dir packages/server exec vitest run --config vitest.config.heartbeat.ts s
 `scalar-index-failure.py` は実 LanceDB の disposable DB に各5,000行を入れ、現行 `SearchDocsWorker.init_tables()` の `index_requests.status` scalar-index 作成時だけ例外を注入します。必須 table が揃った状態で read-only strict 診断を行い、filter 結果と論理行 hash を比較した後、次回初期化で index が作られることを確認します。実行時間は1回の小規模な観測値であり、性能ベンチマークではありません。LanceDB native API 呼び出し中のクラッシュは注入しません。
 
 `lancedb-read-write-control.py` は一時 DB に小さな table を作り、同一 process 内の独立した writer / reader connection から通常の `add` と read-only query を重ねます。さらに別の使い捨て DB では、別 process が古い table version を開いたまま writer が overwrite と `optimize(cleanup_older_than=0)` を実行し、その reader の結果を観測します。子 process の終了を確認してから temp root を削除し、終了未確認なら root を残します。読み取り中の例外、観測行数の後退、読み取りだけを行った前後の DB file hash 差分、通常 append による file 増加、cleanup 中の old-version read の結果を記録します。いずれも単一回の局所制御試験であり、search-docs の maintenance admission、他 filesystem / host、native API 中断、電源断の安全性を証明しません。
+
+`search-docs-periodic-maintenance-reader.py` は pinned LanceDB の disposable DB 上で実 `SearchDocsWorker.init_tables()` と `add_sections()` を使います。100回の append 中、worker が実際に呼ぶ20回ごとの `optimize(cleanup_older_than=10分)` の前後で DB file snapshot を取り、別 process の old-version reader を並行させます。old reader は各 maintenance 呼出し内に完了した read/query の時刻も記録し、新しい reader process は20回ごとの境界で起動します。100回目の製品コードは `table.optimize.compact_files()` の属性参照が失敗し、warning を出すところまでを記録します。pinned LanceDB 0.30.2 で実在する `Table.compact_files()` はdeprecated APIとして別途 disposable DB 上で呼び、file snapshot と reader を観測します。最後に同じ writer 結果を複製し、一方は old reader を開いたまま、もう一方は reader なしで `optimize(cleanup_older_than=0)` を実行します。cleanup 前後の versions・file snapshot と old/new reader の結果を記録します。即時 cleanup と `Table.compact_files()` は製品コードの周期設定を変更するものではなく、局所比較用の制御です。reader query が native 呼出しの時間区間に入った場合だけ overlap と数えます。この試験は一つの local DB / LanceDB version / writer に限定され、二重 writer、native API 内部 failpoint、他 filesystem / host、OS crash / 電源断の安全性を証明しません。
 
 `http-shutdown-unconfirmed.mjs` は実 HTTP server / DBEngine / CLI stop を disposable project で起動し、writer 前の strict 診断を一時コピーの `strict-diagnostic.js` 内で pause させます。実 CLI process 内の `fetch` response を記録するため、server route を改変せず実際の status / headers / body を観測します。加えて read-only `DBEngine` で heartbeat row を前後に読み、server log の claim readback と `WATCHING` 行を確認します。shutdown 直後の診断 process group と、その後の短い継続観測を分けて記録します。Loopback bind が制限される環境では、承認された sandbox 外で実行してください。macOS で `kill(-PGID, 0)` が `EPERM` を返した場合は `ps` から同じ process group の有無を確認し、消失を確認できなければ一時 DB を残します。この試験は signal 送信の EPERM 注入ではありません。
 
