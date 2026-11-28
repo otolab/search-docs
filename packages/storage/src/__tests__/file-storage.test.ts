@@ -274,4 +274,36 @@ describe('FileStorage', () => {
       expect(saved1?.metadata.fileHash).not.toBe(saved2?.metadata.fileHash);
     });
   });
+
+  describe('concurrent save', () => {
+    it('同じパスへの並行 save がすべて完了し、固定 tmp の rename ENOENT を出さない', async () => {
+      const document: Document = {
+        path: 'workspaces/facts-candidates.md',
+        content: 'shared path',
+        metadata: {
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          fileHash: 'concurrent',
+        },
+      };
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 40 }, (_, i) =>
+          storage.save(document.path, { ...document, content: `writer-${i}` })
+        )
+      );
+      const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+      expect(rejected.map((r) => String(r.reason))).toEqual([]);
+
+      const saved = await storage.get(document.path);
+      expect(saved).not.toBeNull();
+      expect(saved?.content.startsWith('writer-')).toBe(true);
+
+      const leftovers = (await fs.readdir(testDir, { recursive: true }))
+        .map(String)
+        .filter((name) => name.endsWith('.tmp'));
+      expect(leftovers).toEqual([]);
+    });
+  });
+
 });

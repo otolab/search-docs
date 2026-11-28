@@ -45,10 +45,17 @@ export class FileStorage implements DocumentStorage {
       },
     };
 
-    // Atomic write: tmp → rename でデータ破損を防止
-    const tmpPath = filePath + '.tmp';
-    await fs.writeFile(tmpPath, JSON.stringify(docWithHash, null, 2), 'utf-8');
-    await fs.rename(tmpPath, filePath);
+    // Atomic write: unique tmp → rename. A fixed ".tmp" suffix races when
+    // two writers save the same path: the first rename removes the tmp and
+    // the second rename fails with ENOENT.
+    const tmpPath = `${filePath}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(tmpPath, JSON.stringify(docWithHash, null, 2), 'utf-8');
+      await fs.rename(tmpPath, filePath);
+    } catch (error) {
+      await fs.unlink(tmpPath).catch(() => {});
+      throw error;
+    }
   }
 
   /**
