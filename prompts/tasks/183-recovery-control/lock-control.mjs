@@ -38,7 +38,13 @@ await writeFile(modulePath, ts.transpileModule(injected, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
 }).outputText);
 const moduleUrl = pathToFileURL(modulePath).href;
-const results = { crashWindows: [], maintenanceCrashWindows: [], raceTrials: 0, wins: { shared: 0, exclusive: 0 } };
+const results = {
+  crashWindows: [],
+  completedRegistrationAfterOwnerSigkill: null,
+  maintenanceCrashWindows: [],
+  raceTrials: 0,
+  wins: { shared: 0, exclusive: 0 },
+};
 
 function waitForLine(child, pattern, timeoutMs = 10000) {
   let buffer = '';
@@ -130,6 +136,44 @@ setInterval(() => {}, 1000);`;
       await release();
     }
     results.crashWindows.push({ point, stateAfterSigkill: state, sharedWhileGateRemains, afterManualGateRemoval });
+  }
+
+  {
+    const directory = path.join(root, 'shared-completed-owner');
+    const identity = 'same-project-config';
+    const child = trackChild(children, spawn(process.execPath, ['--input-type=module', '-e', crashScript, directory, identity], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+    await waitForLine(child, /^ACQUIRED$/);
+    await killChild(child);
+
+    const { MaintenanceLock } = await import(moduleUrl);
+    const lock = new MaintenanceLock(directory, identity);
+    const usersPath = path.join(directory, 'users');
+    const usersAfterOwnerExit = await readdir(usersPath);
+    let releaseCompatibleShared;
+    const compatibleShared = await attempt(async () => {
+      releaseCompatibleShared = await lock.acquireShared();
+    });
+    const differentIdentityShared = await attempt(() =>
+      new MaintenanceLock(directory, 'different-config').acquireShared());
+    const exclusive = await attempt(() => new MaintenanceLock(directory).acquireExclusive());
+    if (releaseCompatibleShared) await releaseCompatibleShared();
+    const usersAfterCompatibleRelease = await readdir(usersPath);
+
+    assert.equal(usersAfterOwnerExit.length, 1, 'owner SIGKILL should leave its completed registration');
+    assert.equal(compatibleShared, 'allowed', 'a compatible shared process may join stale registration');
+    assert.match(differentIdentityShared, /^denied:/, 'stale identity should reject incompatible shared use');
+    assert.match(exclusive, /^denied:/, 'stale registration should block exclusive maintenance');
+    assert.equal(usersAfterCompatibleRelease.length, 1, 'releasing the new owner must not remove the stale entry');
+    results.completedRegistrationAfterOwnerSigkill = {
+      staleRegistrationsAfterOwnerExit: usersAfterOwnerExit.length,
+      compatibleShared,
+      differentIdentityShared,
+      exclusive,
+      staleRegistrationsAfterCompatibleRelease: usersAfterCompatibleRelease.length,
+      automaticRecovery: false,
+    };
   }
 
   for (const point of ['exclusive-only', 'exclusive-and-incomplete']) {
