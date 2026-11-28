@@ -682,7 +682,7 @@ search-docs embedding status [options]
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
-| `--port <port>` | 確認するポート番号 | PIDファイルのport、なければ `24281` |
+| `--port <port>` | 確認するポート番号 | PID記録が一意ならそのport。複数または対象を特定できない記録があれば `--port` が必要。記録がなければ `24281` |
 | `--verbose` | 各チェック結果と診断情報を表示 | `false` |
 | `--repair` | stale PIDファイルを削除して再確認 | `false` |
 | `--probe` | `/api/embed`（失敗時 `/encode`）で実際の推論を確認 | `false` |
