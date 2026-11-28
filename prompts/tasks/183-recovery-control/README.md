@@ -25,6 +25,7 @@ node prompts/tasks/183-recovery-control/embedding-identity-mismatch-cleanup.mjs
 node prompts/tasks/183-recovery-control/heartbeat-stale-writer-write.mjs
 node prompts/tasks/183-recovery-control/source-dist-check.mjs
 packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/scalar-index-failure.py
+packages/db-engine/.venv/bin/python prompts/tasks/183-recovery-control/lancedb-read-write-control.py
 node prompts/tasks/183-recovery-control/cleanup-failure.mjs
 pnpm --dir packages/db-engine exec vitest run --config vitest.config.maintenance.ts src/typescript/__tests__/process-tree.test.ts
 pnpm --dir packages/mcp-server exec ../../node_modules/.bin/vitest run --config vitest.config.maintenance.ts src/maintenance/__tests__/parallel-mcp-startup.test.ts
@@ -40,6 +41,8 @@ pnpm --dir packages/server exec vitest run --config vitest.config.heartbeat.ts s
 全 harness は起動した直接 child を追跡し、cleanup で終了イベントを確認してから一時 root を消します。writer harness は別 process group の診断 child も PID を stderr 到着時に記録し、終了を確認します。`cleanup-failure.mjs` は child 起動後に意図的な assertion failure を起こし、この cleanup 順序を確かめます。終了を確認できないときは DB 等の一時資材を残し、cleanup failure と一時 root の場所を報告します。
 
 `scalar-index-failure.py` は実 LanceDB の disposable DB に各5,000行を入れ、現行 `SearchDocsWorker.init_tables()` の `index_requests.status` scalar-index 作成時だけ例外を注入します。必須 table が揃った状態で read-only strict 診断を行い、filter 結果と論理行 hash を比較した後、次回初期化で index が作られることを確認します。実行時間は1回の小規模な観測値であり、性能ベンチマークではありません。LanceDB native API 呼び出し中のクラッシュは注入しません。
+
+`lancedb-read-write-control.py` は一時 DB に小さな table を作り、同じプロセス内の独立した writer / reader connection から通常の `add` と read-only query を重ねます。読み取り中の例外、観測行数の後退、読み取りだけを行った前後の DB file hash 差分、通常 append による file 増加を記録します。これは row append と query の一回の局所制御試験であり、search-docs の maintenance admission、複数 host、別 process 間、table drop / recreate / index build / optimize、native API 中断、電源断の安全性を証明しません。
 
 `http-shutdown-unconfirmed.mjs` は実 HTTP server / DBEngine / CLI stop を disposable project で起動し、writer 前の strict 診断を一時コピーの `strict-diagnostic.js` 内で pause させます。実 CLI process 内の `fetch` response を記録するため、server route を改変せず実際の status / headers / body を観測します。加えて read-only `DBEngine` で heartbeat row を前後に読み、server log の claim readback と `WATCHING` 行を確認します。shutdown 直後の診断 process group と、その後の短い継続観測を分けて記録します。Loopback bind が制限される環境では、承認された sandbox 外で実行してください。macOS で `kill(-PGID, 0)` が `EPERM` を返した場合は `ps` から同じ process group の有無を確認し、消失を確認できなければ一時 DB を残します。この試験は signal 送信の EPERM 注入ではありません。
 
